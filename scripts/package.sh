@@ -73,7 +73,7 @@ LICENSES="$BUILD/THIRD-PARTY-LICENSES.txt"
     cat "$ROOT/src/ui/fonts/DejaVu-LICENSE.txt"
 } > "$LICENSES"
 
-cp "$ROOT/scripts/README-friends.txt" "$BUILD/README.txt"
+cp "$ROOT/scripts/README.txt" "$BUILD/README.txt"
 # ditto keeps the bundle's permissions and signature intact inside the zip;
 # --norsrc leaves out extended attributes, which other unzip tools would
 # extract as "._*" files that break the signature.
@@ -84,7 +84,7 @@ cp "$ROOT/scripts/README-friends.txt" "$BUILD/README.txt"
 build "x86_64-windows" "$BUILD/windows"
 mkdir -p "$BUILD/win-zip"
 cp "$BUILD/windows/bin/rl.exe" "$BUILD/win-zip/$EXE.exe"
-cp "$ROOT/scripts/README-friends.txt" "$BUILD/win-zip/README.txt"
+cp "$ROOT/scripts/README.txt" "$BUILD/win-zip/README.txt"
 cp "$LICENSES" "$BUILD/win-zip/"
 (cd "$BUILD/win-zip" && zip -q "$DIST/byte-code-windows.zip" "$EXE.exe" README.txt THIRD-PARTY-LICENSES.txt)
 
@@ -103,7 +103,7 @@ if command -v docker >/dev/null && docker info >/dev/null 2>&1; then
     PKG="$BUILD/linux-pkg/byte-code"
     mkdir -p "$PKG"
     cp "$BUILD/linux/bin/rl" "$PKG/$EXE"
-    cp "$ROOT/scripts/README-friends.txt" "$PKG/README.txt"
+    cp "$ROOT/scripts/README.txt" "$PKG/README.txt"
     cp "$LICENSES" "$PKG/"
     tar -czf "$DIST/byte-code-linux-x86_64.tar.gz" -C "$BUILD/linux-pkg" byte-code
 else
