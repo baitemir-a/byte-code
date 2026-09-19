@@ -2,10 +2,10 @@
 //! middle click) to close it. A dot marks unsaved changes.
 const std = @import("std");
 const rl = @import("raylib");
-const theme = @import("theme.zig");
+const theme = @import("theme/lib/theme.zig");
 const Font = @import("Font.zig");
-const Tab = @import("../Tab.zig");
-const file_icon = @import("file_icon.zig");
+const Tab = @import("../app/Tab.zig");
+const file_icon = @import("widgets/lib/file_icon.zig");
 
 /// Room for the file-type dot in front of a file tab's name.
 const icon_space: f32 = file_icon.radius * 2 + 8;

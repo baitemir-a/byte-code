@@ -1,20 +1,23 @@
 //! Editor core: text, cursor, editing and undo. No rendering or platform
 //! code lives here, so everything is unit-testable with `zig build test`.
 
-pub const Buffer = @import("Buffer.zig");
+pub const Buffer = @import("buffer/Buffer.zig");
 pub const Document = @import("Document.zig");
-pub const Search = @import("Search.zig");
-pub const FileTree = @import("FileTree.zig");
+pub const Search = @import("search/Search.zig");
+pub const find = @import("search/lib/find.zig");
+pub const scope = @import("editing/lib/scope.zig");
+pub const wrap = @import("editing/lib/wrap.zig");
+pub const FileTree = @import("project/FileTree.zig");
 pub const TerminalScreen = @import("terminal/Screen.zig");
 pub const Settings = @import("Settings.zig");
-pub const FileSearch = @import("FileSearch.zig");
-pub const ProjectSearch = @import("ProjectSearch.zig");
-pub const Git = @import("Git.zig");
-pub const History = @import("History.zig");
-pub const text = @import("text.zig");
-pub const motion = @import("motion.zig");
-pub const edit = @import("edit.zig");
-pub const command = @import("command.zig");
+pub const FileSearch = @import("search/FileSearch.zig");
+pub const ProjectSearch = @import("search/ProjectSearch.zig");
+pub const Git = @import("project/Git.zig");
+pub const History = @import("buffer/History.zig");
+pub const text = @import("editing/lib/text.zig");
+pub const motion = @import("editing/lib/motion.zig");
+pub const edit = @import("editing/lib/edit.zig");
+pub const command = @import("editing/lib/command.zig");
 pub const syntax = @import("syntax/syntax.zig");
 pub const Completion = @import("completion/Completion.zig");
 

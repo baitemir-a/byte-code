@@ -12,18 +12,26 @@ zipped), no Electron, no runtime.
 - **Syntax highlighting** — JavaScript/TypeScript, JSON, HTML, XML, CSS/SCSS/
   Sass/Less, Markdown (with highlighted code blocks), Python, Go, Rust, Zig,
   TOML, YAML, `.env`, `.gitignore`, lock files
+- **Multiple cursors** — Option+click (Alt+click) to add cursors,
+  Option+Shift+click for a column of them; typing, deleting, moving and
+  copy/paste work at all of them
+- **Move lines** up and down with Option+Up / Down
+- **Select scope** — grow the selection word → line → inside brackets or
+  quotes → the brackets themselves → …, and back
 - **Completion** — suggestions as you type from the file's own words and
   language keywords, fuzzy matched
-- **Find and replace** in a file; **search across the project**
+- **Find and replace** in a file and **across the project** — match case
+  and whole word options; replace one match, one file or everything
 - **Projects** — open a folder to get a file tree: create, rename, delete
   (to the Trash) and drag-and-drop to move files and folders
 - **Go to file** (Cmd+P) by fuzzy name
 - **Git** — branch, changed files, stage/unstage, commit
 - **Integrated terminal** — your shell on a real pseudo-terminal, with
   colors, scrollback and full-screen programs (vim, htop)
+- **Word wrap** (Option+Z) — long lines break to fit the window
 - **Minimap**, line numbers, current-line highlight
 - **Settings** — dark/light theme, accent color, auto save, zoom, minimap,
-  opening folders in a new window
+  word wrap, opening folders in a new window
 
 ## Keyboard shortcuts
 
@@ -37,11 +45,18 @@ On macOS use Cmd; on Windows and Linux use Ctrl.
 | Cmd+W | Close tab |
 | Option+Tab / Option+Shift+Tab | Next / previous tab (also Ctrl+Tab) |
 | Cmd+P | Go to file |
-| Cmd+F / Cmd+Option+F | Find / find and replace (Ctrl+H on Windows/Linux) |
-| Cmd+G / Cmd+Shift+G | Next / previous match |
-| Cmd+Shift+F | Search in project |
+| Option+click | Add a cursor (click it again to remove it); Esc goes back to one |
+| Option+Shift+click | A cursor on every line from the cursor to the click, in that column (drag sideways for a box selection) |
+| Option+Z | Word wrap on / off (Alt+Z on Windows and Linux) |
+| Option+Up / Down | Move the line (or selected lines) up / down |
+| Option+Shift+Up / Down | Select the enclosing scope / go back a step (Alt+Shift on Windows and Linux) |
+| Cmd+F | Find and replace in the file |
+| Down / Up (in the find bar) | Next / previous match (also Enter / Shift+Enter, or F3 / Shift+F3 anywhere) |
+| Cmd+Shift+F | Find and replace in the project |
+| Cmd+Option+C / Cmd+Option+W | Match case / whole word (Alt+C / Alt+W on Windows and Linux) |
+| Enter / Cmd+Enter (in the replace box) | Replace one / replace all |
 | Cmd+Shift+E | Explorer |
-| Ctrl+Shift+G | Git |
+| Cmd+G / Cmd+Shift+G | Git |
 | Cmd+B | Toggle sidebar |
 | Cmd+K | Close folder (clears the screen in the terminal) |
 | Cmd+T | Terminal (also Ctrl+`) |
@@ -101,29 +116,61 @@ Stored as JSON, and editable by hand:
 
 ## Project layout
 
+Each folder has the same shape:
+
+```
+some_module/
+  Name.zig          types: files that are a struct with fields (see below)
+  Name_draw.zig     drawing code of the UI component Name.zig
+  lib/              functions: files that only group functions
+  tests/            Name_test.zig tests Name.zig (or lib/name.zig)
+```
+
 ```
 src/
-  main.zig          window setup and the frame loop
-  App.zig           ties everything together: tabs, input routing, drawing
-  Tab.zig           one open tab (file, welcome page or settings)
-  Terminal.zig      the integrated terminal: shell + screen
-  core/             editor logic, no graphics — unit tested
-    Buffer.zig        text, cursor, selection, undo (History.zig)
-    edit.zig          smart editing (auto-close, indent)
-    motion.zig        cursor movement
-    Document.zig      loading and saving files
-    FileTree.zig      the project tree; create/rename/move/delete
-    FileSearch.zig    go to file · ProjectSearch.zig  search in files
-    Search.zig        find in a file · Git.zig  git status/stage/commit
-    Settings.zig      settings.json
-    syntax/           one lexer per language, and the Highlighter
-    completion/       suggestions and fuzzy matching
-    terminal/         the terminal emulator (xterm escape sequences)
-  ui/               drawing: editor view, sidebar, tabs, panels, theme
-  input/            keyboard and mouse → commands
-  platform/         OS specifics: dialogs, pseudo-terminals, paths
-scripts/            release packaging
+  main.zig            window setup and the frame loop
+  app/                the application
+    App.zig             its state, one frame, and an index of lib/
+    Tab.zig, Terminal.zig
+    lib/                dispatch (commands), files, tree, project_search,
+                        panels, tabs, terminal, mouse, clipboard, settings,
+                        render (drawing a frame)
+  core/               editor logic, no graphics — unit tested
+    root.zig            what the core module exports
+    buffer/             text, undo history; lib/cursors (multi-cursor)
+    editing/            lib/: edit, motion, command, scope, wrap, text
+    search/             Search, ProjectSearch, FileSearch; lib/find
+    project/            FileTree, Git
+    syntax/             syntax.zig lists the languages; lib/ has one lexer
+                        per language; Highlighter
+    completion/         Completion, Index; lib/fuzzy, lib/builtins
+    terminal/           Screen; lib/escapes (parsing escape sequences)
+    Document.zig, Settings.zig
+  ui/                 drawing and hit-testing
+    editor/             View, Minimap, FindBar, CompletionPopup
+    sidebar/            Sidebar, SearchPanel, GitPanel, ContextMenu
+    pages/              WelcomePage, SettingsPage
+    terminal/           TerminalPanel
+    widgets/            TextField; lib/ file icons, search toggles
+    theme/              lib/theme (colors, sizes, zoom), lib/palettes
+    Font.zig, TabBar.zig, QuickOpen.zig
+  input/              Mouse; lib/keymap, lib/terminal_keys
+  platform/           Pty; lib/dialogs, lib/paths
+scripts/              release packaging
 ```
+
+Conventions:
+
+- **`Name.zig` (capitalized) is a type.** In Zig a file is a struct; these
+  have fields (`const FileTree = @This();`) and you make values of them:
+  `var tree = try FileTree.load(...)`.
+- **`lib/name.zig` (lowercase) is a group of functions**, no fields:
+  `core.scope.expand(...)`.
+- `Name_draw.zig` holds a UI component's drawing. The component re-exports
+  it (`pub const draw = Name_draw.draw;`), so it's still called as
+  `component.draw(...)`.
+- `tests/Name_test.zig` tests `Name.zig`; `Name.zig` ends with
+  `test { _ = @import("tests/Name_test.zig"); }` so `zig build test` runs it.
 
 ## License notes
 

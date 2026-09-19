@@ -1,7 +1,9 @@
-//! A monospace font plus the width of one character cell.
+//! A monospace font plus the width of one character cell. It's rendered at
+//! each size it's drawn at (text, headings, hints) and glyphs are placed on
+//! whole screen pixels, so text stays sharp rather than scaled or smeared.
 const std = @import("std");
 const rl = @import("raylib");
-const theme = @import("theme.zig");
+const theme = @import("theme/lib/theme.zig");
 
 const Font = @This();
 
@@ -34,10 +36,31 @@ const codepoints = blk: {
     break :blk list;
 };
 
+/// Headings and hints are drawn at these sizes (Welcome, Settings).
+pub const heading_size = theme.font_size * 2.4;
+pub const small_size = theme.font_size * 0.8;
+
+/// Characters for the heading and hint sizes: text in these is short and
+/// Latin, Cyrillic or Greek, so keep their atlases small.
+const small_set_ranges = char_ranges[0..4];
+const small_set = blk: {
+    var n: usize = 0;
+    for (small_set_ranges) |r| n += @intCast(r[1] - r[0] + 1);
+    break :blk codepoints[0..n].*;
+};
+
 handle: rl.Font,
+/// The same font rendered for headings and hints (null if they couldn't
+/// be loaded; the main one is scaled then).
+heading: ?rl.Font = null,
+small: ?rl.Font = null,
 /// Horizontal advance of one character (fonts are assumed monospace).
 cell_width: f32,
 owned: bool,
+/// One screen pixel, in UI units (0.5 on a Retina display at 100% zoom).
+pixel: f32 = 1,
+
+const Source = union(enum) { path: [:0]const u8, bundled };
 
 /// DejaVu Sans Mono, built into the executable so text looks right (and
 /// Cyrillic works) on systems without any of `theme.font_paths`.
@@ -48,16 +71,35 @@ const bundled_font = @embedFile("fonts/DejaVuSansMono.ttf");
 /// one. Call after the window exists: it rasterizes for the display's pixel
 /// density and the current zoom, so text stays sharp at any size.
 pub fn load() Font {
-    const dpi = rl.getWindowScaleDPI().x;
-    const raster_size: i32 = @intFromFloat(@round(theme.font_size * @max(1, dpi) * theme.zoom));
-    for (theme.font_paths) |path| {
-        const f = rl.loadFontEx(path, raster_size, &codepoints) catch continue;
-        return fromHandle(f, true);
-    }
-    if (rl.loadFontFromMemory(".ttf", bundled_font, raster_size, &codepoints)) |f| {
-        return fromHandle(f, true);
-    } else |_| {}
-    return fromHandle(rl.getFontDefault() catch unreachable, false);
+    // Screen pixels per UI unit: display density times zoom.
+    const scale = @max(1, rl.getWindowScaleDPI().x) * theme.zoom;
+    const source: Source, const main = for (theme.font_paths) |path| {
+        if (loadFrom(.{ .path = path }, pixels(theme.font_size, scale), &codepoints)) |f| break .{ .{ .path = path }, f };
+    } else if (loadFrom(.bundled, pixels(theme.font_size, scale), &codepoints)) |f|
+        .{ Source.bundled, f }
+    else {
+        var font = fromHandle(rl.getFontDefault() catch unreachable, false);
+        font.pixel = 1 / scale;
+        return font;
+    };
+    var font = fromHandle(main, true);
+    font.pixel = 1 / scale;
+    font.heading = loadFrom(source, pixels(heading_size, scale), &small_set);
+    font.small = loadFrom(source, pixels(small_size, scale), &small_set);
+    return font;
+}
+
+fn pixels(size: f32, scale: f32) i32 {
+    return @intFromFloat(@round(size * scale));
+}
+
+fn loadFrom(source: Source, px: i32, cps: []const i32) ?rl.Font {
+    const f = switch (source) {
+        .path => |p| rl.loadFontEx(p, px, cps),
+        .bundled => rl.loadFontFromMemory(".ttf", bundled_font, px, cps),
+    } catch return null;
+    rl.setTextureFilter(f.texture, .bilinear);
+    return f;
 }
 
 fn fromHandle(f: rl.Font, owned: bool) Font {
@@ -71,6 +113,8 @@ fn fromHandle(f: rl.Font, owned: bool) Font {
 
 pub fn unload(self: Font) void {
     if (self.owned) rl.unloadFont(self.handle);
+    if (self.heading) |f| rl.unloadFont(f);
+    if (self.small) |f| rl.unloadFont(f);
 }
 
 pub fn drawCodepoint(self: Font, cp: u21, x: f32, y: f32, color: rl.Color) void {
@@ -101,5 +145,14 @@ pub fn drawFit(self: Font, s: []const u8, x: f32, y: f32, max_x: f32, color: rl.
 /// Like `drawCodepoint` at another size (e.g. a heading); the advance is
 /// `cell_width * size / theme.font_size`.
 pub fn drawCodepointSized(self: Font, cp: u21, x: f32, y: f32, size: f32, color: rl.Color) void {
-    rl.drawTextCodepoint(self.handle, cp, .{ .x = x, .y = y }, size, color);
+    // The rendering made for this size, so glyphs aren't stretched.
+    const f = if (@abs(size - heading_size) < 0.01 and self.heading != null)
+        self.heading.?
+    else if (@abs(size - small_size) < 0.01 and self.small != null)
+        self.small.?
+    else
+        self.handle;
+    // On whole screen pixels: between them, smoothing blurs each glyph.
+    const px = self.pixel;
+    rl.drawTextCodepoint(f, cp, .{ .x = @round(x / px) * px, .y = @round(y / px) * px }, size, color);
 }

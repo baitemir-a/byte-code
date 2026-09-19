@@ -3,10 +3,10 @@
 const std = @import("std");
 const rl = @import("raylib");
 const core = @import("core");
-const theme = @import("theme.zig");
+const theme = @import("theme/lib/theme.zig");
 const Font = @import("Font.zig");
-const TextField = @import("TextField.zig");
-const file_icon = @import("file_icon.zig");
+const TextField = @import("widgets/TextField.zig");
+const file_icon = @import("widgets/lib/file_icon.zig");
 
 const QuickOpen = @This();
 

@@ -1,0 +1,225 @@
+//! The sidebar's file tree: its context menu, creating, renaming,
+//! deleting and dragging entries.
+const std = @import("std");
+const rl = @import("raylib");
+const core = @import("core");
+const dialogs = @import("../../platform/lib/dialogs.zig");
+const Sidebar = @import("../../ui/sidebar/Sidebar.zig");
+const App = @import("../App.zig");
+
+/// Shows the sidebar's name box for a new file or folder in `folder`.
+pub fn startCreate(self: *App, kind: core.FileTree.EntryKind, folder: u32) !void {
+    const project = if (self.project) |*p| p else return;
+    try project.expand(self.io, folder);
+    try self.sidebar.startInput(project, folder, kind);
+    self.completion.close();
+    self.find.focus = .editor;
+}
+
+/// Where the header buttons create things: next to the active file, or
+/// at the top of the project.
+pub fn defaultFolder(self: *App) u32 {
+    const project = if (self.project) |*p| p else return 0;
+    const path = self.tab().document.path orelse return 0;
+    return if (project.find(path)) |i| project.folderOf(i) else 0;
+}
+
+/// Right-click in the sidebar: actions for the clicked file or folder, or
+/// just "new" ones on empty space.
+pub fn openContextMenu(self: *App, hit: ?Sidebar.Hit, at: rl.Vector2) void {
+    const project = if (self.project) |*p| p else return;
+    self.menu_node = if (hit) |h| switch (h) {
+        .node => |index| index,
+        else => null,
+    } else null;
+    self.menu_folder = if (self.menu_node) |n| project.folderOf(n) else 0;
+
+    const actions: []const App.MenuAction = if (self.menu_node != null)
+        &.{ .new_file, .new_folder, .rename, .delete }
+    else
+        &.{ .new_file, .new_folder };
+    var labels: [4][]const u8 = undefined;
+    for (actions, 0..) |a, i| {
+        self.menu_actions[i] = a;
+        labels[i] = a.label();
+    }
+    const window = App.windowSize();
+    self.menu.open(labels[0..actions.len], at, window, self.view.font);
+}
+
+pub fn runMenuAction(self: *App, action: App.MenuAction) !void {
+    switch (action) {
+        .new_file => try self.startCreate(.file, self.menu_folder),
+        .new_folder => try self.startCreate(.folder, self.menu_folder),
+        .rename => if (self.project) |*p| if (self.menu_node) |n| {
+            try self.sidebar.startRename(p, n);
+            self.completion.close();
+            self.find.focus = .editor;
+        },
+        .delete => if (self.menu_node) |n| try self.deleteEntry(n),
+    }
+}
+
+/// Enter in the name box: creates or renames.
+pub fn finishInput(self: *App) !void {
+    const input = self.sidebar.input orelse return;
+    if (input.renaming) |node| try self.finishRename(node) else try self.finishCreate();
+}
+
+pub fn finishRename(self: *App, node: u32) !void {
+    const project = if (self.project) |*p| p else return;
+    // The tree (and the old path in it) is rebuilt by the rename: copy it.
+    const old_path = try self.gpa.dupe(u8, project.node(node).path);
+    defer self.gpa.free(old_path);
+    const name = self.sidebar.name.text();
+    const new_path = project.rename(self.io, node, name) catch |err| {
+        return self.reportError("Couldn't rename", name, err);
+    };
+    defer self.gpa.free(new_path);
+    self.sidebar.cancelInput();
+
+    try self.retargetTabs(old_path, new_path);
+}
+
+pub fn startTreePress(self: *App, node: u32, at: rl.Vector2) !void {
+    const project = if (self.project) |*p| p else return;
+    self.endTreePress();
+    self.tree_press = .{ .path = try self.gpa.dupe(u8, project.node(node).path), .start = at };
+}
+
+pub fn endTreePress(self: *App) void {
+    if (self.tree_press) |t| self.gpa.free(t.path);
+    self.tree_press = null;
+    self.sidebar.drop_target = null;
+    self.sidebar.drag_label = null;
+}
+
+/// Each frame while a sidebar row is pressed: turn it into a drag, track
+/// the drop target, and on release either move the entry or treat the
+/// press as a click (open the file / toggle the folder).
+pub fn updateTreePress(self: *App, point: rl.Vector2) !void {
+    const press = if (self.tree_press) |*t| t else return;
+    const project = if (self.project) |*p| p else return self.endTreePress();
+    const node = project.find(press.path) orelse return self.endTreePress();
+    const released = rl.isMouseButtonReleased(.left);
+    if (!released and !rl.isMouseButtonDown(.left)) return self.endTreePress();
+
+    if (!press.dragging and std.math.hypot(point.x - press.start.x, point.y - press.start.y) > App.drag_threshold) {
+        press.dragging = true;
+    }
+    if (!press.dragging) {
+        if (!released) return;
+        const path = try self.gpa.dupe(u8, press.path);
+        defer self.gpa.free(path);
+        self.endTreePress();
+        if (project.node(node).is_dir) try project.toggle(self.io, node) else try self.openFromTree(path);
+        return;
+    }
+
+    // Where it would land: the folder under the mouse, or the folder of the
+    // file under it; empty space means the project folder.
+    const hit = if (self.sidebar.contains(point)) self.sidebar.hitTest(project, point) else null;
+    const target: ?u32 = if (hit) |h| switch (h) {
+        .node => |i| project.folderOf(i),
+        .empty => 0,
+        else => null,
+    } else null;
+    const valid = if (target) |t| project.canMove(node, t) else false;
+    self.sidebar.drop_target = if (valid) target else null;
+    self.sidebar.drag_label = project.node(node).name;
+    if (!valid) self.wanted_cursor = .not_allowed;
+    self.sidebar.autoScroll(point);
+
+    // Hovering a collapsed folder for a moment opens it.
+    const hovered_folder: ?u32 = if (hit) |h| switch (h) {
+        .node => |i| if (project.node(i).is_dir and !project.node(i).expanded) i else null,
+        else => null,
+    } else null;
+    if (hovered_folder != press.hover) {
+        press.hover = hovered_folder;
+        press.hover_since = rl.getTime();
+    } else if (hovered_folder) |f| if (rl.getTime() - press.hover_since > App.drag_expand_delay) {
+        try project.expand(self.io, f);
+        press.hover = null;
+    };
+
+    if (released) {
+        self.endTreePress();
+        if (valid) try self.moveEntry(node, target.?);
+    }
+}
+
+/// Drop: moves an entry into a folder; open tabs follow it.
+pub fn moveEntry(self: *App, node: u32, folder: u32) !void {
+    const project = if (self.project) |*p| p else return;
+    const old_path = try self.gpa.dupe(u8, project.node(node).path);
+    defer self.gpa.free(old_path);
+    const new_path = project.move(self.io, node, folder) catch |err| {
+        return self.reportError("Couldn't move", old_path, err);
+    };
+    defer self.gpa.free(new_path);
+    try self.retargetTabs(old_path, new_path);
+}
+
+/// Deletes after asking: to the trash if possible, otherwise permanently
+/// after asking again. Tabs of deleted files close unless they have
+/// unsaved changes.
+pub fn deleteEntry(self: *App, node: u32) !void {
+    const project = if (self.project) |*p| p else return;
+    const n = project.node(node);
+    const path = try self.gpa.dupe(u8, n.path);
+    defer self.gpa.free(path);
+    const question = try std.fmt.allocPrint(self.gpa, "Delete \"{s}\"?", .{n.name});
+    defer self.gpa.free(question);
+    const detail = if (n.is_dir) "The folder and everything in it will be moved to the Trash." else "It will be moved to the Trash.";
+
+    if (!(dialogs.confirm(self.gpa, self.io, question, detail, "Move to Trash") catch false)) return;
+    if (dialogs.moveToTrash(self.gpa, self.io, path)) {
+        try self.refreshProject();
+    } else |_| {
+        const permanent = dialogs.confirm(self.gpa, self.io, question, "It can't be moved to the Trash. Delete it permanently? This can't be undone.", "Delete Permanently") catch false;
+        if (!permanent) return;
+        project.deletePermanently(self.io, node) catch |err| return self.reportError("Couldn't delete", path, err);
+    }
+
+    var i = self.tabs.items.len;
+    while (i > 0) {
+        i -= 1;
+        const t = &self.tabs.items[i];
+        const tab_path = t.document.path orelse continue;
+        if (core.FileTree.isAtOrUnder(tab_path, path) and !t.isDirty()) _ = try self.closeTab(i);
+    }
+}
+
+/// Enter in the name box for a new entry: creates the file (and opens it)
+/// or folder.
+pub fn finishCreate(self: *App) !void {
+    const project = if (self.project) |*p| p else return;
+    const input = self.sidebar.input orelse return;
+    const name = self.sidebar.name.text();
+    const path = project.create(self.io, input.folder, name, input.kind) catch |err| {
+        const what = if (input.kind == .file) "Couldn't create file" else "Couldn't create folder";
+        return self.reportError(what, name, err);
+    };
+    defer self.gpa.free(path);
+    self.sidebar.cancelInput();
+    switch (input.kind) {
+        .file => try self.openPath(path),
+        .folder => if (project.find(path)) |i| if (std.mem.indexOfScalar(u32, project.rows.items, i)) |row| self.sidebar.revealRow(row),
+    }
+}
+
+/// Opens a file clicked in the sidebar.
+pub fn openFromTree(self: *App, path: []const u8) !void {
+    // `path` lives in the tree, which may be refreshed (freed) meanwhile.
+    const owned = try self.gpa.dupe(u8, path);
+    defer self.gpa.free(owned);
+    self.openFile(owned) catch |err| self.reportError("Couldn't open file", owned, err);
+}
+
+/// Expands the sidebar down to the active file and scrolls to it.
+pub fn revealCurrentFile(self: *App) !void {
+    const project = if (self.project) |*p| p else return;
+    const path = self.tab().document.path orelse return;
+    if (try project.reveal(self.io, path)) |row| self.sidebar.revealRow(row);
+}

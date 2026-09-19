@@ -2,8 +2,8 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const rl = @import("raylib");
-const App = @import("App.zig");
-const theme = @import("ui/theme.zig");
+const App = @import("app/App.zig");
+const theme = @import("ui/theme/lib/theme.zig");
 
 pub fn main(init: std.process.Init) !void {
     const args = try init.minimal.args.toSlice(init.arena.allocator());
@@ -45,5 +45,5 @@ pub fn main(init: std.process.Init) !void {
 
 test {
     _ = @import("platform/Pty.zig");
-    _ = @import("Terminal.zig");
+    _ = @import("app/Terminal.zig");
 }

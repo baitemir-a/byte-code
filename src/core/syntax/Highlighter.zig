@@ -1,18 +1,18 @@
 //! Remembers the lexer state at the start of every line, so any visible
 //! line can be highlighted on its own. Rebuilt whenever the buffer changes.
 const std = @import("std");
-const Buffer = @import("../Buffer.zig");
-const token = @import("token.zig");
-const js = @import("js.zig");
-const json = @import("json.zig");
-const css = @import("css.zig");
-const html = @import("html.zig");
-const markdown = @import("markdown.zig");
-const python = @import("python.zig");
-const toml = @import("toml.zig");
-const yaml = @import("yaml.zig");
-const config = @import("config.zig");
-const clike = @import("clike.zig");
+const Buffer = @import("../buffer/Buffer.zig");
+const token = @import("lib/token.zig");
+const js = @import("lib/js.zig");
+const json = @import("lib/json.zig");
+const css = @import("lib/css.zig");
+const html = @import("lib/html.zig");
+const markdown = @import("lib/markdown.zig");
+const python = @import("lib/python.zig");
+const toml = @import("lib/toml.zig");
+const yaml = @import("lib/yaml.zig");
+const config = @import("lib/config.zig");
+const clike = @import("lib/clike.zig");
 
 const Highlighter = @This();
 
@@ -54,14 +54,14 @@ pub const Language = enum {
         const name = std.fs.path.basename(path);
         // Files known by name (dotfiles have no extension to go by).
         const names = [_]struct { []const u8, Language }{
-            .{ ".gitignore", .ignore },       .{ ".dockerignore", .ignore },  .{ ".npmignore", .ignore },
-            .{ ".prettierignore", .ignore },  .{ ".eslintignore", .ignore },  .{ ".hgignore", .ignore },
-            .{ ".ignore", .ignore },          .{ ".gitattributes", .ignore }, .{ ".env", .dotenv },
-            .{ "yarn.lock", .yarn_lock },     .{ "Cargo.lock", .toml },       .{ "poetry.lock", .toml },
-            .{ "uv.lock", .toml },            .{ "pdm.lock", .toml },         .{ "composer.lock", .json },
-            .{ "Pipfile.lock", .json },       .{ "flake.lock", .json },       .{ "deno.lock", .json },
-            .{ "Podfile.lock", .yaml },       .{ "Gemfile.lock", .yaml },     .{ ".editorconfig", .toml },
-            .{ ".npmrc", .toml },             .{ ".gitconfig", .toml },       .{ "Pipfile", .toml },
+            .{ ".gitignore", .ignore },      .{ ".dockerignore", .ignore },  .{ ".npmignore", .ignore },
+            .{ ".prettierignore", .ignore }, .{ ".eslintignore", .ignore },  .{ ".hgignore", .ignore },
+            .{ ".ignore", .ignore },         .{ ".gitattributes", .ignore }, .{ ".env", .dotenv },
+            .{ "yarn.lock", .yarn_lock },    .{ "Cargo.lock", .toml },       .{ "poetry.lock", .toml },
+            .{ "uv.lock", .toml },           .{ "pdm.lock", .toml },         .{ "composer.lock", .json },
+            .{ "Pipfile.lock", .json },      .{ "flake.lock", .json },       .{ "deno.lock", .json },
+            .{ "Podfile.lock", .yaml },      .{ "Gemfile.lock", .yaml },     .{ ".editorconfig", .toml },
+            .{ ".npmrc", .toml },            .{ ".gitconfig", .toml },       .{ "Pipfile", .toml },
         };
         for (names) |entry| {
             if (std.mem.eql(u8, name, entry[0])) return entry[1];
@@ -72,10 +72,9 @@ pub const Language = enum {
         const table = [_]struct { []const u8, Language }{
             .{ ".py", .python },      .{ ".pyw", .python },     .{ ".pyi", .python },
             .{ ".go", .go },          .{ ".rs", .rust },        .{ ".zig", .zig },
-            .{ ".zon", .zig },
-            .{ ".toml", .toml },      .{ ".ini", .toml },       .{ ".cfg", .toml },
-            .{ ".conf", .toml },      .{ ".yml", .yaml },       .{ ".yaml", .yaml },
-            .{ ".env", .dotenv },     .{ ".gitignore", .ignore },
+            .{ ".zon", .zig },        .{ ".toml", .toml },      .{ ".ini", .toml },
+            .{ ".cfg", .toml },       .{ ".conf", .toml },      .{ ".yml", .yaml },
+            .{ ".yaml", .yaml },      .{ ".env", .dotenv },     .{ ".gitignore", .ignore },
             .{ ".js", .typescript },  .{ ".jsx", .typescript }, .{ ".mjs", .typescript },
             .{ ".cjs", .typescript }, .{ ".ts", .typescript },  .{ ".tsx", .typescript },
             .{ ".mts", .typescript }, .{ ".cts", .typescript }, .{ ".json", .json },
@@ -248,51 +247,6 @@ pub const Tokens = struct {
     }
 };
 
-test "states follow the buffer" {
-    const gpa = std.testing.allocator;
-    var buf = Buffer.init(gpa);
-    defer buf.deinit();
-    var hl = Highlighter.init(.typescript);
-    defer hl.deinit(gpa);
-
-    try buf.insert("a /*\nb\n*/ c");
-    try hl.update(gpa, &buf);
-    try std.testing.expectEqual(js.State.Mode.code, hl.line_states.items[0].js.mode);
-    try std.testing.expectEqual(js.State.Mode.block_comment, hl.line_states.items[1].js.mode);
-    try std.testing.expectEqual(js.State.Mode.block_comment, hl.line_states.items[2].js.mode);
-
-    var t = hl.tokens(1, "b");
-    try std.testing.expectEqual(token.Kind.comment, t.next().?.kind);
-
-    // Switching language rebuilds even though the text didn't change.
-    hl.language = .html;
-    try hl.update(gpa, &buf);
-    try std.testing.expect(hl.line_states.items[1] == .html);
-}
-
-test "language from path" {
-    try std.testing.expectEqual(Language.typescript, Language.fromPath("src/app.TSX"));
-    try std.testing.expectEqual(Language.scss, Language.fromPath("styles/main.sass"));
-    try std.testing.expectEqual(Language.xml, Language.fromPath("icon.svg"));
-    try std.testing.expectEqual(Language.markdown, Language.fromPath("README.md"));
-    try std.testing.expectEqual(Language.plain, Language.fromPath("notes.txt"));
-    try std.testing.expectEqual(Language.plain, Language.fromPath("Makefile"));
-    try std.testing.expectEqual(Language.python, Language.fromPath("app/main.py"));
-    try std.testing.expectEqual(Language.dotenv, Language.fromPath("/p/.env"));
-    try std.testing.expectEqual(Language.dotenv, Language.fromPath(".env.local"));
-    try std.testing.expectEqual(Language.ignore, Language.fromPath("repo/.gitignore"));
-    try std.testing.expectEqual(Language.yarn_lock, Language.fromPath("web/yarn.lock"));
-    try std.testing.expectEqual(Language.toml, Language.fromPath("Cargo.lock"));
-    try std.testing.expectEqual(Language.json, Language.fromPath("composer.lock"));
-    try std.testing.expectEqual(Language.yaml, Language.fromPath("ci.yml"));
-    try std.testing.expectEqual(Language.go, Language.fromPath("cmd/main.go"));
-    try std.testing.expectEqual(Language.rust, Language.fromPath("src/lib.rs"));
-    try std.testing.expectEqual(Language.zig, Language.fromPath("build.zig.zon"));
-}
-
-test "unknown .lock files are recognized by content" {
-    try std.testing.expectEqual(Language.json, Language.detect("x.lock", "{\n  \"a\": 1\n}"));
-    try std.testing.expectEqual(Language.toml, Language.detect("x.lock", "# gen\n[[package]]\nname = \"a\""));
-    try std.testing.expectEqual(Language.yaml, Language.detect("x.lock", "PODS:\n  - A (1.0)"));
-    try std.testing.expectEqual(Language.plain, Language.detect("notes.txt", "{"));
+test {
+    _ = @import("tests/Highlighter_test.zig");
 }

@@ -1,9 +1,9 @@
 //! Identifiers used in the document, rebuilt whenever the buffer changes.
 //! Strings and comments are skipped thanks to the syntax highlighter.
 const std = @import("std");
-const Buffer = @import("../Buffer.zig");
+const Buffer = @import("../buffer/Buffer.zig");
 const Highlighter = @import("../syntax/Highlighter.zig");
-const js = @import("../syntax/js.zig");
+const js = @import("../syntax/lib/js.zig");
 
 const Index = @This();
 
@@ -80,21 +80,6 @@ fn add(self: *Index, alloc: std.mem.Allocator, line: []const u8, start: usize, e
     if (lexed_type or std.ascii.isUpper(word[0])) w.is_type = true;
 }
 
-test "collects identifiers outside strings and comments" {
-    const gpa = std.testing.allocator;
-    var buf = Buffer.init(gpa);
-    defer buf.deinit();
-    var hl = Highlighter.init(.typescript);
-    defer hl.deinit(gpa);
-    var idx = Index.init(gpa);
-    defer idx.deinit();
-
-    try buf.insert("const userName = getUser(); // ignored\nuserName.first = \"not me\"");
-    try idx.update(gpa, &buf, &hl);
-
-    try std.testing.expectEqual(@as(u32, 2), idx.words.get("userName").?.count);
-    try std.testing.expect(idx.words.get("getUser").?.called);
-    try std.testing.expect(idx.words.get("first").?.as_member);
-    try std.testing.expect(idx.words.get("ignored") == null);
-    try std.testing.expect(idx.words.get("me") == null);
+test {
+    _ = @import("tests/Index_test.zig");
 }
