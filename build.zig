@@ -119,7 +119,11 @@ pub fn build(b: *std.Build) void {
     }
 
     // On Windows, a GUI app: no console window next to the editor.
-    if (target.result.os.tag == .windows) exe.subsystem = .windows;
+    if (target.result.os.tag == .windows) {
+        exe.subsystem = .windows;
+        // The .exe's own icon (Explorer, taskbar, shortcuts).
+        exe.root_module.addWin32ResourceFile(.{ .file = b.path("src/assets/icon.rc") });
+    }
     exe.root_module.addImport("raylib", raylib);
     exe.root_module.addImport("raygui", raygui);
 

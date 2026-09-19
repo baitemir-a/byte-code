@@ -12,10 +12,19 @@ zipped), no Electron, no runtime.
 | Windows (x86_64) | [byte-code-windows.zip](https://github.com/baitemir-a/byte-code/releases/latest/download/byte-code-windows.zip) |
 | Linux (x86_64, glibc 2.31+) | [byte-code-linux-x86_64.tar.gz](https://github.com/baitemir-a/byte-code/releases/latest/download/byte-code-linux-x86_64.tar.gz) |
 
-All versions are on the [Releases](https://github.com/baitemir-a/byte-code/releases) page. The apps
-aren't signed, so macOS and Windows warn the first time you open them: on
-macOS right-click the app and choose **Open**; on Windows click **More info →
-Run anyway**.
+All versions are on the [Releases](https://github.com/baitemir-a/byte-code/releases) page.
+
+The apps aren't signed with an Apple or Microsoft developer certificate, so
+the system warns the first time you open them:
+
+- **macOS** says Apple can't check the app for malicious software. Click
+  **Done** (not "Move to Trash"), then open **System Settings → Privacy &
+  Security**, scroll down to the message about "byte code" and click **Open
+  Anyway**. Or run this in Terminal once:
+  ```bash
+  xattr -dr com.apple.quarantine "/Applications/byte code.app"
+  ```
+- **Windows** SmartScreen: click **More info → Run anyway**.
 
 ## Features
 

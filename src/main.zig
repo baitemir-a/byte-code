@@ -19,6 +19,12 @@ pub fn main(init: std.process.Init) !void {
     }
     defer rl.closeWindow();
     rl.setWindowMinSize(200, 100);
+    // Title bar and taskbar icon on Windows and Linux. macOS ignores it and
+    // takes the Dock icon from the app bundle (scripts/package.sh).
+    if (rl.loadImageFromMemory(".png", @embedFile("assets/icon.png"))) |icon| {
+        rl.setWindowIcon(icon);
+        rl.unloadImage(icon);
+    } else |_| {}
     rl.setExitKey(.null); // Esc must not quit an editor
     rl.setTargetFPS(60);
 

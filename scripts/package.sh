@@ -38,6 +38,7 @@ APP="$BUILD/$NAME.app"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 # One binary that runs natively on both Apple Silicon and Intel Macs.
 lipo -create "$BUILD/arm64/bin/rl" "$BUILD/x86_64/bin/rl" -output "$APP/Contents/MacOS/$EXE"
+cp "$ROOT/src/assets/icon.icns" "$APP/Contents/Resources/icon.icns"
 
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -49,6 +50,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <key>CFBundleIdentifier</key>          <string>dev.bytecode.editor</string>
     <key>CFBundleExecutable</key>          <string>$EXE</string>
     <key>CFBundlePackageType</key>         <string>APPL</string>
+    <key>CFBundleIconFile</key>            <string>icon</string>
     <key>CFBundleShortVersionString</key>  <string>$VERSION</string>
     <key>CFBundleVersion</key>             <string>$VERSION</string>
     <key>LSMinimumSystemVersion</key>      <string>$MACOS_MIN</string>
