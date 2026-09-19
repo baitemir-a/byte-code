@@ -4,6 +4,19 @@ A lightweight code editor written in [Zig](https://ziglang.org) with
 [raylib](https://www.raylib.com). One small native executable (about 1.5 MB
 zipped), no Electron, no runtime.
 
+## Download
+
+| Platform | Download |
+|---|---|
+| macOS 13+ (Apple Silicon and Intel) | [byte-code-macos.zip](https://github.com/baitemir-a/byte-code/releases/latest/download/byte-code-macos.zip) |
+| Windows (x86_64) | [byte-code-windows.zip](https://github.com/baitemir-a/byte-code/releases/latest/download/byte-code-windows.zip) |
+| Linux (x86_64, glibc 2.31+) | [byte-code-linux-x86_64.tar.gz](https://github.com/baitemir-a/byte-code/releases/latest/download/byte-code-linux-x86_64.tar.gz) |
+
+All versions are on the [Releases](https://github.com/baitemir-a/byte-code/releases) page. The apps
+aren't signed, so macOS and Windows warn the first time you open them: on
+macOS right-click the app and choose **Open**; on Windows click **More info →
+Run anyway**.
+
 ## Features
 
 - **Editing** — multiple tabs, undo/redo, selection with keyboard and mouse,
