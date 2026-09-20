@@ -13,7 +13,7 @@ pub fn draw(self: *const TerminalPanel, screen: *const Screen, font: Font, focus
     if (!self.visible) return;
     const r = self.rect;
     rl.drawRectangleRec(r, theme.terminal_background);
-    rl.drawRectangleRec(.{ .x = r.x, .y = r.y, .width = r.width, .height = 1 }, if (self.resizing) theme.accent else theme.sidebar_border);
+    rl.drawRectangleRec(.{ .x = r.x, .y = r.y, .width = r.width, .height = 1 }, theme.copy(if (self.resizing) theme.accent else theme.sidebar_border));
 
     // Header: TERMINAL, the shell's title, and a close button.
     const hy = r.y + (TerminalPanel.header_height - theme.font_size) / 2;
@@ -51,11 +51,11 @@ pub fn draw(self: *const TerminalPanel, screen: *const Screen, font: Font, focus
             if (sel) |s| if (inSelection(s, index, col)) {
                 bg = theme.selection;
             };
-            if (bg) |b| rl.drawRectangleRec(.{ .x = cx, .y = top, .width = cw + 0.5, .height = TerminalPanel.line_height }, b);
+            if (bg) |b| rl.drawRectangleRec(.{ .x = cx, .y = top, .width = cw + 0.5, .height = TerminalPanel.line_height }, theme.copy(b));
             if (cell.attrs.faint) fg.a = 150;
             if (cell.cp != ' ' and !cell.attrs.hidden) font.drawCodepoint(cell.cp, cx, text_y, fg);
-            if (cell.attrs.underline) rl.drawRectangleRec(.{ .x = cx, .y = text_y + theme.font_size, .width = cw, .height = 1 }, fg);
-            if (cell.attrs.strike) rl.drawRectangleRec(.{ .x = cx, .y = text_y + theme.font_size / 2, .width = cw, .height = 1 }, fg);
+            if (cell.attrs.underline) rl.drawRectangleRec(.{ .x = cx, .y = text_y + theme.font_size, .width = cw, .height = 1 }, theme.copy(fg));
+            if (cell.attrs.strike) rl.drawRectangleRec(.{ .x = cx, .y = text_y + theme.font_size / 2, .width = cw, .height = 1 }, theme.copy(fg));
         }
     }
 

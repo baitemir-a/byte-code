@@ -52,7 +52,7 @@ pub fn drawToggle(font: Font, r: rl.Rectangle, option: Option, on: bool) void {
     const color = if (on) theme.foreground else theme.popup_detail;
     _ = font.drawFit(text, x, y, r.x + r.width, color);
     // "ab" underlined, like the usual whole-word icon.
-    if (option == .whole_word) rl.drawRectangleRec(.{ .x = x, .y = y + theme.font_size + 1, .width = w, .height = 1 }, color);
+    if (option == .whole_word) rl.drawRectangleRec(.{ .x = x, .y = y + theme.font_size + 1, .width = w, .height = 1 }, theme.copy(color));
 }
 
 /// A button: `primary` ones are filled with the accent. Disabled ones are
@@ -67,7 +67,7 @@ pub fn drawButton(font: Font, r: rl.Rectangle, label: []const u8, enabled: bool,
         theme.sidebar_hover
     else
         theme.popup_background;
-    rl.drawRectangleRounded(r, 0.25, 8, fill);
+    rl.drawRectangleRounded(r, 0.25, 8, theme.copy(fill));
     if (!enabled or !primary) rl.drawRectangleRoundedLinesEx(r, 0.25, 8, 1, theme.popup_border);
     const color = if (!enabled) theme.popup_detail else if (primary) theme.background else theme.foreground;
     const w = @as(f32, @floatFromInt(label.len)) * font.cell_width;

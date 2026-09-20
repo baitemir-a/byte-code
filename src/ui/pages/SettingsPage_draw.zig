@@ -72,7 +72,7 @@ pub fn label(font: Font, title: []const u8, hint: []const u8, x: f32, y: f32) vo
 
 /// An on/off switch: a pill with a knob, in the accent color when on.
 pub fn drawToggle(r: rl.Rectangle, on: bool) void {
-    rl.drawRectangleRounded(r, 1, 12, if (on) theme.accent else theme.popup_border);
+    rl.drawRectangleRounded(r, 1, 12, theme.copy(if (on) theme.accent else theme.popup_border));
     const knob_x = if (on) r.x + r.width - r.height / 2 else r.x + r.height / 2;
     rl.drawCircleV(.{ .x = knob_x, .y = r.y + r.height / 2 }, r.height / 2 - 3, theme.foreground);
 }
@@ -90,7 +90,7 @@ pub fn stepper(font: Font, minus: rl.Rectangle, plus: rl.Rectangle, value: []con
 pub fn segment(font: Font, r: rl.Rectangle, text: []const u8, selected: bool) void {
     const hovered = SettingsPage.hit(rl.getMousePosition(), r);
     const fill = if (selected) theme.accent else if (hovered) theme.tab_hover else theme.popup_background;
-    rl.drawRectangleRounded(r, 0.3, 8, fill);
+    rl.drawRectangleRounded(r, 0.3, 8, theme.copy(fill));
     if (!selected) rl.drawRectangleRoundedLinesEx(r, 0.3, 8, 1, theme.popup_border);
     const w = @as(f32, @floatFromInt(text.len)) * font.cell_width;
     const color = if (selected) theme.background else theme.foreground;
@@ -99,7 +99,7 @@ pub fn segment(font: Font, r: rl.Rectangle, text: []const u8, selected: bool) vo
 
 pub fn drawButton(font: Font, r: rl.Rectangle, text: []const u8, enabled: bool) void {
     const hovered = enabled and SettingsPage.hit(rl.getMousePosition(), r);
-    rl.drawRectangleRounded(r, 0.3, 8, if (hovered) theme.tab_hover else theme.popup_background);
+    rl.drawRectangleRounded(r, 0.3, 8, theme.copy(if (hovered) theme.tab_hover else theme.popup_background));
     rl.drawRectangleRoundedLinesEx(r, 0.3, 8, 1, theme.popup_border);
     const w = @as(f32, @floatFromInt(text.len)) * font.cell_width;
     drawText(font, text, r.x + (r.width - w) / 2, r.y + (r.height - theme.font_size) / 2, theme.font_size, if (enabled) theme.foreground else theme.popup_detail);

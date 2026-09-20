@@ -97,7 +97,7 @@ pub fn draw(self: *const TabBar, tabs: []const Tab, active: usize, font: Font) v
         rl.drawRectangleRec(.{ .x = r.x + r.width - 1, .y = r.y, .width = 1, .height = r.height }, theme.tab_separator);
 
         // Name, ending in "…" when longer than a tab allows.
-        const color = if (is_active) theme.foreground else theme.tab_inactive_text;
+        const color = theme.copy(if (is_active) theme.foreground else theme.tab_inactive_text);
         const y = r.y + (r.height - theme.font_size) / 2;
         if (t.kind == .file) file_icon.draw(t.name(), .{ .x = r.x + pad + file_icon.radius, .y = r.y + r.height / 2 });
         const name_x = r.x + pad + iconSpace(t);

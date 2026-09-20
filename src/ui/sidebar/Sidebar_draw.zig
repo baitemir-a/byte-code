@@ -14,7 +14,7 @@ const row_height = theme.line_height;
 pub fn drawScrollbar(self: *const Sidebar) void {
     const thumb = self.scrollbarThumb() orelse return;
     const active = self.scrollbar_drag != null or self.onScrollbar(rl.getMousePosition());
-    rl.drawRectangleRounded(thumb, 1, 6, if (active) theme.scrollbar_thumb_hover else theme.scrollbar_thumb);
+    rl.drawRectangleRounded(thumb, 1, 6, theme.copy(if (active) theme.scrollbar_thumb_hover else theme.scrollbar_thumb));
 }
 
 pub fn draw(self: *const Sidebar, tree: ?*const FileTree, current_path: ?[]const u8, font: Font, show_caret: bool) void {
@@ -42,7 +42,7 @@ pub fn drawViewStrip(self: *const Sidebar) void {
         const tab = Sidebar.viewTabRect(v);
         const active = self.view == v;
         const hovered = rl.checkCollisionPointRec(mouse, tab);
-        const color = if (active) theme.accent else if (hovered) theme.foreground else theme.sidebar_arrow;
+        const color = theme.copy(if (active) theme.accent else if (hovered) theme.foreground else theme.sidebar_arrow);
         const c: rl.Vector2 = .{ .x = tab.x + tab.width / 2, .y = tab.y + tab.height / 2 };
         switch (v) {
             .explorer => {
@@ -73,7 +73,7 @@ pub fn drawViewStrip(self: *const Sidebar) void {
     for ([_]usize{ 1, 0 }) |slot| {
         const b = self.stripButtonRect(slot);
         const hovered = rl.checkCollisionPointRec(mouse, b);
-        const color = if (hovered) theme.foreground else theme.sidebar_arrow;
+        const color = theme.copy(if (hovered) theme.foreground else theme.sidebar_arrow);
         const c: rl.Vector2 = .{ .x = b.x + b.width / 2, .y = b.y + b.height / 2 };
         if (hovered) rl.drawRectangleRounded(.{ .x = b.x + 3, .y = b.y + 4, .width = b.width - 6, .height = b.height - 8 }, 0.3, 6, theme.sidebar_hover);
         if (slot == 0) drawGear(c, color) else drawOpenFolder(c, color);
@@ -127,7 +127,7 @@ pub fn drawExplorer(self: *const Sidebar, t: *const FileTree, current_path: ?[]c
         const is_drop = self.drop_target == index;
         const bg: ?rl.Color = if (is_drop) theme.accentDim(0.25) else if (is_current) theme.accentDim(0.35) else if (hovered) theme.sidebar_hover else null;
         const row_rect: rl.Rectangle = .{ .x = 0, .y = top, .width = r.width - 1, .height = row_height };
-        if (bg) |c| rl.drawRectangleRec(row_rect, c);
+        if (bg) |c| rl.drawRectangleRec(row_rect, theme.copy(c));
         if (is_drop) rl.drawRectangleLinesEx(row_rect, 1, theme.accent);
 
         const x = Sidebar.pad + @as(f32, @floatFromInt(n.depth)) * Sidebar.indent;

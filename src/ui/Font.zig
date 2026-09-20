@@ -154,5 +154,5 @@ pub fn drawCodepointSized(self: Font, cp: u21, x: f32, y: f32, size: f32, color:
         self.handle;
     // On whole screen pixels: between them, smoothing blurs each glyph.
     const px = self.pixel;
-    rl.drawTextCodepoint(f, cp, .{ .x = @round(x / px) * px, .y = @round(y / px) * px }, size, color);
+    rl.drawTextCodepoint(f, cp, .{ .x = @round(x / px) * px, .y = @round(y / px) * px }, size, theme.copy(color));
 }

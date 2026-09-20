@@ -80,7 +80,7 @@ pub fn layout(self: *TextField, width: f32, font: Font) void {
 
 pub fn draw(self: *const TextField, rect: rl.Rectangle, font: Font, placeholder: []const u8, focused: bool, show_caret: bool) void {
     rl.drawRectangleRec(rect, theme.background);
-    rl.drawRectangleLinesEx(rect, 1, if (focused) theme.accent else theme.popup_border);
+    rl.drawRectangleLinesEx(rect, 1, theme.copy(if (focused) theme.accent else theme.popup_border));
 
     const w = font.cell_width;
     const y = rect.y + (rect.height - theme.font_size) / 2;

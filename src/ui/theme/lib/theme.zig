@@ -111,6 +111,17 @@ pub fn accentDim(amount: f32) rl.Color {
     return .{ .r = mix(background.r, accent.r, amount), .g = mix(background.g, accent.g, amount), .b = mix(background.b, accent.b, amount), .a = 255 };
 }
 
+/// Hands a color to raylib. Zig 0.16 miscompiles optimized builds (the ones
+/// releases are built with) when a color picked by an `if` goes straight
+/// into a raylib call: the register holding the color argument is left
+/// unset, so the shape draws in whatever it happened to hold — usually
+/// nothing, since that garbage is most often fully transparent. Copying the
+/// value field by field makes the call pass it. Wrap any color chosen by a
+/// condition in this on its way into a draw call.
+pub fn copy(c: rl.Color) rl.Color {
+    return .{ .r = c.r, .g = c.g, .b = c.b, .a = c.a };
+}
+
 // ------------------------------------------------------------------- zoom
 
 /// UI zoom from Settings (1 = 100%). Everything is laid out in unzoomed

@@ -38,7 +38,7 @@ pub fn draw(self: View, buf: *const Buffer, hl: *const Highlighter, marks: ?View
             while (mark < m.ranges.len and m.ranges[mark].end < start) mark += 1;
             var i = mark;
             while (i < m.ranges.len and m.ranges[i].start <= start + row_text.len) : (i += 1) {
-                const color = if (m.current == i) theme.find_current else theme.find_match;
+                const color = theme.copy(if (m.current == i) theme.find_current else theme.find_match);
                 drawRowRange(self, row_text, start, m.ranges[i], top, ends_line, color);
             }
         }
