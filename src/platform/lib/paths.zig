@@ -17,6 +17,15 @@ pub fn settingsFile(gpa: std.mem.Allocator) ![]u8 {
     };
 }
 
+/// The keyboard shortcuts the user changed, next to settings.json.
+/// Caller frees.
+pub fn keybindingsFile(gpa: std.mem.Allocator) ![]u8 {
+    const settings = try settingsFile(gpa);
+    defer gpa.free(settings);
+    const dir = std.fs.path.dirname(settings) orelse ".";
+    return std.fs.path.join(gpa, &.{ dir, "keybindings.json" });
+}
+
 fn env(name: [*:0]const u8) ?[]const u8 {
     const v = std.c.getenv(name) orelse return null;
     const s = std.mem.span(v);

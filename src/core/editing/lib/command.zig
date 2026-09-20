@@ -35,6 +35,8 @@ pub const Command = union(enum) {
     /// Show / focus / hide the terminal panel (Ctrl+`).
     toggle_terminal,
     open_settings,
+    /// The Help tab: every shortcut, and changing them.
+    open_help,
     /// Cmd+K: close the project folder (tabs stay open).
     close_folder,
     /// Cmd+P: find a file in the project by name.
@@ -111,7 +113,7 @@ pub fn run(buf: *Buffer, cmd: Command, page_lines: usize) !void {
         .redo => try buf.redo(),
         .move_line_up => _ = try edit.moveLines(buf, true, null),
         .move_line_down => _ = try edit.moveLines(buf, false, null),
-        .complete, .copy, .cut, .paste, .open, .open_folder, .new_file, .close_tab, .next_tab, .prev_tab, .toggle_sidebar, .toggle_terminal, .open_settings, .close_folder, .quick_open, .show_explorer, .show_search, .show_git, .zoom_in, .zoom_out, .zoom_reset, .save, .save_as, .find, .find_replace, .find_next, .find_prev, .toggle_match_case, .toggle_whole_word, .expand_selection, .shrink_selection, .toggle_word_wrap => unreachable,
+        .complete, .copy, .cut, .paste, .open, .open_folder, .new_file, .close_tab, .next_tab, .prev_tab, .toggle_sidebar, .toggle_terminal, .open_settings, .open_help, .close_folder, .quick_open, .show_explorer, .show_search, .show_git, .zoom_in, .zoom_out, .zoom_reset, .save, .save_as, .find, .find_replace, .find_next, .find_prev, .toggle_match_case, .toggle_whole_word, .expand_selection, .shrink_selection, .toggle_word_wrap => unreachable,
     }
 }
 

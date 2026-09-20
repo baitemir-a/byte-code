@@ -38,6 +38,8 @@ pub fn openSettings(self: *App) !void {
 }
 
 pub fn runSettingsAction(self: *App, action: SettingsPage.Action) !void {
+    // Not a setting: it opens a tab.
+    if (action == .open_help) return self.openHelp();
     const old = self.settings;
     switch (action) {
         .theme => |t| self.settings.theme = t,
@@ -50,6 +52,7 @@ pub fn runSettingsAction(self: *App, action: SettingsPage.Action) !void {
         .toggle_minimap => self.settings.minimap = !self.settings.minimap,
         .toggle_word_wrap => self.settings.word_wrap = !self.settings.word_wrap,
         .toggle_new_window => self.settings.open_folder_in_new_window = !self.settings.open_folder_in_new_window,
+        .open_help => unreachable,
     }
     try self.settingsChanged(old);
 }

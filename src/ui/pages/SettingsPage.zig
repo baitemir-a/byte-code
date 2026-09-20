@@ -27,6 +27,8 @@ pub const Action = union(enum) {
     toggle_minimap,
     toggle_word_wrap,
     toggle_new_window,
+    /// Opens the Help tab, where the shortcuts are.
+    open_help,
 };
 
 pub const accent_presets = [_]struct { name: []const u8, rgb: [3]u8 }{
@@ -59,6 +61,7 @@ zoom_reset: rl.Rectangle = undefined,
 minimap_toggle: rl.Rectangle = undefined,
 wrap_toggle: rl.Rectangle = undefined,
 new_window_toggle: rl.Rectangle = undefined,
+shortcuts_button: rl.Rectangle = undefined,
 
 // Drawing, in SettingsPage_draw.zig.
 pub const draw = SettingsPage_draw.draw;
@@ -86,6 +89,7 @@ pub fn layout(self: *SettingsPage, area: rl.Rectangle, font: Font) void {
     self.minimap_toggle = .{ .x = right - 46, .y = self.rowY(5) + 3, .width = 46, .height = 22 };
     self.wrap_toggle = .{ .x = right - 46, .y = self.rowY(6) + 3, .width = 46, .height = 22 };
     self.new_window_toggle = .{ .x = right - 46, .y = self.rowY(7) + 3, .width = 46, .height = 22 };
+    self.shortcuts_button = .{ .x = right - 80, .y = self.rowY(8), .width = 80, .height = button };
 }
 
 pub fn rowY(self: *const SettingsPage, row: usize) f32 {
@@ -109,6 +113,7 @@ pub fn actionAt(self: *const SettingsPage, p: rl.Vector2, settings: *const Setti
     if (hit(p, self.minimap_toggle)) return .toggle_minimap;
     if (hit(p, self.wrap_toggle)) return .toggle_word_wrap;
     if (hit(p, self.new_window_toggle)) return .toggle_new_window;
+    if (hit(p, self.shortcuts_button)) return .open_help;
     return null;
 }
 

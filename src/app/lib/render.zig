@@ -12,6 +12,7 @@ pub fn draw(self: *const App) void {
     switch (t.kind) {
         .welcome => self.welcome.draw(self.view.font),
         .settings => self.settings_page.draw(self.view.font, &self.settings, self.settings_path),
+        .help => self.help_page.draw(self.view.font, &self.keys, self.keys_path),
         .file => {
             const editor_caret = caret and !self.find.hasFocus() and self.sidebar.input == null and !self.terminalFocused() and !self.quick_open.is_open and self.side_focus == .none;
             self.view.draw(&t.buffer, &t.highlighter, self.find.highlights(&t.buffer), editor_caret);

@@ -57,10 +57,10 @@ pub fn handleTerminalKeys(self: *App) !bool {
         // Cmd shortcuts still work (Cmd+S, Cmd+O, Cmd+W...), but only ones
         // that make sense while the terminal has focus.
         .shortcut => {
-            try keymap.poll(self.gpa, &self.commands);
+            try keymap.poll(self.gpa, &self.keys, &self.commands);
             var kept: usize = 0;
             for (self.commands.items) |cmd| switch (cmd) {
-                .open, .open_folder, .new_file, .close_tab, .next_tab, .prev_tab, .toggle_sidebar, .toggle_terminal, .save, .save_as, .open_settings, .zoom_in, .zoom_out, .zoom_reset, .quick_open, .show_explorer, .show_search, .show_git => {
+                .open, .open_folder, .new_file, .close_tab, .next_tab, .prev_tab, .toggle_sidebar, .toggle_terminal, .save, .save_as, .open_settings, .open_help, .zoom_in, .zoom_out, .zoom_reset, .quick_open, .show_explorer, .show_search, .show_git => {
                     self.commands.items[kept] = cmd;
                     kept += 1;
                 },

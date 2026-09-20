@@ -5,7 +5,7 @@ const core = @import("core");
 
 const Tab = @This();
 
-pub const Kind = enum { file, welcome, settings };
+pub const Kind = enum { file, welcome, settings, help };
 
 kind: Kind,
 buffer: core.Buffer,
@@ -39,6 +39,12 @@ pub fn initSettings(gpa: std.mem.Allocator) Tab {
     return tab;
 }
 
+pub fn initHelp(gpa: std.mem.Allocator) Tab {
+    var tab = initFile(gpa);
+    tab.kind = .help;
+    return tab;
+}
+
 pub fn deinit(self: *Tab, gpa: std.mem.Allocator) void {
     self.highlighter.deinit(gpa);
     self.document.deinit(gpa);
@@ -57,6 +63,7 @@ pub fn name(self: *const Tab) []const u8 {
     return switch (self.kind) {
         .welcome => "Welcome",
         .settings => "Settings",
+        .help => "Help",
         .file => self.document.name(),
     };
 }

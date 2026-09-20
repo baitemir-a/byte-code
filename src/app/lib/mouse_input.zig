@@ -87,6 +87,10 @@ pub fn handleMouse(self: *App) !bool {
         .search => self.search_panel.scrollBy(rl.getMouseWheelMove()),
         .git => self.git_panel.scrollBy(rl.getMouseWheelMove()),
     };
+    // The Help tab's list is longer than the window: the wheel scrolls it.
+    if (self.activeTab().kind == .help and !over_sidebar and !over_tabs) {
+        self.help_page.scrollBy(rl.getMouseWheelMove());
+    }
     // Clicking outside the sidebar takes the keyboard from its text boxes.
     if (pressed and !over_sidebar) self.side_focus = .none;
     var keep_name_box = false;
@@ -97,6 +101,7 @@ pub fn handleMouse(self: *App) !bool {
         } else if (hit) |h| switch (h) {
             .view_tab => |v| self.showView(v),
             .settings_button => try self.openSettings(),
+            .help_button => try self.openHelp(),
             .open_folder_button => self.openFolderWithDialog() catch |err| self.reportError("Couldn't open folder", "", err),
             .panel => try self.panelClick(point),
             // Acted on at release: the press may turn into a drag.
@@ -125,6 +130,7 @@ pub fn handleMouse(self: *App) !bool {
             // The welcome page's "Start" links, the settings' controls.
             .welcome => if (self.welcome.actionAt(point)) |cmd| try self.execute(cmd),
             .settings => if (self.settings_page.actionAt(point, &self.settings)) |a| try self.runSettingsAction(a),
+            .help => if (self.help_page.actionAt(point, self.view.font, &self.keys)) |a| try self.runHelpAction(a),
             .file => {},
         };
         return captured or pressed;

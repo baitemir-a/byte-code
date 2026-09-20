@@ -9,7 +9,7 @@ const core = @import("core");
 const theme = @import("../theme/lib/theme.zig");
 const View = @import("View.zig");
 const TextField = @import("../widgets/TextField.zig");
-const Mods = @import("../../input/lib/keymap.zig").Mods;
+const Mods = @import("../../input/Keymap.zig").Mods;
 const controls = @import("../widgets/lib/search_controls.zig");
 const FindBar_draw = @import("FindBar_draw.zig");
 
@@ -104,7 +104,7 @@ pub fn handle(self: *FindBar, cmd: core.Command, editor: *Buffer, mods: Mods) !b
     switch (cmd) {
         .newline => switch (self.focus) {
             .query => if (mods.shift) try self.prev(editor) else try self.next(editor),
-            .replacement => if (mods.primary) try self.replaceAll(editor) else try self.replaceOne(editor),
+            .replacement => if (mods.primary()) try self.replaceAll(editor) else try self.replaceOne(editor),
             .editor => unreachable,
         },
         .indent => if (self.show_replace) {
@@ -118,7 +118,7 @@ pub fn handle(self: *FindBar, cmd: core.Command, editor: *Buffer, mods: Mods) !b
             .line_down => try self.next(editor),
             else => _ = try self.focusedField().?.handle(cmd),
         },
-        .copy, .cut, .paste, .open, .open_folder, .new_file, .close_tab, .next_tab, .prev_tab, .toggle_sidebar, .toggle_terminal, .open_settings, .close_folder, .quick_open, .show_explorer, .show_search, .show_git, .zoom_in, .zoom_out, .zoom_reset, .save, .save_as, .find, .find_replace, .find_next, .find_prev, .toggle_match_case, .toggle_whole_word => return false,
+        .copy, .cut, .paste, .open, .open_folder, .new_file, .close_tab, .next_tab, .prev_tab, .toggle_sidebar, .toggle_terminal, .open_settings, .open_help, .close_folder, .quick_open, .show_explorer, .show_search, .show_git, .zoom_in, .zoom_out, .zoom_reset, .save, .save_as, .find, .find_replace, .find_next, .find_prev, .toggle_match_case, .toggle_whole_word => return false,
         else => {
             _ = try self.focusedField().?.handle(cmd);
             try self.queryEdited(editor);

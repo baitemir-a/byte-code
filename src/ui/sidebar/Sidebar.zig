@@ -44,6 +44,7 @@ pub const Hit = union(enum) {
     /// Buttons at the right of the strip.
     open_folder_button,
     settings_button,
+    help_button,
     /// A tree node, by index into `FileTree.nodes`.
     node: u32,
     input,
@@ -188,6 +189,14 @@ pub fn stripButtonRect(self: *const Sidebar, slot: usize) rl.Rectangle {
     return .{ .x = self.rect.width - 8 - @as(f32, @floatFromInt(slot + 1)) * w, .y = 0, .width = w, .height = strip_height };
 }
 
+/// A strip button shows only where it clears the view tabs: a narrow
+/// sidebar drops the outer ones (help first, then open folder) instead of
+/// drawing them on top of each other.
+pub fn stripButtonVisible(self: *const Sidebar, slot: usize) bool {
+    const tabs_right = viewTabRect(.git).x + view_tab_width;
+    return self.stripButtonRect(slot).x >= tabs_right;
+}
+
 pub fn viewTabRect(view: View) rl.Rectangle {
     return .{ .x = 6 + @as(f32, @floatFromInt(@intFromEnum(view))) * view_tab_width, .y = 0, .width = view_tab_width, .height = strip_height };
 }
@@ -261,8 +270,9 @@ pub fn hitTest(self: *const Sidebar, tree: *const FileTree, p: rl.Vector2) ?Hit 
             const v: View = @enumFromInt(f.value);
             if (rl.checkCollisionPointRec(p, viewTabRect(v))) return .{ .view_tab = v };
         }
-        if (rl.checkCollisionPointRec(p, self.stripButtonRect(0))) return .settings_button;
-        if (rl.checkCollisionPointRec(p, self.stripButtonRect(1))) return .open_folder_button;
+        if (self.stripButtonVisible(0) and rl.checkCollisionPointRec(p, self.stripButtonRect(0))) return .settings_button;
+        if (self.stripButtonVisible(1) and rl.checkCollisionPointRec(p, self.stripButtonRect(1))) return .open_folder_button;
+        if (self.stripButtonVisible(2) and rl.checkCollisionPointRec(p, self.stripButtonRect(2))) return .help_button;
         return null;
     }
     if (self.view != .explorer) return .panel;

@@ -5,6 +5,7 @@ const std = @import("std");
 const rl = @import("raylib");
 const core = @import("core");
 const keymap = @import("../input/lib/keymap.zig");
+const Keymap = @import("../input/Keymap.zig");
 const Mouse = @import("../input/Mouse.zig");
 const Tab = @import("Tab.zig");
 const theme = @import("../ui/theme/lib/theme.zig");
@@ -24,6 +25,7 @@ const SearchPanel = @import("../ui/sidebar/SearchPanel.zig");
 const GitPanel = @import("../ui/sidebar/GitPanel.zig");
 const TabBar = @import("../ui/TabBar.zig");
 const WelcomePage = @import("../ui/pages/WelcomePage.zig");
+const HelpPage = @import("../ui/pages/HelpPage.zig");
 const render = @import("lib/render.zig");
 const settings_actions = @import("lib/settings_actions.zig");
 const go_to_file = @import("lib/go_to_file.zig");
@@ -37,6 +39,7 @@ const mouse_input = @import("lib/mouse_input.zig");
 const editing = @import("lib/editing.zig");
 const clipboard = @import("lib/clipboard.zig");
 const dispatch = @import("lib/dispatch.zig");
+const shortcuts = @import("lib/shortcuts.zig");
 
 pub const app_name = "byte code";
 
@@ -117,6 +120,11 @@ settings: core.Settings,
 /// Where settings are saved (see platform/paths.zig).
 settings_path: []u8,
 settings_page: SettingsPage = .{},
+/// Keyboard shortcuts: what each action is bound to, where they're saved,
+/// and the Help tab that lists and changes them.
+keys: Keymap,
+keys_path: []u8,
+help_page: HelpPage = .{},
 /// Cmd+P, and the project's files it searches.
 quick_open: QuickOpen,
 file_search: core.FileSearch,
@@ -153,6 +161,12 @@ title_len: usize = 0,
 
 // render.zig
 pub const draw = render.draw;
+
+// shortcuts.zig
+pub const openHelp = shortcuts.openHelp;
+pub const runHelpAction = shortcuts.runHelpAction;
+pub const captureShortcut = shortcuts.captureShortcut;
+pub const bindShortcut = shortcuts.bindShortcut;
 
 // settings_actions.zig
 pub const settingsChanged = settings_actions.settingsChanged;
@@ -247,6 +261,8 @@ pub fn init(gpa: std.mem.Allocator, io: std.Io) !App {
     const settings_path = try paths.settingsFile(gpa);
     errdefer gpa.free(settings_path);
     const settings = core.Settings.load(gpa, io, std.Io.Dir.cwd(), settings_path);
+    const keys_path = try paths.keybindingsFile(gpa);
+    errdefer gpa.free(keys_path);
     settings_actions.applyToTheme(settings);
     var app: App = .{
         .gpa = gpa,
@@ -257,6 +273,8 @@ pub fn init(gpa: std.mem.Allocator, io: std.Io) !App {
         .sidebar = .init(gpa),
         .settings = settings,
         .settings_path = settings_path,
+        .keys = Keymap.load(gpa, io, std.Io.Dir.cwd(), keys_path),
+        .keys_path = keys_path,
         .quick_open = .init(gpa),
         .file_search = .init(gpa),
         .search_panel = .init(gpa),
@@ -269,6 +287,7 @@ pub fn init(gpa: std.mem.Allocator, io: std.Io) !App {
 
 pub fn deinit(self: *App) void {
     self.gpa.free(self.settings_path);
+    self.gpa.free(self.keys_path);
     self.scope_steps.deinit(self.gpa);
     self.view.deinit();
     self.quick_open.deinit();
@@ -326,7 +345,13 @@ pub fn update(self: *App) !void {
     // Keys go to the terminal when it has focus, else to the editor.
     self.commands.clearRetainingCapacity();
     const typed_in_terminal = if (self.terminalFocused()) try self.handleTerminalKeys() else blk: {
-        try keymap.poll(self.gpa, &self.commands);
+        // The Help tab takes the keyboard while it records a shortcut.
+        if (self.activeTab().kind != .help) self.help_page.stopCapture();
+        if (self.help_page.capturing != null) {
+            self.captureShortcut();
+        } else {
+            try keymap.poll(self.gpa, &self.keys, &self.commands);
+        }
         break :blk false;
     };
     for (self.commands.items) |cmd| try self.execute(cmd);
@@ -398,6 +423,7 @@ pub fn layout(self: *App, window: rl.Vector2) !void {
     switch (self.activeTab().kind) {
         .welcome => self.welcome.layout(editor, self.view.font),
         .settings => self.settings_page.layout(editor, self.view.font),
+        .help => self.help_page.layout(editor, self.view.font),
         .file => {},
     }
 }

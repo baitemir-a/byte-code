@@ -61,8 +61,12 @@ pub fn draw(self: *const SettingsPage, font: Font, settings: *const Settings, se
     label(font, "Open folders in a new window", "Otherwise they replace the current project", x, self.rowY(7));
     drawToggle(self.new_window_toggle, settings.open_folder_in_new_window);
 
-    drawText(font, "Saved to:", x, self.rowY(8) + 10, theme.font_size, theme.popup_detail);
-    drawText(font, settings_path, x, self.rowY(8) + 10 + theme.line_height, theme.font_size, theme.popup_detail);
+    // Keyboard shortcuts live in their own tab.
+    label(font, "Keyboard shortcuts", "Every combination, and how to change it", x, self.rowY(8));
+    drawButton(font, self.shortcuts_button, "Open", true);
+
+    drawText(font, "Saved to:", x, self.rowY(9) + 10, theme.font_size, theme.popup_detail);
+    drawText(font, settings_path, x, self.rowY(9) + 10 + theme.line_height, theme.font_size, theme.popup_detail);
 }
 
 pub fn label(font: Font, title: []const u8, hint: []const u8, x: f32, y: f32) void {

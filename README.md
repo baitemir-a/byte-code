@@ -54,6 +54,8 @@ the system warns the first time you open them:
 - **Minimap**, line numbers, current-line highlight
 - **Settings** — dark/light theme, accent color, auto save, zoom, minimap,
   word wrap, opening folders in a new window
+- **Keyboard shortcuts you can change** — the Help tab lists every
+  combination, from Save to Select Word Left, and rebinds any of them
 
 ## Keyboard shortcuts
 
@@ -65,7 +67,7 @@ On macOS use Cmd; on Windows and Linux use Ctrl.
 | Cmd+N | New file |
 | Cmd+S / Cmd+Shift+S | Save / save as |
 | Cmd+W | Close tab |
-| Option+Tab / Option+Shift+Tab | Next / previous tab (also Ctrl+Tab) |
+| Ctrl+Tab / Ctrl+Shift+Tab | Next / previous tab (also Option+Tab, Cmd+Shift+[ / ]) |
 | Cmd+P | Go to file |
 | Option+click | Add a cursor (click it again to remove it); Esc goes back to one |
 | Option+Shift+click | A cursor on every line from the cursor to the click, in that column (drag sideways for a box selection) |
@@ -78,7 +80,7 @@ On macOS use Cmd; on Windows and Linux use Ctrl.
 | Cmd+Option+C / Cmd+Option+W | Match case / whole word (Alt+C / Alt+W on Windows and Linux) |
 | Enter / Cmd+Enter (in the replace box) | Replace one / replace all |
 | Cmd+Shift+E | Explorer |
-| Cmd+G / Cmd+Shift+G | Git |
+| Cmd+G | Git |
 | Cmd+B | Toggle sidebar |
 | Cmd+K | Close folder (clears the screen in the terminal) |
 | Cmd+T | Terminal (also Ctrl+`) |
@@ -86,7 +88,11 @@ On macOS use Cmd; on Windows and Linux use Ctrl.
 | Cmd+, | Settings |
 | Cmd+= / Cmd+- / Cmd+0 | Zoom in / out / reset |
 
-The Welcome tab lists these too.
+Every shortcut, including the ones left out of this table, is listed in the
+**Help** tab — open it from the Welcome tab, the **?** button in the sidebar
+or Settings. Click any shortcut there and press the keys you want instead;
+Backspace clears it and Esc cancels. Changes are saved to keybindings.json
+next to settings.json, and "Reset All" puts everything back.
 
 ## Building
 

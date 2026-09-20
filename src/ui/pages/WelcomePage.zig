@@ -1,6 +1,6 @@
-//! The welcome tab: how to get started (clickable) and key shortcuts.
+//! The welcome tab: how to get started, each row clickable. The keyboard
+//! shortcuts live in the Help tab (Keymap and HelpPage).
 const std = @import("std");
-const builtin = @import("builtin");
 const rl = @import("raylib");
 const core = @import("core");
 const theme = @import("../theme/lib/theme.zig");
@@ -8,39 +8,14 @@ const Font = @import("../Font.zig");
 
 const WelcomePage = @This();
 
-const is_mac = builtin.os.tag == .macos;
-const cmd = if (is_mac) "Cmd" else "Ctrl";
-const opt = if (is_mac) "Opt" else "Alt";
-
-const Action = struct { label: []const u8, keys: []const u8, command: core.Command };
-const Hint = struct { label: []const u8, keys: []const u8 };
+const Action = struct { label: []const u8, command: core.Command };
 
 const actions = [_]Action{
-    .{ .label = "Open File...", .keys = cmd ++ "+O", .command = .open },
-    .{ .label = "Open Folder...", .keys = cmd ++ "+Shift+O", .command = .open_folder },
-    .{ .label = "New File", .keys = cmd ++ "+N", .command = .new_file },
-    .{ .label = "Settings...", .keys = cmd ++ "+,", .command = .open_settings },
-};
-
-/// Search options, in Find and in the Search view.
-const option_keys = if (builtin.os.tag == .macos) cmd ++ "+" ++ opt ++ "+C / W" else "Alt+C / Alt+W";
-
-const hints = [_]Hint{
-    .{ .label = "Save / Save As", .keys = cmd ++ "+S / " ++ cmd ++ "+Shift+S" },
-    .{ .label = "Close Tab", .keys = cmd ++ "+W" },
-    .{ .label = "Next / Previous Tab", .keys = opt ++ "+Tab / " ++ opt ++ "+Shift+Tab" },
-    .{ .label = "Go to File", .keys = cmd ++ "+P" },
-    .{ .label = "Close Folder", .keys = cmd ++ "+K" },
-    .{ .label = "Find and Replace", .keys = cmd ++ "+F" },
-    .{ .label = "Find and Replace in Project", .keys = cmd ++ "+Shift+F" },
-    .{ .label = "Match Case / Whole Word", .keys = option_keys },
-    .{ .label = "Add Cursor / Column", .keys = opt ++ "+Click / " ++ opt ++ "+Shift+Click" },
-    .{ .label = "Move Line Up / Down", .keys = opt ++ "+Up / Down" },
-    .{ .label = "Select Scope / Back", .keys = opt ++ "+Shift+Up / Down" },
-    .{ .label = "Show Suggestions", .keys = "Ctrl+Space" },
-    .{ .label = "Toggle Sidebar", .keys = cmd ++ "+B" },
-    .{ .label = "Word Wrap", .keys = opt ++ "+Z" },
-    .{ .label = "Terminal", .keys = cmd ++ "+T" },
+    .{ .label = "Open File...", .command = .open },
+    .{ .label = "Open Folder...", .command = .open_folder },
+    .{ .label = "New File", .command = .new_file },
+    .{ .label = "Settings...", .command = .open_settings },
+    .{ .label = "Keyboard Shortcuts...", .command = .open_help },
 };
 
 const title = "byte code";
@@ -87,7 +62,6 @@ fn actionsTop(self: *const WelcomePage) f32 {
 
 pub fn draw(self: *const WelcomePage, font: Font) void {
     const x = self.origin.x;
-    const w = content_cols * font.cell_width;
     var y = self.origin.y;
 
     drawText(font, title, x, y, Font.heading_size, theme.foreground);
@@ -100,19 +74,9 @@ pub fn draw(self: *const WelcomePage, font: Font) void {
         if (self.hovered == i) rl.drawRectangleRec(r, theme.tab_hover);
         const ty = r.y + (r.height - theme.font_size) / 2;
         drawText(font, a.label, x, ty, theme.font_size, theme.accent);
-        drawRight(font, a.keys, x + w, ty, theme.popup_detail);
     }
-    y = self.actionsTop() + rowY(actions.len) + 4;
+    y = self.actionsTop() + rowY(actions.len) + theme.line_height / 2;
     drawText(font, drop_hint, x, y, theme.font_size, theme.popup_detail);
-
-    y += theme.line_height * 2.5;
-    drawText(font, "Keyboard", x, y, theme.font_size, theme.welcome_heading);
-    y += theme.line_height + 4;
-    for (hints) |h| {
-        drawText(font, h.label, x, y, theme.font_size, theme.foreground);
-        drawRight(font, h.keys, x + w, y, theme.popup_detail);
-        y += theme.line_height + 2;
-    }
 }
 
 fn drawText(font: Font, s: []const u8, x0: f32, y: f32, size: f32, color: rl.Color) void {
@@ -122,9 +86,4 @@ fn drawText(font: Font, s: []const u8, x0: f32, y: f32, size: f32, color: rl.Col
         if (c != ' ') font.drawCodepointSized(c, x, y, size, color);
         x += cw;
     }
-}
-
-/// Draws `s` so it ends at `right`.
-fn drawRight(font: Font, s: []const u8, right: f32, y: f32, color: rl.Color) void {
-    drawText(font, s, right - @as(f32, @floatFromInt(s.len)) * font.cell_width, y, theme.font_size, color);
 }

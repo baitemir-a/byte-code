@@ -23,6 +23,7 @@ pub fn execute(self: *App, cmd: core.Command) !void {
         },
         .toggle_terminal => return self.toggleTerminal(),
         .open_settings => return self.openSettings(),
+        .open_help => return self.openHelp(),
         .toggle_word_wrap => {
             try self.runSettingsAction(.toggle_word_wrap);
             self.reveal_cursor = true;
