@@ -8,11 +8,13 @@ const SettingsPage = @import("../../ui/pages/SettingsPage.zig");
 const App = @import("../App.zig");
 
 /// Accent and zoom live in the theme, where drawing code reads them.
+/// Mouse scale is App.matchFontToDisplay's job: it also depends on the
+/// display's DPI, which isn't known here, and needs redoing every frame
+/// anyway since raylib recomputes its own on window resize.
 pub fn applyToTheme(s: core.Settings) void {
     theme.setMode(s.theme);
     theme.accent = .{ .r = s.accent[0], .g = s.accent[1], .b = s.accent[2], .a = 255 };
     theme.zoom = @as(f32, @floatFromInt(s.zoom)) / 100;
-    rl.setMouseScale(1 / theme.zoom, 1 / theme.zoom);
 }
 
 /// After changing `self.settings`: applies them and saves settings.json.

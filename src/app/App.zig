@@ -432,8 +432,13 @@ pub fn layout(self: *App, window: rl.Vector2) !void {
 
 /// Moving the window to a display with another pixel density (Retina vs
 /// a regular monitor) re-renders the font for it, so text stays sharp.
+/// Also keeps the mouse scale matching: raylib recomputes its own DPI-based
+/// mouse scale on every resize (e.g. a Linux window manager toggling
+/// fullscreen), silently overwriting the zoom correction we set, which
+/// throws off click positions until this restores it.
 pub fn matchFontToDisplay(self: *App) void {
     const scale = @max(1, rl.getWindowScaleDPI().x) * theme.zoom;
+    rl.setMouseScale(1 / scale, 1 / scale);
     if (@abs(scale * self.view.font.pixel - 1) < 0.01) return;
     self.view.font.unload();
     self.view.font = Font.load();
