@@ -13,7 +13,7 @@ cd "$(dirname "$0")/.."
 ROOT=$(pwd)
 NAME="byte code"
 EXE="byte-code"
-VERSION="0.1.1"
+VERSION="0.1.2"
 # Oldest macOS the app runs on. Without an explicit version Zig targets the
 # macOS of the build machine, which friends on older systems can't open.
 MACOS_MIN="13.0"
