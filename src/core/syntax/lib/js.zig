@@ -1,5 +1,11 @@
 //! JavaScript / TypeScript lexer for highlighting. It works one line at a
-//! time; `State` carries what spans lines (block comments, template strings).
+//! time; `State` carries what spans lines (block comments, template
+//! strings, JSX elements).
+//!
+//! With `State.jsx` set (.jsx and .tsx files) a `<` where a value belongs
+//! opens an element: its tag and attributes are highlighted as markup,
+//! the text between tags is left plain, and each `{ ... }` goes back to
+//! being code — which may hold elements of its own.
 const std = @import("std");
 const token = @import("token.zig");
 
@@ -9,11 +15,22 @@ const Span = token.Span;
 /// Lexer state at a line boundary.
 pub const State = struct {
     mode: Mode = .code,
-    /// Brace depth inside each open `${ ... }`, innermost last.
+    /// Brace depth inside each open `${ ... }` or JSX `{ ... }`,
+    /// innermost last.
     braces: [max_nesting]u8 = undefined,
+    /// What each of them goes back to when its brace closes, and the JSX
+    /// elements that were open around it.
+    returns: [max_nesting]Mode = undefined,
+    depths: [max_nesting]u8 = undefined,
     nesting: u8 = 0,
+    /// JSX elements open at this point, in the innermost expression.
+    jsx_depth: u8 = 0,
+    /// The tag being lexed closes an element (`</div>`).
+    closing: bool = false,
+    /// This file may hold JSX: `<` can open an element.
+    jsx: bool = false,
 
-    pub const Mode = enum(u8) { code, block_comment, template };
+    pub const Mode = enum(u8) { code, block_comment, template, jsx_tag, jsx_text };
     pub const max_nesting = 8;
 };
 
@@ -43,6 +60,8 @@ pub const Lexer = struct {
         const kind = switch (self.state.mode) {
             .block_comment => self.blockComment(),
             .template => self.templateBody(),
+            .jsx_tag => self.tagBody(),
+            .jsx_text => self.jsxText(),
             .code => self.code(),
         };
         return .{ .start = start, .end = self.pos, .kind = kind };
@@ -84,16 +103,18 @@ pub const Lexer = struct {
             },
             '0'...'9' => return self.number(),
             '.' => if (self.peek(1)) |d| if (std.ascii.isDigit(d)) return self.number(),
-            '/' => if (self.regexAllowed() and self.regex()) return .regex,
+            '/' => if (self.valuePosition() and self.regex()) return .regex,
+            '<' => if (self.state.jsx and self.elementStart()) return self.openTag(),
             '{' => if (self.state.nesting > 0) {
                 self.state.braces[self.state.nesting - 1] += 1;
             },
             '}' => if (self.state.nesting > 0) {
                 const depth = &self.state.braces[self.state.nesting - 1];
                 if (depth.* == 0) {
-                    // Closes a `${`: back inside the template string.
+                    // Closes a `${` or a JSX `{`: back where it opened.
                     self.state.nesting -= 1;
-                    self.state.mode = .template;
+                    self.state.mode = self.state.returns[self.state.nesting];
+                    self.state.jsx_depth = self.state.depths[self.state.nesting];
                 } else depth.* -= 1;
             },
             else => if (isIdentStart(c)) return self.identifier(),
@@ -113,11 +134,8 @@ pub const Lexer = struct {
     /// Inside a template string: either its text or a `${` opening code.
     fn templateBody(self: *Lexer) Kind {
         if (self.peek(0) == '$' and self.peek(1) == '{' and self.state.nesting < State.max_nesting) {
-            self.pos += 2;
-            self.state.braces[self.state.nesting] = 0;
-            self.state.nesting += 1;
-            self.state.mode = .code;
-            return .punctuation;
+            self.pos += 1; // the `{` is consumed by the expression
+            return self.openExpression(.template);
         }
         if (self.peek(0) == '$') self.pos += 1; // a `${` too deeply nested to track
         self.templateText();
@@ -171,13 +189,121 @@ pub const Lexer = struct {
         return .number;
     }
 
-    fn regexAllowed(self: *const Lexer) bool {
+    /// Whether a value can begin here: what tells a regex from division,
+    /// and a JSX element from a comparison.
+    fn valuePosition(self: *const Lexer) bool {
         const p = self.prev orelse return true;
         return switch (p.kind) {
-            .keyword => true, // return /x/, typeof /x/ ...
+            .keyword => true, // return /x/, return <div/> ...
             .punctuation => p.last != ')' and p.last != ']' and p.last != '}',
             else => false,
         };
+    }
+
+    // ------------------------------------------------------------- JSX
+
+    /// A `<` in code: an element rather than a comparison or a shift,
+    /// when a value belongs here and a tag name (or a `<>` fragment)
+    /// follows immediately.
+    fn elementStart(self: *const Lexer) bool {
+        if (!self.valuePosition()) return false;
+        const c = self.peek(1) orelse return false;
+        return isIdentStart(c) or c == '>';
+    }
+
+    /// Consumes `<name` or a whole `<>`, the opening of an element.
+    fn openTag(self: *Lexer) Kind {
+        self.pos += 1;
+        if (self.peek(0) == '>') { // `<>`: a fragment, with no attributes
+            self.pos += 1;
+            self.endTag(.opened);
+            return .tag;
+        }
+        while (self.peek(0)) |c| : (self.pos += 1) if (!isTagChar(c)) break;
+        self.state.closing = false;
+        self.state.mode = .jsx_tag;
+        return .tag;
+    }
+
+    /// Consumes `</name` (or `</`, closing a fragment).
+    fn closeTag(self: *Lexer) Kind {
+        self.pos += 2;
+        while (self.peek(0)) |c| : (self.pos += 1) if (!isTagChar(c)) break;
+        self.state.closing = true;
+        self.state.mode = .jsx_tag;
+        return .tag;
+    }
+
+    /// Inside a tag: its attributes, up to the `>` or `/>` ending it.
+    fn tagBody(self: *Lexer) Kind {
+        const c = self.line[self.pos];
+        if (c == ' ' or c == '\t') {
+            while (self.peek(0)) |w| : (self.pos += 1) if (w != ' ' and w != '\t') break;
+            return .plain;
+        }
+        if (c == '/' and self.peek(1) == '>') {
+            self.pos += 2;
+            self.endTag(.none); // self-closing: nothing was left open
+            return .tag;
+        }
+        if (c == '>') {
+            self.pos += 1;
+            self.endTag(if (self.state.closing) .closed else .opened);
+            return .tag;
+        }
+        if (c == '"' or c == '\'') return self.string(c);
+        if (c == '{') return self.openExpression(.jsx_tag);
+        if (isIdentStart(c)) {
+            while (self.peek(0)) |a| : (self.pos += 1) if (!isTagChar(a)) break;
+            return .attribute;
+        }
+        self.pos += 1;
+        return .punctuation;
+    }
+
+    /// A tag ended: an opening one puts what follows inside the element,
+    /// a closing one takes it back out — to the element around it, or to
+    /// code once none is left open.
+    fn endTag(self: *Lexer, change: enum { opened, closed, none }) void {
+        switch (change) {
+            .opened => self.state.jsx_depth +|= 1,
+            .closed => self.state.jsx_depth -|= 1,
+            .none => {},
+        }
+        self.state.closing = false;
+        self.state.mode = if (self.state.jsx_depth > 0) .jsx_text else .code;
+    }
+
+    /// Between tags: text, up to the next tag or `{ ... }`.
+    fn jsxText(self: *Lexer) Kind {
+        const c = self.line[self.pos];
+        if (c == '{') return self.openExpression(.jsx_text);
+        if (c == '<') {
+            if (self.peek(1) == '/') return self.closeTag();
+            if (self.peek(1)) |n| if (isIdentStart(n) or n == '>') return self.openTag();
+        }
+        self.pos += 1; // whatever it is, it's text: take at least this byte
+        while (self.pos < self.line.len) : (self.pos += 1) {
+            const t = self.line[self.pos];
+            if (t == '<' or t == '{') break;
+        }
+        return .plain;
+    }
+
+    /// A `{ ... }` holding code — a template's `${`, a JSX attribute or
+    /// JSX text. Its contents are lexed as code (elements of their own
+    /// included) until the matching brace goes back to `from`.
+    fn openExpression(self: *Lexer, from: State.Mode) Kind {
+        self.pos += 1;
+        if (self.state.nesting >= State.max_nesting) return .punctuation; // too deep to follow
+        self.state.braces[self.state.nesting] = 0;
+        self.state.returns[self.state.nesting] = from;
+        self.state.depths[self.state.nesting] = self.state.jsx_depth;
+        self.state.nesting += 1;
+        self.state.jsx_depth = 0;
+        self.state.mode = .code;
+        self.prev = null; // a fresh expression: `/` and `<` start values
+        return .punctuation;
     }
 
     /// Consumes a regex literal starting at `/`; false if it isn't closed on this line.
@@ -236,6 +362,12 @@ pub fn isIdentStart(c: u8) bool {
 
 pub fn isIdentChar(c: u8) bool {
     return isIdentStart(c) or std.ascii.isDigit(c);
+}
+
+/// Tag and attribute names take a few characters identifiers don't:
+/// `<Menu.Item>`, `<my-element>`, `data-id`, `xlink:href`.
+fn isTagChar(c: u8) bool {
+    return isIdentChar(c) or c == '-' or c == '.' or c == ':';
 }
 
 // -------------------------------------------------------------- word lists

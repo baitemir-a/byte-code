@@ -36,6 +36,7 @@ const tab_actions = @import("lib/tab_actions.zig");
 const files = @import("lib/files.zig");
 const tree = @import("lib/tree.zig");
 const mouse_input = @import("lib/mouse_input.zig");
+const symbol_nav = @import("lib/symbol_nav.zig");
 const editing = @import("lib/editing.zig");
 const clipboard = @import("lib/clipboard.zig");
 const dispatch = @import("lib/dispatch.zig");
@@ -58,20 +59,36 @@ pub const drag_threshold = 5;
 /// Seconds of hovering a collapsed folder while dragging before it opens.
 pub const drag_expand_delay = 0.6;
 
-pub const MenuAction = enum {
+pub const MenuAction = union(enum) {
     new_file,
     new_folder,
     rename,
     delete,
+    /// Ctrl+click: go to one of the places in `refs`.
+    go_to_ref: u32,
+    /// Ctrl+click: put every one of them in the Search view.
+    all_refs,
 
+    /// The menu row for the actions whose wording never changes; the
+    /// ctrl+click ones are labelled with the place they lead to.
     pub fn label(self: MenuAction) []const u8 {
         return switch (self) {
             .new_file => "New File...",
             .new_folder => "New Folder...",
             .rename => "Rename...",
             .delete => "Delete",
+            .go_to_ref, .all_refs => "",
         };
     }
+};
+
+/// A place a name is used, for the ctrl+click menu. `file` indexes the
+/// Search view's results, or is null for a place in the current file.
+pub const Ref = struct {
+    file: ?u32,
+    line: u32,
+    start: usize,
+    end: usize,
 };
 
 const App = @This();
@@ -87,9 +104,13 @@ sidebar: Sidebar,
 /// Right-click menu in the sidebar: its actions, and what they act on
 /// (the clicked node, and the folder new entries go in).
 menu: ContextMenu = .{},
-menu_actions: [4]MenuAction = undefined,
+menu_actions: [ContextMenu.max_items]MenuAction = undefined,
 menu_node: ?u32 = null,
 menu_folder: u32 = 0,
+/// Ctrl+click: the name looked up and where it is used, listed by the
+/// menu and left alone until the next lookup.
+refs: std.ArrayList(Ref) = .empty,
+ref_name: std.ArrayList(u8) = .empty,
 /// A mouse press on a sidebar row. It becomes a drag (to move the entry)
 /// once the mouse moves a few pixels; otherwise it's a click on release.
 /// Holds the entry's path, not its index, so a tree refresh can't make it
@@ -125,6 +146,10 @@ settings_page: SettingsPage = .{},
 keys: Keymap,
 keys_path: []u8,
 help_page: HelpPage = .{},
+/// The folders opened before and the favorites among them, listed on the
+/// welcome page (projects.json next to settings.json).
+projects: core.Projects,
+projects_path: []u8,
 /// Cmd+P, and the project's files it searches.
 quick_open: QuickOpen,
 file_search: core.FileSearch,
@@ -216,6 +241,10 @@ pub const openFolderWithDialog = files.openFolderWithDialog;
 pub const openInNewWindow = files.openInNewWindow;
 pub const openDroppedFiles = files.openDroppedFiles;
 pub const closeFolder = files.closeFolder;
+pub const rememberProject = files.rememberProject;
+pub const openProject = files.openProject;
+pub const welcomeClick = files.welcomeClick;
+pub const toggleFavoriteProject = files.toggleFavoriteProject;
 pub const refreshProjectOnFocus = files.refreshProjectOnFocus;
 pub const refreshProject = files.refreshProject;
 pub const retargetTabs = files.retargetTabs;
@@ -243,6 +272,11 @@ pub const revealCurrentFile = tree.revealCurrentFile;
 // mouse_input.zig
 pub const handleMouse = mouse_input.handleMouse;
 
+// symbol_nav.zig
+pub const symbolClick = symbol_nav.symbolClick;
+pub const openRef = symbol_nav.openRef;
+pub const showRefsInSearch = symbol_nav.showRefsInSearch;
+
 // editing.zig
 pub const moveByRows = editing.moveByRows;
 pub const expandSelection = editing.expandSelection;
@@ -263,6 +297,8 @@ pub fn init(gpa: std.mem.Allocator, io: std.Io) !App {
     const settings = core.Settings.load(gpa, io, std.Io.Dir.cwd(), settings_path);
     const keys_path = try paths.keybindingsFile(gpa);
     errdefer gpa.free(keys_path);
+    const projects_path = try paths.projectsFile(gpa);
+    errdefer gpa.free(projects_path);
     settings_actions.applyToTheme(settings);
     var app: App = .{
         .gpa = gpa,
@@ -275,6 +311,8 @@ pub fn init(gpa: std.mem.Allocator, io: std.Io) !App {
         .settings_path = settings_path,
         .keys = Keymap.load(gpa, io, std.Io.Dir.cwd(), keys_path),
         .keys_path = keys_path,
+        .projects = .load(gpa, io, std.Io.Dir.cwd(), projects_path),
+        .projects_path = projects_path,
         .quick_open = .init(gpa),
         .file_search = .init(gpa),
         .search_panel = .init(gpa),
@@ -288,7 +326,11 @@ pub fn init(gpa: std.mem.Allocator, io: std.Io) !App {
 pub fn deinit(self: *App) void {
     self.gpa.free(self.settings_path);
     self.gpa.free(self.keys_path);
+    self.gpa.free(self.projects_path);
+    self.projects.deinit();
     self.scope_steps.deinit(self.gpa);
+    self.refs.deinit(self.gpa);
+    self.ref_name.deinit(self.gpa);
     self.view.deinit();
     self.quick_open.deinit();
     self.file_search.deinit();
@@ -421,7 +463,7 @@ pub fn layout(self: *App, window: rl.Vector2) !void {
     try self.view.layout(self.buf(), text_area);
     self.quick_open.layout(editor, self.view.font);
     switch (self.activeTab().kind) {
-        .welcome => self.welcome.layout(editor, self.view.font),
+        .welcome => self.welcome.layout(editor, self.view.font, self.projects.entries.items),
         .settings => self.settings_page.layout(editor, self.view.font),
         .help => self.help_page.layout(editor, self.view.font),
         .file => {},

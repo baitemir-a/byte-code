@@ -96,6 +96,7 @@ pub fn handleTerminalMouse(self: *App, point: rl.Vector2, pressed: bool) bool {
         return true;
     }
     if (panel.selecting) {
+        panel.dragScroll(&term.screen, point);
         panel.selection.?.head = panel.cellAt(&term.screen, point, self.view.font);
         if (released) panel.selecting = false;
         return true;

@@ -57,6 +57,9 @@ pub fn runMenuAction(self: *App, action: App.MenuAction) !void {
             self.find.focus = .editor;
         },
         .delete => if (self.menu_node) |n| try self.deleteEntry(n),
+        // Ctrl+click's list of where a name is used.
+        .go_to_ref => |i| if (i < self.refs.items.len) try self.openRef(self.refs.items[i]),
+        .all_refs => self.showRefsInSearch(),
     }
 }
 

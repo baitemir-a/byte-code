@@ -1,6 +1,7 @@
 //! Mouse input for the whole window.
 const rl = @import("raylib");
 const Sidebar = @import("../../ui/sidebar/Sidebar.zig");
+const Keymap = @import("../../input/Keymap.zig");
 const App = @import("../App.zig");
 
 /// Clicks go to whatever is on top: the suggestion popup, the find bar, the
@@ -45,8 +46,11 @@ pub fn handleMouse(self: *App) !bool {
         }
     }
 
-    // The terminal panel (unless a menu is open on top of it).
-    if (!self.menu.is_open and self.handleTerminalMouse(point, pressed)) return true;
+    // The terminal panel (unless a menu is open on top of it). A drag
+    // that started in the text keeps the mouse even over the panel, so
+    // the selection scrolls on instead of stopping at it.
+    const text_drag = editing and self.mouse.dragging;
+    if (!self.menu.is_open and !text_drag and self.handleTerminalMouse(point, pressed)) return true;
 
     // The context menu is on top of everything; any click closes it.
     if (self.menu.is_open and (pressed or right_pressed)) {
@@ -127,13 +131,22 @@ pub fn handleMouse(self: *App) !bool {
     const captured = on_popup or on_find or on_tabs or on_sidebar or dragging;
     if (!self.isEditing()) {
         if (pressed and !captured) switch (self.activeTab().kind) {
-            // The welcome page's "Start" links, the settings' controls.
-            .welcome => if (self.welcome.actionAt(point)) |cmd| try self.execute(cmd),
+            // The welcome page's links, folders and favorites; the
+            // settings' controls.
+            .welcome => try self.welcomeClick(point),
             .settings => if (self.settings_page.actionAt(point, &self.settings)) |a| try self.runSettingsAction(a),
             .help => if (self.help_page.actionAt(point, self.view.font, &self.keys)) |a| try self.runHelpAction(a),
             .file => {},
         };
         return captured or pressed;
+    }
+
+    // Ctrl+click (Cmd+click on macOS) on a name: go to where it is
+    // declared, or list where it is used. Option is left to the extra
+    // cursors it already adds.
+    const mods = Keymap.Mods.current();
+    if (pressed and !captured and mods.primary() and !mods.alt) {
+        if (try self.symbolClick(point)) return true;
     }
 
     // The minimap: click or drag to scroll.

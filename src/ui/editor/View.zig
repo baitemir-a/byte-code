@@ -248,6 +248,14 @@ pub fn posAt(self: View, buf: *const Buffer, p: rl.Vector2) usize {
     return self.posInRow(buf, rc.row, rc.col);
 }
 
+/// Scrolls while a selection is dragged to the top or bottom edge, so it
+/// can reach text off screen. Called every frame of the drag; `p` is the
+/// pointer in window coordinates.
+pub fn dragScroll(self: *View, p: rl.Vector2) void {
+    const lines = theme.dragScrollLines(p.y, self.area.y, self.bottom(), theme.line_height);
+    self.scroll.y += lines * theme.line_height * rl.getFrameTime();
+}
+
 pub fn scrollBy(self: *View, wheel: rl.Vector2) void {
     self.scroll.y -= wheel.y * theme.line_height * 3;
     self.scroll.x -= wheel.x * self.font.cell_width * 3;

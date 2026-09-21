@@ -7,11 +7,16 @@ const Font = @import("../Font.zig");
 const ContextMenu = @This();
 
 pub const max_items = 8;
+/// Labels are copied in, so they can be built on the spot (a file's path
+/// and line, say). A longer one keeps its end, where the telling part of
+/// a path is.
+pub const max_label = 44;
 const row_height = theme.line_height + 4;
 const pad: f32 = 12;
 
 is_open: bool = false,
-labels: [max_items][]const u8 = undefined,
+labels: [max_items][max_label]u8 = undefined,
+label_lens: [max_items]usize = undefined,
 count: usize = 0,
 rect: rl.Rectangle = std.mem.zeroes(rl.Rectangle),
 hovered: ?usize = null,
@@ -19,9 +24,8 @@ hovered: ?usize = null,
 /// Opens at `at`, kept inside `bounds`.
 pub fn open(self: *ContextMenu, labels: []const []const u8, at: rl.Vector2, bounds: rl.Vector2, font: Font) void {
     self.count = @min(labels.len, max_items);
-    @memcpy(self.labels[0..self.count], labels[0..self.count]);
     var longest: usize = 0;
-    for (labels) |l| longest = @max(longest, l.len);
+    for (labels[0..self.count], 0..) |l, i| longest = @max(longest, self.setLabel(i, l));
     const w = @as(f32, @floatFromInt(longest)) * font.cell_width + 2 * pad;
     const h = @as(f32, @floatFromInt(self.count)) * row_height + 4;
     self.rect = .{
@@ -31,6 +35,22 @@ pub fn open(self: *ContextMenu, labels: []const []const u8, at: rl.Vector2, boun
         .height = h,
     };
     self.is_open = true;
+}
+
+/// Copies one label in, cutting an over-long one down to its end
+/// ("...app/lib/tree.zig:50"). Returns the length kept.
+fn setLabel(self: *ContextMenu, i: usize, label: []const u8) usize {
+    if (label.len <= max_label) {
+        @memcpy(self.labels[i][0..label.len], label);
+        self.label_lens[i] = label.len;
+        return label.len;
+    }
+    const dots = "...";
+    const tail = label[label.len - (max_label - dots.len) ..];
+    @memcpy(self.labels[i][0..dots.len], dots);
+    @memcpy(self.labels[i][dots.len..max_label], tail);
+    self.label_lens[i] = max_label;
+    return max_label;
 }
 
 pub fn close(self: *ContextMenu) void {
@@ -58,7 +78,8 @@ pub fn draw(self: *const ContextMenu, font: Font) void {
     rl.drawRectangleRec(.{ .x = r.x + 3, .y = r.y + 4, .width = r.width, .height = r.height }, theme.popup_shadow);
     rl.drawRectangleRec(r, theme.popup_background);
     rl.drawRectangleLinesEx(r, 1, theme.popup_border);
-    for (self.labels[0..self.count], 0..) |label, i| {
+    for (self.labels[0..self.count], self.label_lens[0..self.count], 0..) |chars, len, i| {
+        const label = chars[0..len];
         const top = r.y + 2 + @as(f32, @floatFromInt(i)) * row_height;
         if (self.hovered == i) rl.drawRectangleRec(.{ .x = r.x + 2, .y = top, .width = r.width - 4, .height = row_height }, theme.accentDim(0.35));
         var x = r.x + pad;

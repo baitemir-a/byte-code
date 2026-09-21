@@ -20,6 +20,8 @@ pub const Language = enum {
     plain,
     /// Also used for JavaScript, which it is a superset of.
     typescript,
+    /// TypeScript or JavaScript with JSX markup in it: .tsx and .jsx.
+    jsx,
     json,
     css,
     /// SCSS, Sass and Less: CSS plus `//` comments and `$variables`.
@@ -39,6 +41,12 @@ pub const Language = enum {
     go,
     rust,
     zig,
+
+    /// JavaScript, TypeScript, and their JSX flavours: one language as
+    /// far as keywords, completion and the lexer are concerned.
+    pub fn isJs(self: Language) bool {
+        return self == .typescript or self == .jsx;
+    }
 
     /// The C-family dialect, for languages the `clike` lexer handles.
     pub fn clikeDialect(self: Language) ?clike.Dialect {
@@ -75,8 +83,8 @@ pub const Language = enum {
             .{ ".zon", .zig },        .{ ".toml", .toml },      .{ ".ini", .toml },
             .{ ".cfg", .toml },       .{ ".conf", .toml },      .{ ".yml", .yaml },
             .{ ".yaml", .yaml },      .{ ".env", .dotenv },     .{ ".gitignore", .ignore },
-            .{ ".js", .typescript },  .{ ".jsx", .typescript }, .{ ".mjs", .typescript },
-            .{ ".cjs", .typescript }, .{ ".ts", .typescript },  .{ ".tsx", .typescript },
+            .{ ".js", .typescript },  .{ ".jsx", .jsx },        .{ ".mjs", .typescript },
+            .{ ".cjs", .typescript }, .{ ".ts", .typescript },  .{ ".tsx", .jsx },
             .{ ".mts", .typescript }, .{ ".cts", .typescript }, .{ ".json", .json },
             .{ ".jsonc", .json },     .{ ".json5", .json },     .{ ".css", .css },
             .{ ".scss", .scss },      .{ ".sass", .scss },      .{ ".less", .scss },
@@ -132,6 +140,7 @@ pub const State = union(enum) {
         return switch (language) {
             .plain => .plain,
             .typescript => .{ .js = .{} },
+            .jsx => .{ .js = .{ .jsx = true } },
             .json => .{ .json = .{} },
             .css, .scss => .{ .css = .{} },
             .html, .xml => .{ .html = .{} },

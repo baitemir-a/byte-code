@@ -31,9 +31,10 @@ the system warns the first time you open them:
 - **Editing** — multiple tabs, undo/redo, selection with keyboard and mouse,
   word-wise movement, auto-closing brackets and quotes, auto-indent, tab
   stops, UTF-8 (Latin, Cyrillic, Greek…)
-- **Syntax highlighting** — JavaScript/TypeScript, JSON, HTML, XML, CSS/SCSS/
-  Sass/Less, Markdown (with highlighted code blocks), Python, Go, Rust, Zig,
-  TOML, YAML, `.env`, `.gitignore`, lock files
+- **Syntax highlighting** — JavaScript/TypeScript (including JSX and TSX
+  markup), JSON, HTML, XML, CSS/SCSS/Sass/Less, Markdown (with highlighted
+  code blocks), Python, Go, Rust, Zig, TOML, YAML, `.env`, `.gitignore`,
+  lock files
 - **Multiple cursors** — Option+click (Alt+click) to add cursors,
   Option+Shift+click for a column of them; typing, deleting, moving and
   copy/paste work at all of them
@@ -47,6 +48,10 @@ the system warns the first time you open them:
 - **Projects** — open a folder to get a file tree: create, rename, delete
   (to the Trash) and drag-and-drop to move files and folders
 - **Go to file** (Cmd+P) by fuzzy name
+- **Go to declaration** — Ctrl+click (Cmd+click) a name to jump to where it
+  is declared; click the declaration itself to list where it is used. It
+  reads the shape of the code, not a language server, so it is a good guess
+  rather than an answer
 - **Git** — branch, changed files, stage/unstage, commit
 - **Integrated terminal** — your shell on a real pseudo-terminal, with
   colors, scrollback and full-screen programs (vim, htop)
@@ -69,6 +74,8 @@ On macOS use Cmd; on Windows and Linux use Ctrl.
 | Cmd+W | Close tab |
 | Ctrl+Tab / Ctrl+Shift+Tab | Next / previous tab (also Option+Tab, Cmd+Shift+[ / ]) |
 | Cmd+P | Go to file |
+| Double-click / triple-click | Select the word / the whole line (keep dragging to select by word or line) |
+| Ctrl+click (Cmd+click) | Go to where the clicked name is declared; on the declaration, a menu of where it is used |
 | Option+click | Add a cursor (click it again to remove it); Esc goes back to one |
 | Option+Shift+click | A cursor on every line from the cursor to the click, in that column (drag sideways for a box selection) |
 | Option+Z | Word wrap on / off (Alt+Z on Windows and Linux) |

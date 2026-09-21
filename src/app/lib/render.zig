@@ -10,7 +10,7 @@ pub fn draw(self: *const App) void {
     const t = self.activeTab();
     const caret = self.caretVisible();
     switch (t.kind) {
-        .welcome => self.welcome.draw(self.view.font),
+        .welcome => self.welcome.draw(self.view.font, self.projects.entries.items),
         .settings => self.settings_page.draw(self.view.font, &self.settings, self.settings_path),
         .help => self.help_page.draw(self.view.font, &self.keys, self.keys_path),
         .file => {

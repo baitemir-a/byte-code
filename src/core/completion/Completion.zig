@@ -76,7 +76,7 @@ pub fn refresh(self: *Completion, buf: *const Buffer, hl: *Highlighter, explicit
     while (start > 0 and js.isIdentChar(buf.items()[start - 1])) start -= 1;
     const word = buf.items()[start..buf.cursor];
     // Member access is a code thing; in plain text a '.' ends a sentence.
-    const code = hl.language == .typescript or hl.language == .python or hl.language.clikeDialect() != null;
+    const code = hl.language.isJs() or hl.language == .python or hl.language.clikeDialect() != null;
     const after_dot = code and buf.byteBefore(start) == '.';
 
     if (word.len > 0 and std.ascii.isDigit(word[0])) return self.close();
@@ -98,18 +98,18 @@ pub fn refresh(self: *Completion, buf: *const Buffer, hl: *Highlighter, explicit
     self.word_start = start;
 
     if (after_dot) {
-        if (hl.language == .typescript) for (builtins.membersOf(objectBefore(buf, start))) |l| try self.consider(l, .member, word, 0);
+        if (hl.language.isJs()) for (builtins.membersOf(objectBefore(buf, start))) |l| try self.consider(l, .member, word, 0);
         for (self.index.words.keys(), self.index.words.values()) |l, w| {
             if (w.as_member) try self.consider(l, if (w.called) .function else .member, word, 1);
         }
-        if (hl.language == .typescript) for (builtins.common_members) |l| try self.consider(l, .function, word, 2);
+        if (hl.language.isJs()) for (builtins.common_members) |l| try self.consider(l, .function, word, 2);
     } else {
         for (self.index.words.keys(), self.index.words.values()) |l, w| {
             if (!w.as_name) continue;
             const kind: ItemKind = if (w.called) .function else if (w.is_type) .type else .variable;
             try self.consider(l, kind, word, 0);
         }
-        if (hl.language == .typescript) {
+        if (hl.language.isJs()) {
             for (builtins.keywords) |l| try self.consider(l, .keyword, word, 1);
             for (builtins.globals) |l| try self.consider(l, if (std.ascii.isUpper(l[0])) .type else .variable, word, 2);
             for (builtins.types) |l| try self.consider(l, .type, word, 3);

@@ -20,10 +20,21 @@ pub fn settingsFile(gpa: std.mem.Allocator) ![]u8 {
 /// The keyboard shortcuts the user changed, next to settings.json.
 /// Caller frees.
 pub fn keybindingsFile(gpa: std.mem.Allocator) ![]u8 {
+    return besideSettings(gpa, "keybindings.json");
+}
+
+/// The recent and favorite project folders, next to settings.json.
+/// Caller frees.
+pub fn projectsFile(gpa: std.mem.Allocator) ![]u8 {
+    return besideSettings(gpa, "projects.json");
+}
+
+/// A file in the same folder as settings.json. Caller frees.
+fn besideSettings(gpa: std.mem.Allocator, name: []const u8) ![]u8 {
     const settings = try settingsFile(gpa);
     defer gpa.free(settings);
     const dir = std.fs.path.dirname(settings) orelse ".";
-    return std.fs.path.join(gpa, &.{ dir, "keybindings.json" });
+    return std.fs.path.join(gpa, &.{ dir, name });
 }
 
 fn env(name: [*:0]const u8) ?[]const u8 {

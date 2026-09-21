@@ -62,8 +62,52 @@ pub fn openFolder(self: *App, path: []const u8) !void {
     };
     if (self.project) |*p| p.deinit();
     self.project = tree;
+    self.rememberProject(self.project.?.root().path);
     self.sidebar.reset();
     if (self.tabs.items.len > 0) try self.revealCurrentFile();
+}
+
+/// Remembers a folder that was just opened, for the welcome page's
+/// recent list.
+pub fn rememberProject(self: *App, path: []const u8) void {
+    self.projects.record(path) catch return;
+    saveProjects(self);
+}
+
+/// A row on the welcome page: opens that folder (in a new window when
+/// that's the setting and a project is already here).
+pub fn openProject(self: *App, index: usize) !void {
+    if (index >= self.projects.entries.items.len) return;
+    // The list shifts as the folder is recorded, so take a copy first.
+    const path = try self.gpa.dupe(u8, self.projects.entries.items[index].path);
+    defer self.gpa.free(path);
+    if (self.project != null and self.settings.open_folder_in_new_window) {
+        return self.openInNewWindow(path);
+    }
+    try self.openFolder(path);
+}
+
+/// A click on the welcome tab: a "Start" row, a folder, or the star that
+/// keeps one as a favorite.
+pub fn welcomeClick(self: *App, point: rl.Vector2) !void {
+    switch (self.welcome.hitTest(point) orelse return) {
+        .command => |cmd| try self.execute(cmd),
+        .open => |i| try self.openProject(i),
+        .favorite => |i| self.toggleFavoriteProject(i),
+    }
+}
+
+/// The star on a welcome page row: keeps that folder listed as a
+/// favorite, or gives up on it.
+pub fn toggleFavoriteProject(self: *App, index: usize) void {
+    self.projects.toggleFavorite(index);
+    saveProjects(self);
+}
+
+fn saveProjects(self: *App) void {
+    self.projects.save(self.io, std.Io.Dir.cwd(), self.projects_path) catch |err| {
+        self.reportError("Couldn't save the project list", self.projects_path, err);
+    };
 }
 
 pub fn openFolderWithDialog(self: *App) !void {

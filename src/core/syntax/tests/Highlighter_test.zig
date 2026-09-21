@@ -28,7 +28,9 @@ test "states follow the buffer" {
 }
 
 test "language from path" {
-    try std.testing.expectEqual(Highlighter.Language.typescript, Highlighter.Language.fromPath("src/app.TSX"));
+    try std.testing.expectEqual(Highlighter.Language.jsx, Highlighter.Language.fromPath("src/app.TSX"));
+    try std.testing.expectEqual(Highlighter.Language.jsx, Highlighter.Language.fromPath("src/App.jsx"));
+    try std.testing.expectEqual(Highlighter.Language.typescript, Highlighter.Language.fromPath("src/app.ts"));
     try std.testing.expectEqual(Highlighter.Language.scss, Highlighter.Language.fromPath("styles/main.sass"));
     try std.testing.expectEqual(Highlighter.Language.xml, Highlighter.Language.fromPath("icon.svg"));
     try std.testing.expectEqual(Highlighter.Language.markdown, Highlighter.Language.fromPath("README.md"));

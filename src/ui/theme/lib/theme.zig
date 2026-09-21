@@ -29,6 +29,24 @@ pub const font_paths = [_][:0]const u8{
     "/usr/share/fonts/TTF/DejaVuSansMono.ttf",
 };
 
+/// Dragging a selection to the top or bottom edge of a view scrolls it by
+/// itself. Returns how fast, in lines per second, negative upwards and
+/// zero while the pointer is well inside. Scrolling starts `margin` short
+/// of the edges, so a pointer pinned to the bottom of a maximized window
+/// (where there is nothing below to drag into) still scrolls, and gets
+/// faster the further past that the pointer goes.
+pub fn dragScrollLines(y: f32, top: f32, bottom: f32, margin: f32) f32 {
+    const past = if (y < top + margin)
+        y - (top + margin)
+    else if (y > bottom - margin)
+        y - (bottom - margin)
+    else
+        return 0;
+    const reach = 6 * line_height; // how far out it reaches full speed
+    const speed = 6 + 54 * @min(@abs(past), reach) / reach;
+    return if (past < 0) -speed else speed;
+}
+
 // ----------------------------------------------------------------- colors
 
 pub const Mode = core.Settings.Theme;

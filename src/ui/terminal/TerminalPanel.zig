@@ -30,6 +30,8 @@ scroll_back: usize = 0,
 /// is still dragging it.
 selection: ?struct { anchor: Screen.Pos, head: Screen.Pos } = null,
 selecting: bool = false,
+/// Fractional lines left over while a drag scrolls the panel by itself.
+drag_scroll: f32 = 0,
 /// Dragging the top edge to resize.
 resizing: bool = false,
 
@@ -79,10 +81,32 @@ pub fn firstLine(self: *const TerminalPanel, screen: *const Screen) usize {
 }
 
 pub fn scrollBy(self: *TerminalPanel, screen: *const Screen, wheel_y: f32) void {
-    const lines: isize = @intFromFloat(wheel_y * 3);
+    self.scrollLines(screen, @intFromFloat(wheel_y * 3));
+}
+
+/// Goes `lines` back through the history (negative goes forward again).
+pub fn scrollLines(self: *TerminalPanel, screen: *const Screen, lines: isize) void {
     const max = screen.lineCount() -| self.rows;
     const next = @as(isize, @intCast(self.scroll_back)) + lines;
     self.scroll_back = @intCast(std.math.clamp(next, 0, @as(isize, @intCast(max))));
+}
+
+/// Scrolls the history while a selection is dragged to the top or bottom
+/// of the grid, so it can reach lines off screen. Only whole lines
+/// scroll; the fraction left over carries over to the next frame.
+pub fn dragScroll(self: *TerminalPanel, screen: *const Screen, p: rl.Vector2) void {
+    const bottom = self.content.y + self.content.height;
+    const lines = theme.dragScrollLines(p.y, self.content.y, bottom, line_height);
+    if (lines == 0) {
+        self.drag_scroll = 0;
+        return;
+    }
+    self.drag_scroll += lines * rl.getFrameTime();
+    const whole = @trunc(self.drag_scroll);
+    if (whole == 0) return;
+    self.drag_scroll -= whole;
+    // Dragging up goes back through the history, like the wheel.
+    self.scrollLines(screen, -@as(isize, @intFromFloat(whole)));
 }
 
 /// Screen position (line, column) under a window point, for selection.

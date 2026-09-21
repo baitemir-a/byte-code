@@ -85,6 +85,45 @@ pub fn wordRight(b: []const u8, pos: usize) usize {
     return p;
 }
 
+/// The word around `pos`, for double-click selection: a run of word
+/// characters, or — on a blank or a punctuation mark — the run of blanks
+/// or the single character there. Clicking just past a word (`pos` right
+/// after its last character) takes that word.
+pub fn wordRange(b: []const u8, pos: usize) Buffer.Range {
+    var p = pos;
+    if (!isWord(b, p) and p > 0 and text.isWordChar(b[p - 1])) p -= 1;
+    if (isWord(b, p)) return runAround(b, p, isWord);
+    if (isBlank(b, p)) return runAround(b, p, isBlank);
+    // Punctuation, or the end of a line: just the character clicked.
+    if (p >= b.len or b[p] == '\n') return .{ .start = p, .end = p };
+    return .{ .start = p, .end = text.nextBoundary(b, p) };
+}
+
+/// The line `pos` is on, with its newline, for triple-click selection:
+/// copying or cutting it then takes a whole line.
+pub fn lineRange(b: []const u8, pos: usize) Buffer.Range {
+    const start = if (std.mem.lastIndexOfScalar(u8, b[0..pos], '\n')) |i| i + 1 else 0;
+    const nl = std.mem.indexOfScalarPos(u8, b, pos, '\n');
+    return .{ .start = start, .end = if (nl) |i| i + 1 else b.len };
+}
+
+/// The longest run of characters `matches` accepts that covers `p`.
+fn runAround(b: []const u8, p: usize, comptime matches: fn ([]const u8, usize) bool) Buffer.Range {
+    var start = p;
+    var end = p;
+    while (start > 0 and matches(b, start - 1)) start -= 1;
+    while (end < b.len and matches(b, end)) end += 1;
+    return .{ .start = start, .end = end };
+}
+
+fn isWord(b: []const u8, p: usize) bool {
+    return p < b.len and text.isWordChar(b[p]);
+}
+
+fn isBlank(b: []const u8, p: usize) bool {
+    return p < b.len and (b[p] == ' ' or b[p] == '\t');
+}
+
 pub fn smartLineStart(buf: *const Buffer, pos: usize) usize {
     const start = buf.lineStart(pos);
     var p = start;
