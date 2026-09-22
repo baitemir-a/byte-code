@@ -1,0 +1,101 @@
+# Builds the release packages for every platform and attaches them to the
+# release for the tag. Without this, a release can end up with no downloads
+# at all — the README links to the latest release's files, so they have to
+# be there.
+#
+# Push a tag to run it:
+#   git tag v0.1.3 && git push origin v0.1.3
+#
+# The release is made as a draft, so the notes can be written and checked
+# before anyone can download it. Publish it from the Releases page, or:
+#   gh release edit v0.1.3 --draft=false
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  # Re-run for a tag that already exists (a build that failed, say).
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to build and attach the packages to"
+        required: true
+
+env:
+  ZIG_VERSION: "0.16.0"
+
+jobs:
+  package:
+    # One machine per platform: the macOS app needs a Mac to sign it, and
+    # the Linux build needs the X11 and OpenGL development packages. The
+    # Windows package cross-compiles from Linux.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platforms: macos
+            runs-on: macos-14
+            zig: zig-aarch64-macos
+            sha256: b23d70deaa879b5c2d486ed3316f7eaa53e84acf6fc9cc747de152450d401489
+          - platforms: windows linux
+            runs-on: ubuntu-22.04
+            zig: zig-x86_64-linux
+            sha256: 70e49664a74374b48b51e6f3fdfbf437f6395d42509050588bd49abe52ba3d00
+    runs-on: ${{ matrix.runs-on }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: X11 and OpenGL development libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libx11-dev libxrandr-dev libxinerama-dev libxi-dev libxcursor-dev libgl-dev
+
+      # The official release, checked against the checksum published in
+      # https://ziglang.org/download/index.json.
+      - name: Zig ${{ env.ZIG_VERSION }}
+        run: |
+          file="${{ matrix.zig }}-${ZIG_VERSION}.tar.xz"
+          curl -fsSL -o zig.tar.xz "https://ziglang.org/download/${ZIG_VERSION}/${file}"
+          echo "${{ matrix.sha256 }}  zig.tar.xz" | shasum -a 256 -c -
+          mkdir -p "$HOME/zig" && tar -xJf zig.tar.xz -C "$HOME/zig" --strip-components=1
+          echo "$HOME/zig" >> "$GITHUB_PATH"
+
+      - run: zig build test
+
+      - run: scripts/package.sh ${{ matrix.platforms }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: packages-${{ runner.os }}
+          path: dist/*
+          if-no-files-found: error
+
+  publish:
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: packages
+          merge-multiple: true
+
+      - name: Attach the packages to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          ls -lh packages
+          # A release written by hand already exists most of the time; if it
+          # doesn't, start a draft so nothing is announced before its notes
+          # are written.
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --draft --title "byte code ${TAG#v}" --notes "Release notes to come."
+          fi
+          gh release upload "$TAG" packages/* --clobber
