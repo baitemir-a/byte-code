@@ -1,7 +1,7 @@
 # byte code
 
 A lightweight code editor written in [Zig](https://ziglang.org) with
-[raylib](https://www.raylib.com). One small native executable (about 1.5 MB
+[raylib](https://www.raylib.com). One small native executable (2–3 MB
 zipped), no Electron, no runtime.
 
 ## Download
@@ -60,8 +60,11 @@ the system warns the first time you open them:
   colors, scrollback and full-screen programs (vim, htop)
 - **Word wrap** (Option+Z) — long lines break to fit the window
 - **Minimap**, line numbers, current-line highlight
-- **Settings** — dark/light theme, accent color, auto save, zoom, minimap,
-  word wrap, opening folders in a new window
+- **12 languages** — English, Russian, German, Kyrgyz, Turkish, Spanish,
+  Chinese, Japanese, French, Italian, Portuguese and Korean, switched in
+  Settings
+- **Settings** — language, dark/light theme, accent color, auto save, zoom,
+  minimap, word wrap, opening folders in a new window
 - **Keyboard shortcuts you can change** — the Help tab lists every
   combination, from Save to Select Word Left, and rebinds any of them
 
