@@ -47,6 +47,9 @@ the system warns the first time you open them:
   and whole word options; replace one match, one file or everything
 - **Projects** — open a folder to get a file tree: create, rename, delete
   (to the Trash) and drag-and-drop to move files and folders
+- **Recent and favorite folders** — the welcome tab lists the folders you
+  opened before; the star on a row keeps one at the top as a favorite, and
+  favorites never fall off the end of the history
 - **Go to file** (Cmd+P) by fuzzy name
 - **Go to declaration** — Ctrl+click (Cmd+click) a name to jump to where it
   is declared; click the declaration itself to list where it is used. It
