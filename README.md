@@ -140,9 +140,9 @@ package) explains how to open them.
 
 - **macOS** and **Linux**: everything works. On Linux, the file dialogs use
   `zenity` and deleting to the Trash uses `gio`.
-- **Windows**: builds, but is the least tested platform. The terminal and
-  the native file dialogs aren't available yet — open files and folders by
-  dropping them onto the window.
+- **Windows**: builds, but is the least tested platform. The terminal isn't
+  available yet. Dialogs use the native Win32 ones, and deleting goes to the
+  Recycle Bin.
 
 ## Settings
 

@@ -10,6 +10,9 @@ const SettingsPage = @import("SettingsPage.zig");
 const Settings = core.Settings;
 
 pub fn draw(self: *const SettingsPage, font: Font, settings: *const Settings, settings_path: []const u8) void {
+    theme.clip(self.area);
+    defer rl.endScissorMode();
+
     const x = self.origin.x;
     drawText(font, "Settings", x, self.origin.y, Font.heading_size, theme.foreground);
 

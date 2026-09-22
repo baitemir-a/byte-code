@@ -91,10 +91,13 @@ pub fn handleMouse(self: *App) !bool {
         .search => self.search_panel.scrollBy(rl.getMouseWheelMove()),
         .git => self.git_panel.scrollBy(rl.getMouseWheelMove()),
     };
-    // The Help tab's list is longer than the window: the wheel scrolls it.
-    if (self.activeTab().kind == .help and !over_sidebar and !over_tabs) {
-        self.help_page.scrollBy(rl.getMouseWheelMove());
-    }
+    // The Help tab's list is longer than the window, and Settings can be
+    // too: the wheel scrolls them.
+    if (!over_sidebar and !over_tabs) switch (self.activeTab().kind) {
+        .help => self.help_page.scrollBy(rl.getMouseWheelMove()),
+        .settings => self.settings_page.scrollBy(rl.getMouseWheelMove()),
+        else => {},
+    };
     // Clicking outside the sidebar takes the keyboard from its text boxes.
     if (pressed and !over_sidebar) self.side_focus = .none;
     var keep_name_box = false;

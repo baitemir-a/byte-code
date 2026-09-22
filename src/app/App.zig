@@ -380,6 +380,7 @@ pub fn update(self: *App) !void {
     const window = windowSize();
     try self.refreshProjectOnFocus();
     self.matchFontToDisplay();
+    matchMouseToLayout();
     try self.openDroppedFiles();
     if (self.terminal) |*t| _ = try t.pump();
     try self.layout(window);
@@ -425,6 +426,18 @@ pub fn update(self: *App) !void {
     self.autosave();
     try self.updateSidebarViews();
     try self.updateTitle();
+}
+
+/// Lays the frame out again for the current window size, for redrawing
+/// while the window is being resized (when `update` can't run).
+pub fn relayout(self: *App) !void {
+    matchMouseToLayout();
+    try self.layout(windowSize());
+    if (self.isEditing()) {
+        self.view.clampScroll(self.buf());
+        self.popup.layout(&self.completion, &self.view, self.buf());
+        self.find.layout(&self.view);
+    }
 }
 
 /// The window's size in UI units (zoom makes each unit more pixels).
@@ -474,17 +487,31 @@ pub fn layout(self: *App, window: rl.Vector2) !void {
 
 /// Moving the window to a display with another pixel density (Retina vs
 /// a regular monitor) re-renders the font for it, so text stays sharp.
-/// Also keeps the mouse scale matching: raylib recomputes its own DPI-based
-/// mouse scale on every resize (e.g. a Linux window manager toggling
-/// fullscreen), silently overwriting the zoom correction we set, which
-/// throws off click positions until this restores it.
 pub fn matchFontToDisplay(self: *App) void {
     const scale = @max(1, rl.getWindowScaleDPI().x) * theme.zoom;
-    rl.setMouseScale(1 / scale, 1 / scale);
     if (@abs(scale * self.view.font.pixel - 1) < 0.01) return;
     self.view.font.unload();
     self.view.font = Font.load();
 }
+
+/// Mouse positions in UI units. The pointer comes in the window system's
+/// coordinates: logical points on macOS and Wayland (so dividing by the
+/// DPI there halves them on Retina), physical pixels on Windows and X11.
+/// raylib recomputes its own mouse scale on every resize (e.g. a Linux
+/// window manager toggling fullscreen), so this redoes it every frame.
+pub fn matchMouseToLayout() void {
+    var w: c_int = 0;
+    var h: c_int = 0;
+    if (glfwGetCurrentContext()) |window| glfwGetWindowSize(window, &w, &h);
+    // Logical screen size per pointer unit (1 when both are points).
+    const sx = if (w > 0) @as(f32, @floatFromInt(rl.getScreenWidth())) / @as(f32, @floatFromInt(w)) else 1;
+    const sy = if (h > 0) @as(f32, @floatFromInt(rl.getScreenHeight())) / @as(f32, @floatFromInt(h)) else 1;
+    rl.setMouseScale(sx / theme.zoom, sy / theme.zoom);
+}
+
+// raylib's GLFW, which it builds in.
+extern "c" fn glfwGetCurrentContext() ?*anyopaque;
+extern "c" fn glfwGetWindowSize(window: *anyopaque, width: *c_int, height: *c_int) void;
 
 /// Solid right after activity, then blinking.
 pub fn caretVisible(self: *const App) bool {

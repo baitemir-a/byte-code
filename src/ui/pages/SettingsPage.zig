@@ -48,7 +48,11 @@ const button: f32 = 28;
 const content_cols = 60;
 
 // Clickable areas, set by `layout`.
+area: rl.Rectangle = std.mem.zeroes(rl.Rectangle),
 origin: rl.Vector2 = .{ .x = 0, .y = 0 },
+/// How far the page is scrolled down, when it's taller than the window.
+scroll: f32 = 0,
+max_scroll: f32 = 0,
 theme_dark: rl.Rectangle = undefined,
 theme_light: rl.Rectangle = undefined,
 swatches: [accent_presets.len]rl.Rectangle = undefined,
@@ -67,10 +71,14 @@ shortcuts_button: rl.Rectangle = undefined,
 pub const draw = SettingsPage_draw.draw;
 
 pub fn layout(self: *SettingsPage, area: rl.Rectangle, font: Font) void {
+    self.area = area;
     const w = content_cols * font.cell_width;
+    const top = @max(theme.padding * 2, area.height * 0.08);
+    self.max_scroll = @max(0, top + contentHeight() - area.height);
+    self.scroll = std.math.clamp(self.scroll, 0, self.max_scroll);
     self.origin = .{
         .x = area.x + @max(theme.padding * 2, (area.width - w) / 2),
-        .y = area.y + @max(theme.padding * 2, area.height * 0.08),
+        .y = area.y + top - self.scroll,
     };
     const right = self.origin.x + w;
     self.theme_light = .{ .x = right - 80, .y = self.rowY(0), .width = 80, .height = button };
@@ -93,10 +101,25 @@ pub fn layout(self: *SettingsPage, area: rl.Rectangle, font: Font) void {
 }
 
 pub fn rowY(self: *const SettingsPage, row: usize) f32 {
-    return self.origin.y + theme.font_size * 2.4 + 40 + @as(f32, @floatFromInt(row)) * row_gap;
+    return self.origin.y + rowOffset(row);
+}
+
+fn rowOffset(row: usize) f32 {
+    return theme.font_size * 2.4 + 40 + @as(f32, @floatFromInt(row)) * row_gap;
+}
+
+/// From the title to below the "Saved to" path (see draw), plus a margin.
+fn contentHeight() f32 {
+    return rowOffset(9) + 10 + theme.line_height * 2 + theme.padding * 2;
+}
+
+pub fn scrollBy(self: *SettingsPage, wheel_y: f32) void {
+    self.scroll = std.math.clamp(self.scroll - wheel_y * row_gap, 0, self.max_scroll);
 }
 
 pub fn actionAt(self: *const SettingsPage, p: rl.Vector2, settings: *const Settings) ?Action {
+    // Controls scrolled out of view are still laid out, under the tab bar.
+    if (!hit(p, self.area)) return null;
     if (hit(p, self.theme_dark)) return .{ .theme = .dark };
     if (hit(p, self.theme_light)) return .{ .theme = .light };
     for (self.swatches, accent_presets) |s, preset| {
