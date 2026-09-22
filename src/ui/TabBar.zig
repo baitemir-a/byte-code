@@ -41,8 +41,8 @@ pub fn layout(self: *TabBar, gpa: std.mem.Allocator, tabs: []const Tab, active: 
 
     var x: f32 = 0;
     for (tabs) |*t| {
-        const cols: f32 = @floatFromInt(@min(max_name_cols, t.name().len));
-        const w = pad + iconSpace(t) + cols * font.cell_width + 8 + close_size + pad / 2;
+        const name_w = @min(max_name_cols * font.cell_width, font.textWidth(t.name()));
+        const w = pad + iconSpace(t) + name_w + 8 + close_size + pad / 2;
         try self.tab_rects.append(gpa, .{ .x = x, .y = area.y, .width = w, .height = height });
         x += w;
     }
@@ -113,16 +113,10 @@ pub fn draw(self: *const TabBar, tabs: []const Tab, active: usize, font: Font) v
             if (t.isDirty() and !rl.checkCollisionPointRec(mouse, c)) {
                 rl.drawCircleV(center, 4, color);
             } else {
-                drawCross(center, color);
+                font.drawIcon(.x, center, .small, color);
             }
         } else if (t.isDirty()) {
             rl.drawCircleV(center, 4, color);
         }
     }
-}
-
-fn drawCross(c: rl.Vector2, color: rl.Color) void {
-    const s: f32 = 4;
-    rl.drawLineEx(.{ .x = c.x - s, .y = c.y - s }, .{ .x = c.x + s, .y = c.y + s }, 1.5, color);
-    rl.drawLineEx(.{ .x = c.x - s, .y = c.y + s }, .{ .x = c.x + s, .y = c.y - s }, 1.5, color);
 }

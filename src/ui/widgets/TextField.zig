@@ -92,13 +92,7 @@ pub fn draw(self: *const TextField, rect: rl.Rectangle, font: Font, placeholder:
         }
     }.f;
 
-    if (self.text().len == 0) {
-        var x = left;
-        for (placeholder) |c| {
-            font.drawCodepoint(c, x, y, theme.popup_detail);
-            x += w;
-        }
-    }
+    if (self.text().len == 0) _ = font.drawFit(placeholder, left, y, max_x, theme.popup_detail);
 
     if (self.buffer.selection()) |sel| if (focused) {
         const a = colX(left, w, self.buffer.column(sel.start), self.scroll_col);

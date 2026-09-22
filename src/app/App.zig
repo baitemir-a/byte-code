@@ -4,6 +4,7 @@
 const std = @import("std");
 const rl = @import("raylib");
 const core = @import("core");
+const i18n = @import("../i18n/i18n.zig");
 const keymap = @import("../input/lib/keymap.zig");
 const Keymap = @import("../input/Keymap.zig");
 const Mouse = @import("../input/Mouse.zig");
@@ -68,16 +69,20 @@ pub const MenuAction = union(enum) {
     go_to_ref: u32,
     /// Ctrl+click: put every one of them in the Search view.
     all_refs,
+    /// The language menu in Settings.
+    set_language: core.Settings.Language,
 
     /// The menu row for the actions whose wording never changes; the
     /// ctrl+click ones are labelled with the place they lead to.
     pub fn label(self: MenuAction) []const u8 {
+        const t = i18n.tr().sidebar;
         return switch (self) {
-            .new_file => "New File...",
-            .new_folder => "New Folder...",
-            .rename => "Rename...",
-            .delete => "Delete",
+            .new_file => t.new_file,
+            .new_folder => t.new_folder,
+            .rename => t.rename,
+            .delete => t.delete,
             .go_to_ref, .all_refs => "",
+            .set_language => |l| l.nativeName(),
         };
     }
 };
@@ -198,6 +203,7 @@ pub const settingsChanged = settings_actions.settingsChanged;
 pub const openSettings = settings_actions.openSettings;
 pub const runSettingsAction = settings_actions.runSettingsAction;
 pub const autosave = settings_actions.autosave;
+pub const setLanguage = settings_actions.setLanguage;
 
 // go_to_file.zig
 pub const openQuickOpen = go_to_file.openQuickOpen;

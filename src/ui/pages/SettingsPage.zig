@@ -1,5 +1,5 @@
-//! The Settings tab: theme, accent color, auto save, zoom, minimap and
-//! word wrap.
+//! The Settings tab: language, theme, accent color, auto save, zoom,
+//! minimap and word wrap.
 //! Changes apply immediately and are saved to settings.json.
 const std = @import("std");
 const builtin = @import("builtin");
@@ -8,6 +8,7 @@ const core = @import("core");
 const theme = @import("../theme/lib/theme.zig");
 const Font = @import("../Font.zig");
 const SettingsPage_draw = @import("SettingsPage_draw.zig");
+const i18n = @import("../../i18n/i18n.zig");
 
 const Settings = core.Settings;
 const SettingsPage = @This();
@@ -16,6 +17,8 @@ pub const cmd = if (builtin.os.tag == .macos) "Cmd" else "Ctrl";
 pub const opt = if (builtin.os.tag == .macos) "Option" else "Alt";
 
 pub const Action = union(enum) {
+    /// Opens the menu of languages under the language button.
+    choose_language: rl.Rectangle,
     theme: Settings.Theme,
     accent: [3]u8,
     toggle_autosave,
@@ -50,9 +53,12 @@ const content_cols = 60;
 // Clickable areas, set by `layout`.
 area: rl.Rectangle = std.mem.zeroes(rl.Rectangle),
 origin: rl.Vector2 = .{ .x = 0, .y = 0 },
+/// Right edge of the rows, where their controls end.
+right: f32 = 0,
 /// How far the page is scrolled down, when it's taller than the window.
 scroll: f32 = 0,
 max_scroll: f32 = 0,
+language_button: rl.Rectangle = undefined,
 theme_dark: rl.Rectangle = undefined,
 theme_light: rl.Rectangle = undefined,
 swatches: [accent_presets.len]rl.Rectangle = undefined,
@@ -81,24 +87,50 @@ pub fn layout(self: *SettingsPage, area: rl.Rectangle, font: Font) void {
         .y = area.y + top - self.scroll,
     };
     const right = self.origin.x + w;
-    self.theme_light = .{ .x = right - 80, .y = self.rowY(0), .width = 80, .height = button };
-    self.theme_dark = .{ .x = right - 160, .y = self.rowY(0), .width = 80, .height = button };
-    const y0 = self.rowY(1);
+    self.right = right;
+    const t = i18n.tr().settings;
+    // Wide enough for any language's name, so it doesn't jump around.
+    var names_w: f32 = 0;
+    for (std.enums.values(Settings.Language)) |l| names_w = @max(names_w, font.textWidth(l.nativeName()));
+    const language_w = names_w + 40;
+    self.language_button = .{ .x = right - language_w, .y = self.rowY(0), .width = language_w, .height = button };
+    const segment_w = @max(80, @max(font.textWidth(t.dark), font.textWidth(t.light)) + 20);
+    self.theme_light = .{ .x = right - segment_w, .y = self.rowY(1), .width = segment_w, .height = button };
+    self.theme_dark = .{ .x = right - 2 * segment_w, .y = self.rowY(1), .width = segment_w, .height = button };
+    const y0 = self.rowY(2);
     for (&self.swatches, 0..) |*s, i| {
         const x = right - @as(f32, @floatFromInt(accent_presets.len - i)) * (swatch + 8);
         s.* = .{ .x = x, .y = y0, .width = swatch, .height = swatch };
     }
-    self.autosave_toggle = .{ .x = right - 46, .y = self.rowY(2) + 3, .width = 46, .height = 22 };
-    self.delay_plus = .{ .x = right - button, .y = self.rowY(3), .width = button, .height = button };
-    self.delay_minus = .{ .x = right - button * 2 - 90, .y = self.rowY(3), .width = button, .height = button };
-    self.zoom_reset = .{ .x = right - 64, .y = self.rowY(4), .width = 64, .height = button };
-    self.zoom_plus = .{ .x = right - 64 - 12 - button, .y = self.rowY(4), .width = button, .height = button };
-    self.zoom_minus = .{ .x = self.zoom_plus.x - 90 - button, .y = self.rowY(4), .width = button, .height = button };
-    self.minimap_toggle = .{ .x = right - 46, .y = self.rowY(5) + 3, .width = 46, .height = 22 };
-    self.wrap_toggle = .{ .x = right - 46, .y = self.rowY(6) + 3, .width = 46, .height = 22 };
-    self.new_window_toggle = .{ .x = right - 46, .y = self.rowY(7) + 3, .width = 46, .height = 22 };
-    self.shortcuts_button = .{ .x = right - 80, .y = self.rowY(8), .width = 80, .height = button };
+    self.autosave_toggle = .{ .x = right - 46, .y = self.rowY(3) + 3, .width = 46, .height = 22 };
+    self.delay_plus = .{ .x = right - button, .y = self.rowY(4), .width = button, .height = button };
+    self.delay_minus = .{ .x = right - button * 2 - 90, .y = self.rowY(4), .width = button, .height = button };
+    const reset_w = @max(64, font.textWidth(i18n.tr().common.reset) + 16);
+    self.zoom_reset = .{ .x = right - reset_w, .y = self.rowY(5), .width = reset_w, .height = button };
+    self.zoom_plus = .{ .x = right - reset_w - 12 - button, .y = self.rowY(5), .width = button, .height = button };
+    self.zoom_minus = .{ .x = self.zoom_plus.x - 90 - button, .y = self.rowY(5), .width = button, .height = button };
+    self.minimap_toggle = .{ .x = right - 46, .y = self.rowY(6) + 3, .width = 46, .height = 22 };
+    self.wrap_toggle = .{ .x = right - 46, .y = self.rowY(7) + 3, .width = 46, .height = 22 };
+    self.new_window_toggle = .{ .x = right - 46, .y = self.rowY(8) + 3, .width = 46, .height = 22 };
+    const open_w = @max(80, font.textWidth(i18n.tr().common.open) + 16);
+    self.shortcuts_button = .{ .x = right - open_w, .y = self.rowY(9), .width = open_w, .height = button };
 }
+
+/// Row numbers, top to bottom.
+pub const rows = struct {
+    pub const language = 0;
+    pub const theme = 1;
+    pub const accent = 2;
+    pub const autosave = 3;
+    pub const delay = 4;
+    pub const zoom = 5;
+    pub const minimap = 6;
+    pub const word_wrap = 7;
+    pub const new_window = 8;
+    pub const shortcuts = 9;
+    /// "Saved to:" and the path.
+    pub const path = 10;
+};
 
 pub fn rowY(self: *const SettingsPage, row: usize) f32 {
     return self.origin.y + rowOffset(row);
@@ -110,7 +142,7 @@ fn rowOffset(row: usize) f32 {
 
 /// From the title to below the "Saved to" path (see draw), plus a margin.
 fn contentHeight() f32 {
-    return rowOffset(9) + 10 + theme.line_height * 2 + theme.padding * 2;
+    return rowOffset(rows.path) + 10 + theme.line_height * 2 + theme.padding * 2;
 }
 
 pub fn scrollBy(self: *SettingsPage, wheel_y: f32) void {
@@ -120,6 +152,7 @@ pub fn scrollBy(self: *SettingsPage, wheel_y: f32) void {
 pub fn actionAt(self: *const SettingsPage, p: rl.Vector2, settings: *const Settings) ?Action {
     // Controls scrolled out of view are still laid out, under the tab bar.
     if (!hit(p, self.area)) return null;
+    if (hit(p, self.language_button)) return .{ .choose_language = self.language_button };
     if (hit(p, self.theme_dark)) return .{ .theme = .dark };
     if (hit(p, self.theme_light)) return .{ .theme = .light };
     for (self.swatches, accent_presets) |s, preset| {

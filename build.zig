@@ -127,6 +127,12 @@ pub fn build(b: *std.Build) void {
     exe.root_module.addImport("raylib", raylib);
     exe.root_module.addImport("raygui", raygui);
 
+    // Lucide's icons as a font (the lucide-static npm package), and the
+    // codepoint of each icon by name: see src/ui/Icons.zig.
+    const lucide = b.dependency("lucide", .{});
+    exe.root_module.addAnonymousImport("lucide.ttf", .{ .root_source_file = lucide.path("font/lucide.ttf") });
+    exe.root_module.addAnonymousImport("lucide_codepoints.json", .{ .root_source_file = lucide.path("font/codepoints.json") });
+
     // This declares intent for the executable to be installed into the
     // install prefix when running `zig build` (i.e. when executing the default
     // step). By default the install prefix is `zig-out/` but can be overridden

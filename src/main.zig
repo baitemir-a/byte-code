@@ -84,4 +84,7 @@ extern "c" fn glfwSwapBuffers(window: *anyopaque) void;
 test {
     _ = @import("platform/Pty.zig");
     _ = @import("app/Terminal.zig");
+    _ = @import("input/Keymap.zig");
+    _ = @import("i18n/i18n.zig");
+    _ = @import("ui/fallback_fonts.zig");
 }

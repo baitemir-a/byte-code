@@ -8,6 +8,7 @@ const Tab = @import("../Tab.zig");
 const Sidebar = @import("../../ui/sidebar/Sidebar.zig");
 const App = @import("../App.zig");
 const clipboard = @import("clipboard.zig");
+const i18n = @import("../../i18n/i18n.zig");
 
 /// Shows a sidebar view (Explorer, Search, Git); Search puts the keyboard
 /// in its query box.
@@ -112,7 +113,7 @@ pub fn panelClick(self: *App, point: rl.Vector2) !void {
             const path = try std.fs.path.join(self.gpa, &.{ root, panel.results.files.items[file].path });
             defer self.gpa.free(path);
             self.side_focus = .none;
-            self.openFile(path) catch |err| return self.reportError("Couldn't open file", path, err);
+            self.openFile(path) catch |err| return self.reportError(i18n.tr().errors.open_file, path, err);
             if (row == .match) {
                 // Select the match (if the file hasn't changed under it).
                 const m = panel.results.matches.items[row.match];
@@ -141,7 +142,7 @@ pub fn panelClick(self: *App, point: rl.Vector2) !void {
                     const e = self.git.entries.items[i];
                     const path = try std.fs.path.join(self.gpa, &.{ self.git.toplevel, e.path });
                     defer self.gpa.free(path);
-                    if (e.unstaged != 'D' and e.staged != 'D') self.openFile(path) catch |err| self.reportError("Couldn't open file", path, err);
+                    if (e.unstaged != 'D' and e.staged != 'D') self.openFile(path) catch |err| self.reportError(i18n.tr().errors.open_file, path, err);
                 },
             }
         },
@@ -151,7 +152,7 @@ pub fn panelClick(self: *App, point: rl.Vector2) !void {
 /// After a git command: report git's own message if it failed, and
 /// re-read the status either way.
 pub fn gitAction(self: *App, result: anyerror!void) void {
-    result catch dialogs.showError(self.gpa, self.io, "Git", if (self.git.last_error.items.len > 0) self.git.last_error.items else "The git command failed.");
+    result catch dialogs.showError(self.gpa, self.io, "Git", if (self.git.last_error.items.len > 0) self.git.last_error.items else i18n.tr().errors.git_failed);
     self.git_dirty = true;
 }
 
@@ -160,8 +161,9 @@ pub fn gitCommit(self: *App) !void {
     const message = std.mem.trim(u8, self.git_panel.message.text(), " \t");
     var staged = false;
     for (self.git.entries.items) |e| staged = staged or e.isStaged();
-    if (!staged) return dialogs.showError(self.gpa, self.io, "Nothing to commit", "Stage changes first with the + next to them.");
-    if (message.len == 0) return dialogs.showError(self.gpa, self.io, "Commit message needed", "Type a message describing the change.");
+    const t = i18n.tr().errors;
+    if (!staged) return dialogs.showError(self.gpa, self.io, t.nothing_to_commit, t.nothing_to_commit_detail);
+    if (message.len == 0) return dialogs.showError(self.gpa, self.io, t.message_needed, t.message_needed_detail);
     self.git.commit(self.io, project.root().path, message) catch {
         return self.gitAction(error.GitFailed);
     };

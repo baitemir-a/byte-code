@@ -7,12 +7,13 @@ const dialogs = @import("../../platform/lib/dialogs.zig");
 const Tab = @import("../Tab.zig");
 const paths = @import("../../platform/lib/paths.zig");
 const App = @import("../App.zig");
+const i18n = @import("../../i18n/i18n.zig");
 
 /// Opens a file (in a tab) or a folder (as the project), reporting failures
 /// in a dialog.
 pub fn openPath(self: *App, path: []const u8) !void {
     if (isDirectory(self.io, path)) return self.openFolder(path);
-    self.openFile(path) catch |err| self.reportError("Couldn't open file", path, err);
+    self.openFile(path) catch |err| self.reportError(i18n.tr().errors.open_file, path, err);
 }
 
 pub fn isDirectory(io: std.Io, path: []const u8) bool {
@@ -58,7 +59,7 @@ pub fn openWithDialog(self: *App) !void {
 /// Opens a folder as the project. Open tabs stay open.
 pub fn openFolder(self: *App, path: []const u8) !void {
     const tree = core.FileTree.open(self.gpa, self.io, path) catch |err| {
-        return self.reportError("Couldn't open folder", path, err);
+        return self.reportError(i18n.tr().errors.open_folder, path, err);
     };
     if (self.project) |*p| p.deinit();
     self.project = tree;
@@ -106,7 +107,7 @@ pub fn toggleFavoriteProject(self: *App, index: usize) void {
 
 fn saveProjects(self: *App) void {
     self.projects.save(self.io, std.Io.Dir.cwd(), self.projects_path) catch |err| {
-        self.reportError("Couldn't save the project list", self.projects_path, err);
+        self.reportError(i18n.tr().errors.save_projects, self.projects_path, err);
     };
 }
 
@@ -134,7 +135,7 @@ pub fn openInNewWindow(self: *App, path: []const u8) !void {
         .stderr = .ignore,
         // Its own process group on macOS/Linux (Windows has no such thing).
         .pgid = if (@import("builtin").os.tag == .windows) null else 0,
-    }) catch |err| return self.reportError("Couldn't open a new window", path, err);
+    }) catch |err| return self.reportError(i18n.tr().errors.new_window, path, err);
 }
 
 /// Files and folders dropped onto the window.
@@ -245,7 +246,7 @@ pub fn save(self: *App, choose_path: bool) !bool {
         t.highlighter.language = .fromPath(path);
     }
     t.document.save(self.gpa, self.io, std.Io.Dir.cwd(), &t.buffer) catch |err| {
-        self.reportError("Couldn't save file", t.document.path.?, err);
+        self.reportError(i18n.tr().errors.save_file, t.document.path.?, err);
         return false;
     };
     // Saving under a new name may have added a file to the project.
@@ -273,15 +274,16 @@ pub fn resolveUnsavedChanges(self: *App) !bool {
 }
 
 pub fn reportError(self: *App, title: []const u8, path: []const u8, err: anyerror) void {
+    const t = i18n.tr().reasons;
     const reason = switch (err) {
-        error.NotUtf8 => "It isn't a UTF-8 text file.",
-        error.FileTooBig => "It is larger than 64 MB.",
-        error.AccessDenied, error.PermissionDenied => "Permission denied.",
-        error.IsDir => "It is a directory.",
-        error.FileNotFound => "The folder doesn't exist.",
-        error.NoSpaceLeft => "The disk is full.",
-        error.PathAlreadyExists => "A file or folder with that name already exists.",
-        error.InvalidName => "Enter a name inside this folder (no \"..\" or leading \"/\").",
+        error.NotUtf8 => t.not_utf8,
+        error.FileTooBig => t.too_big,
+        error.AccessDenied, error.PermissionDenied => t.permission_denied,
+        error.IsDir => t.is_dir,
+        error.FileNotFound => t.not_found,
+        error.NoSpaceLeft => t.disk_full,
+        error.PathAlreadyExists => t.already_exists,
+        error.InvalidName => t.invalid_name,
         else => @errorName(err),
     };
     const message = std.fmt.allocPrint(self.gpa, "{s}\n\n{s}", .{ path, reason }) catch return;

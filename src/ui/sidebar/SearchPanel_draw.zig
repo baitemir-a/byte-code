@@ -8,6 +8,7 @@ const Font = @import("../Font.zig");
 const file_icon = @import("../widgets/lib/file_icon.zig");
 const controls = @import("../widgets/lib/search_controls.zig");
 const SearchPanel = @import("SearchPanel.zig");
+const i18n = @import("../../i18n/i18n.zig");
 
 const row_height = theme.line_height;
 
@@ -16,26 +17,28 @@ pub fn draw(self: *const SearchPanel, font: Font, focus: u2, show_caret: bool, h
     const r = self.rect;
     theme.clip(r);
     defer rl.endScissorMode();
-    self.query.draw(self.field_rect, font, "Search", focus == 1, show_caret);
+    const t = i18n.tr().search;
+    self.query.draw(self.field_rect, font, t.placeholder, focus == 1, show_caret);
     controls.drawToggle(font, self.match_case_rect, .match_case, self.options.match_case);
     controls.drawToggle(font, self.whole_word_rect, .whole_word, self.options.whole_word);
-    self.replacement.draw(self.replace_rect, font, "Replace", focus == 2, show_caret);
+    self.replacement.draw(self.replace_rect, font, t.replace_placeholder, focus == 2, show_caret);
 
     // Replace All, beside the result count.
     const b = self.replace_all_rect;
-    controls.drawButton(font, b, "Replace All", self.canReplace(), true);
+    controls.drawButton(font, b, i18n.tr().common.replace_all, self.canReplace(), true);
 
     // Summary under the box.
-    var buf: [64]u8 = undefined;
+    var buf: [128]u8 = undefined;
+    var total_buf: [16]u8 = undefined;
     const res = &self.results;
     const summary = if (!has_project)
-        "Open a folder to search in it"
+        t.open_folder_first
     else if (self.searched_for.items.len == 0)
         ""
     else if (res.matches.items.len == 0)
-        "No results"
+        t.no_results
     else
-        std.fmt.bufPrint(&buf, "{d}{s} results in {d} files", .{ res.matches.items.len, if (res.truncated) "+" else "", res.files.items.len }) catch "";
+        i18n.fill(&buf, t.results, .{ std.fmt.bufPrint(&total_buf, "{d}{s}", .{ res.matches.items.len, if (res.truncated) "+" else "" }) catch "", res.files.items.len });
     _ = font.drawFit(summary, r.x + SearchPanel.pad, b.y + (b.height - theme.font_size) / 2, b.x - 6, theme.popup_detail);
 
     const top = self.listTop();
@@ -54,7 +57,7 @@ pub fn draw(self: *const SearchPanel, font: Font, focus: u2, show_caret: bool, h
             file_icon.draw(f.path[base..], .{ .x = r.x + SearchPanel.pad + file_icon.radius, .y = y + row_height / 2 });
             var count_buf: [12]u8 = undefined;
             const count = std.fmt.bufPrint(&count_buf, "{d}", .{f.count}) catch "";
-            const count_x = r.x + r.width - SearchPanel.pad - @as(f32, @floatFromInt(count.len)) * font.cell_width;
+            const count_x = r.x + r.width - SearchPanel.pad - font.textWidth(count);
             const ty = y + (row_height - theme.font_size) / 2;
             var x = font.drawFit(f.path[base..], r.x + SearchPanel.pad + file_icon.radius * 2 + 8, ty, count_x - 8, theme.foreground);
             if (base > 0) _ = font.drawFit(f.path[0 .. base - 1], x + font.cell_width, ty, count_x - 8, theme.popup_detail);
@@ -87,7 +90,8 @@ pub fn drawRowButton(self: *const SearchPanel, font: Font, y: f32, row: SearchPa
 /// Tooltips for the toggles; drawn last so nothing covers them.
 pub fn drawTooltip(self: *const SearchPanel, font: Font) void {
     const mouse = rl.getMousePosition();
-    if (self.onToggle(mouse)) |o| controls.drawTooltip(font, if (o == .match_case) self.match_case_rect else self.whole_word_rect, o.tooltip());
+    var tip_buf: [128]u8 = undefined;
+    if (self.onToggle(mouse)) |o| controls.drawTooltip(font, if (o == .match_case) self.match_case_rect else self.whole_word_rect, o.tooltip(&tip_buf));
 }
 
 pub fn hovered(mouse: rl.Vector2, r: rl.Rectangle, y: f32) bool {

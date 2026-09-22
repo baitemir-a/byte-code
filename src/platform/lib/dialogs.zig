@@ -5,6 +5,7 @@ const std = @import("std");
 const builtin = @import("builtin");
 const Io = std.Io;
 const Allocator = std.mem.Allocator;
+const i18n = @import("../../i18n/i18n.zig");
 
 pub const Error = error{DialogUnavailable} || Allocator.Error;
 
@@ -12,26 +13,28 @@ pub const Choice = enum { save, discard, cancel };
 
 /// Asks for a file to open. Returns its path (caller frees), or null if cancelled.
 pub fn openFile(gpa: Allocator, io: Io, start_dir: ?[]const u8) Error!?[]u8 {
+    const title = i18n.tr().dialogs.open;
     return switch (builtin.os.tag) {
         .macos => if (start_dir) |d|
-            appleScript(gpa, io, &.{"POSIX path of (choose file with prompt \"Open\" default location (POSIX file (item 1 of argv)))"}, &.{d})
+            appleScript(gpa, io, &.{"POSIX path of (choose file with prompt (item 1 of argv) default location (POSIX file (item 2 of argv)))"}, &.{ title, d })
         else
-            appleScript(gpa, io, &.{"POSIX path of (choose file with prompt \"Open\")"}, &.{}),
-        .linux => zenity(gpa, io, &.{ "--file-selection", "--title=Open" }, start_dir, null),
-        .windows => win32.fileDialog(gpa, .open_file, "Open", start_dir, null),
+            appleScript(gpa, io, &.{"POSIX path of (choose file with prompt (item 1 of argv))"}, &.{title}),
+        .linux => zenityTitled(gpa, io, &.{"--file-selection"}, title, start_dir, null),
+        .windows => win32.fileDialog(gpa, .open_file, title, start_dir, null),
         else => error.DialogUnavailable,
     };
 }
 
 /// Asks for a folder. Returns its path (caller frees), or null if cancelled.
 pub fn openFolder(gpa: Allocator, io: Io, start_dir: ?[]const u8) Error!?[]u8 {
+    const title = i18n.tr().dialogs.open_folder;
     return switch (builtin.os.tag) {
         .macos => if (start_dir) |d|
-            appleScript(gpa, io, &.{"POSIX path of (choose folder with prompt \"Open Folder\" default location (POSIX file (item 1 of argv)))"}, &.{d})
+            appleScript(gpa, io, &.{"POSIX path of (choose folder with prompt (item 1 of argv) default location (POSIX file (item 2 of argv)))"}, &.{ title, d })
         else
-            appleScript(gpa, io, &.{"POSIX path of (choose folder with prompt \"Open Folder\")"}, &.{}),
-        .linux => zenity(gpa, io, &.{ "--file-selection", "--directory", "--title=Open Folder" }, start_dir, null),
-        .windows => win32.fileDialog(gpa, .open_folder, "Open Folder", start_dir, null),
+            appleScript(gpa, io, &.{"POSIX path of (choose folder with prompt (item 1 of argv))"}, &.{title}),
+        .linux => zenityTitled(gpa, io, &.{ "--file-selection", "--directory" }, title, start_dir, null),
+        .windows => win32.fileDialog(gpa, .open_folder, title, start_dir, null),
         else => error.DialogUnavailable,
     };
 }
@@ -39,30 +42,40 @@ pub fn openFolder(gpa: Allocator, io: Io, start_dir: ?[]const u8) Error!?[]u8 {
 /// Asks where to save. Returns the path (caller frees), or null if cancelled.
 /// The dialog itself confirms overwriting an existing file.
 pub fn saveFile(gpa: Allocator, io: Io, default_name: []const u8, start_dir: ?[]const u8) Error!?[]u8 {
+    const title = i18n.tr().dialogs.save_as;
     return switch (builtin.os.tag) {
         .macos => if (start_dir) |d|
-            appleScript(gpa, io, &.{"POSIX path of (choose file name with prompt \"Save As\" default name (item 1 of argv) default location (POSIX file (item 2 of argv)))"}, &.{ default_name, d })
+            appleScript(gpa, io, &.{"POSIX path of (choose file name with prompt (item 1 of argv) default name (item 2 of argv) default location (POSIX file (item 3 of argv)))"}, &.{ title, default_name, d })
         else
-            appleScript(gpa, io, &.{"POSIX path of (choose file name with prompt \"Save As\" default name (item 1 of argv))"}, &.{default_name}),
-        .linux => zenity(gpa, io, &.{ "--file-selection", "--save", "--confirm-overwrite", "--title=Save As" }, start_dir, default_name),
-        .windows => win32.fileDialog(gpa, .save_file, "Save As", start_dir, default_name),
+            appleScript(gpa, io, &.{"POSIX path of (choose file name with prompt (item 1 of argv) default name (item 2 of argv))"}, &.{ title, default_name }),
+        .linux => zenityTitled(gpa, io, &.{ "--file-selection", "--save", "--confirm-overwrite" }, title, start_dir, default_name),
+        .windows => win32.fileDialog(gpa, .save_file, title, start_dir, default_name),
         else => error.DialogUnavailable,
     };
 }
 
 /// "Save changes to <name>?" with Save / Don't Save / Cancel.
 pub fn askSaveChanges(gpa: Allocator, io: Io, name: []const u8) Error!Choice {
+    const t = i18n.tr();
+    const question = try i18n.fillAlloc(gpa, t.dialogs.save_changes, .{name});
+    defer gpa.free(question);
     const answer = switch (builtin.os.tag) {
         .macos => try appleScript(gpa, io, &.{
-            "set r to display dialog (\"Do you want to save the changes you made to \" & item 1 of argv & \"?\") " ++
-                "buttons {\"Don't Save\", \"Cancel\", \"Save\"} default button \"Save\" cancel button \"Cancel\" with icon caution",
+            "set r to display dialog (item 1 of argv) " ++
+                "buttons {item 2 of argv, item 3 of argv, item 4 of argv} default button (item 4 of argv) cancel button (item 3 of argv) with icon caution",
             "button returned of r",
-        }, &.{name}),
+        }, &.{ question, t.dialogs.dont_save, t.common.cancel, t.dialogs.save }),
         .linux => blk: {
-            const text = try std.fmt.allocPrint(gpa, "--text=Save changes to {s}?", .{name});
+            const text = try std.fmt.allocPrint(gpa, "--text={s}", .{question});
             defer gpa.free(text);
+            const ok = try std.fmt.allocPrint(gpa, "--ok-label={s}", .{t.dialogs.save});
+            defer gpa.free(ok);
+            const cancel = try std.fmt.allocPrint(gpa, "--cancel-label={s}", .{t.common.cancel});
+            defer gpa.free(cancel);
+            const extra = try std.fmt.allocPrint(gpa, "--extra-button={s}", .{t.dialogs.dont_save});
+            defer gpa.free(extra);
             // OK = Save; the extra button prints its label; anything else is Cancel.
-            const r = try runTool(gpa, io, &.{ "zenity", "--question", text, "--ok-label=Save", "--cancel-label=Cancel", "--extra-button=Don't Save" });
+            const r = try runTool(gpa, io, &.{ "zenity", "--question", text, ok, cancel, extra });
             if (r.ok) {
                 gpa.free(r.stdout);
                 return .save;
@@ -70,38 +83,37 @@ pub fn askSaveChanges(gpa: Allocator, io: Io, name: []const u8) Error!Choice {
             break :blk @as(?[]u8, r.stdout);
         },
         // A plain message box can't relabel its buttons: Yes / No / Cancel.
-        .windows => {
-            const text = try std.fmt.allocPrint(gpa, "Do you want to save the changes you made to {s}?", .{name});
-            defer gpa.free(text);
-            return switch (try win32.messageBox(gpa, "byte-code", text, win32.MB_YESNOCANCEL | win32.MB_ICONWARNING)) {
-                win32.IDYES => .save,
-                win32.IDNO => .discard,
-                else => .cancel,
-            };
+        .windows => return switch (try win32.messageBox(gpa, "byte-code", question, win32.MB_YESNOCANCEL | win32.MB_ICONWARNING)) {
+            win32.IDYES => .save,
+            win32.IDNO => .discard,
+            else => .cancel,
         },
         else => return error.DialogUnavailable,
     } orelse return .cancel;
     defer gpa.free(answer);
-    if (std.mem.eql(u8, answer, "Save")) return .save;
-    if (std.mem.eql(u8, answer, "Don't Save")) return .discard;
+    if (std.mem.eql(u8, answer, t.dialogs.save)) return .save;
+    if (std.mem.eql(u8, answer, t.dialogs.dont_save)) return .discard;
     return .cancel;
 }
 
 /// A warning with Cancel and an `ok_label` button. Returns true if the user
 /// chose `ok_label`.
 pub fn confirm(gpa: Allocator, io: Io, message: []const u8, detail: []const u8, ok_label: []const u8) Error!bool {
+    const cancel = i18n.tr().common.cancel;
     const answer = switch (builtin.os.tag) {
         .macos => try appleScript(gpa, io, &.{
             "set r to display alert (item 1 of argv) message (item 2 of argv) as warning " ++
-                "buttons {\"Cancel\", item 3 of argv} default button (item 3 of argv) cancel button \"Cancel\"",
+                "buttons {item 4 of argv, item 3 of argv} default button (item 3 of argv) cancel button (item 4 of argv)",
             "button returned of r",
-        }, &.{ message, detail, ok_label }),
+        }, &.{ message, detail, ok_label, cancel }),
         .linux => blk: {
             const text = try std.fmt.allocPrint(gpa, "--text={s}\n\n{s}", .{ message, detail });
             defer gpa.free(text);
             const ok = try std.fmt.allocPrint(gpa, "--ok-label={s}", .{ok_label});
             defer gpa.free(ok);
-            break :blk try zenity(gpa, io, &.{ "--question", "--icon=dialog-warning", text, ok }, null, null);
+            const cancel_arg = try std.fmt.allocPrint(gpa, "--cancel-label={s}", .{cancel});
+            defer gpa.free(cancel_arg);
+            break :blk try zenity(gpa, io, &.{ "--question", "--icon=dialog-warning", text, ok, cancel_arg }, null, null);
         },
         // OK stands in for `ok_label`, which a message box can't show.
         .windows => {
@@ -113,6 +125,16 @@ pub fn confirm(gpa: Allocator, io: Io, message: []const u8, detail: []const u8, 
     } orelse return false;
     gpa.free(answer);
     return true;
+}
+
+/// A zenity dialog with a window title.
+fn zenityTitled(gpa: Allocator, io: Io, flags: []const []const u8, title: []const u8, start_dir: ?[]const u8, file_name: ?[]const u8) Error!?[]u8 {
+    const title_arg = try std.fmt.allocPrint(gpa, "--title={s}", .{title});
+    defer gpa.free(title_arg);
+    var args: [8][]const u8 = undefined;
+    @memcpy(args[0..flags.len], flags);
+    args[flags.len] = title_arg;
+    return zenity(gpa, io, args[0 .. flags.len + 1], start_dir, file_name);
 }
 
 /// Moves a file or folder to the system trash, where it can be restored.

@@ -5,6 +5,7 @@ const theme = @import("../theme/lib/theme.zig");
 const Font = @import("../Font.zig");
 const core = @import("core");
 const WelcomePage = @import("WelcomePage.zig");
+const i18n = @import("../../i18n/i18n.zig");
 
 pub fn draw(self: *const WelcomePage, font: Font, projects: []const core.Projects.Entry) void {
     const x = self.origin.x;
@@ -12,19 +13,20 @@ pub fn draw(self: *const WelcomePage, font: Font, projects: []const core.Project
 
     drawText(font, WelcomePage.title, x, y, Font.heading_size, theme.foreground);
     y += theme.font_size * 2.4 + 8;
-    drawText(font, WelcomePage.subtitle, x, y, theme.font_size, theme.popup_detail);
+    const t = i18n.tr().welcome;
+    drawText(font, t.subtitle, x, y, theme.font_size, theme.popup_detail);
 
-    drawHeading(font, "Start", x, self.actionsTop() - theme.line_height - 4);
+    drawHeading(font, t.start, x, self.actionsTop() - theme.line_height - 4);
     for (WelcomePage.actions, self.action_rects, 0..) |a, r, i| {
         if (self.hovered_action == i) rl.drawRectangleRec(r, theme.tab_hover);
-        drawText(font, a.label, x, textY(r), theme.font_size, theme.accent);
+        drawText(font, WelcomePage.actionLabel(a), x, textY(r), theme.font_size, theme.accent);
     }
 
     for (self.rows[0..self.row_count], 0..) |row, i| {
         // Each section's heading sits above its first row.
         const heading_y = row.rect.y - theme.line_height - 2;
-        if (i == 0 and self.favorites > 0) drawHeading(font, WelcomePage.favorites_heading, x, heading_y);
-        if (i == self.favorites) drawHeading(font, WelcomePage.recent_heading, x, heading_y);
+        if (i == 0 and self.favorites > 0) drawHeading(font, t.favorites, x, heading_y);
+        if (i == self.favorites) drawHeading(font, t.recent, x, heading_y);
         const entry = projects[row.entry];
         if (self.hovered_row == i) rl.drawRectangleRec(row.rect, theme.tab_hover);
         drawStar(
@@ -43,7 +45,7 @@ pub fn draw(self: *const WelcomePage, font: Font, projects: []const core.Project
         }
     }
 
-    drawText(font, WelcomePage.drop_hint, x, self.hint_y, theme.font_size, theme.popup_detail);
+    drawText(font, t.drop_hint, x, self.hint_y, theme.font_size, theme.popup_detail);
 }
 
 fn drawHeading(font: Font, s: []const u8, x: f32, y: f32) void {
@@ -76,11 +78,6 @@ fn drawStar(c: rl.Vector2, filled: bool, lit: bool) void {
     }
 }
 
-fn drawText(font: Font, s: []const u8, x0: f32, y: f32, size: f32, color: rl.Color) void {
-    const cw = font.cell_width * size / theme.font_size;
-    var x = x0;
-    for (s) |c| {
-        if (c != ' ') font.drawCodepointSized(c, x, y, size, color);
-        x += cw;
-    }
+fn drawText(font: Font, s: []const u8, x: f32, y: f32, size: f32, color: rl.Color) void {
+    _ = font.drawText(s, x, y, size, color);
 }

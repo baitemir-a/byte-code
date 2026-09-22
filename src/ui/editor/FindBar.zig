@@ -12,6 +12,7 @@ const TextField = @import("../widgets/TextField.zig");
 const Mods = @import("../../input/Keymap.zig").Mods;
 const controls = @import("../widgets/lib/search_controls.zig");
 const FindBar_draw = @import("FindBar_draw.zig");
+const i18n = @import("../../i18n/i18n.zig");
 
 const Buffer = core.Buffer;
 const FindBar = @This();
@@ -241,7 +242,7 @@ pub fn layout(self: *FindBar, view: *const View) void {
     const side_x = self.query_rect.x + field_w + pad;
     self.match_case_rect = .{ .x = side_x, .y = self.query_rect.y, .width = tw, .height = h };
     self.whole_word_rect = .{ .x = side_x + tw + pad, .y = self.query_rect.y, .width = tw, .height = h };
-    const one_w = controls.buttonWidth(view.font, "Replace");
+    const one_w = controls.buttonWidth(view.font, i18n.tr().common.replace);
     self.replace_one_rect = .{ .x = side_x, .y = self.replace_rect.y, .width = one_w, .height = h };
     const all_x = side_x + one_w + pad;
     self.replace_all_rect = .{ .x = all_x, .y = self.replace_rect.y, .width = @max(0, self.rect.x + width - pad - all_x), .height = h };

@@ -1,5 +1,6 @@
 //! One open tab: a file being edited, or the welcome page.
 const std = @import("std");
+const i18n = @import("../i18n/i18n.zig");
 const rl = @import("raylib");
 const core = @import("core");
 
@@ -61,9 +62,9 @@ pub fn load(self: *Tab, gpa: std.mem.Allocator, io: std.Io, path: []const u8) !v
 
 pub fn name(self: *const Tab) []const u8 {
     return switch (self.kind) {
-        .welcome => "Welcome",
-        .settings => "Settings",
-        .help => "Help",
+        .welcome => i18n.tr().tabs.welcome,
+        .settings => i18n.tr().tabs.settings,
+        .help => i18n.tr().tabs.help,
         .file => self.document.name(),
     };
 }

@@ -48,12 +48,17 @@ build() { # target, prefix
     zig build -Doptimize=ReleaseSafe -Dtarget="$1" --prefix "$2"
 }
 
-# Shipped with every package: the bundled DejaVu font's license asks for it.
+# Shipped with every package: the bundled DejaVu font's and Lucide icons'
+# licenses ask for it.
 LICENSES="$BUILD/THIRD-PARTY-LICENSES.txt"
 {
     echo "byte code includes the DejaVu Sans Mono font, under this license:"
     echo
     cat "$ROOT/src/ui/fonts/DejaVu-LICENSE.txt"
+    echo
+    echo "byte code includes the Lucide icons (lucide.dev), under this license:"
+    echo
+    cat "$ROOT/src/ui/fonts/Lucide-LICENSE.txt"
 } > "$LICENSES"
 cp "$ROOT/scripts/README.txt" "$BUILD/README.txt"
 

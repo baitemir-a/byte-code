@@ -5,6 +5,7 @@ const Keymap = @import("../../input/Keymap.zig");
 const keymap = @import("../../input/lib/keymap.zig");
 const HelpPage = @import("../../ui/pages/HelpPage.zig");
 const App = @import("../App.zig");
+const i18n = @import("../../i18n/i18n.zig");
 
 pub fn openHelp(self: *App) !void {
     for (self.tabs.items, 0..) |t, i| {
@@ -61,6 +62,6 @@ pub fn bindShortcut(self: *App, action: Keymap.Action, chord: ?Keymap.Chord) voi
 
 fn saveKeys(self: *App) void {
     self.keys.save(self.gpa, self.io, std.Io.Dir.cwd(), self.keys_path) catch |err| {
-        self.reportError("Couldn't save keyboard shortcuts", self.keys_path, err);
+        self.reportError(i18n.tr().errors.save_shortcuts, self.keys_path, err);
     };
 }

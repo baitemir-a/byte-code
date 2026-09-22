@@ -11,6 +11,7 @@ const TextField = @import("../widgets/TextField.zig");
 const file_icon = @import("../widgets/lib/file_icon.zig");
 const controls = @import("../widgets/lib/search_controls.zig");
 const SearchPanel_draw = @import("SearchPanel_draw.zig");
+const i18n = @import("../../i18n/i18n.zig");
 
 const SearchPanel = @This();
 
@@ -78,7 +79,7 @@ pub fn layout(self: *SearchPanel, rect: rl.Rectangle, font: Font) void {
     self.whole_word_rect = self.match_case_rect;
     self.whole_word_rect.x += tw + 4;
     self.replace_rect = .{ .x = rect.x + pad, .y = self.field_rect.y + h + 6, .width = rect.width - 2 * pad, .height = h };
-    const button_w = 11 * font.cell_width + 16; // "Replace All"
+    const button_w = controls.buttonWidth(font, i18n.tr().common.replace_all);
     self.replace_all_rect = .{ .x = rect.x + rect.width - pad - button_w, .y = self.summaryY(), .width = button_w, .height = theme.line_height + 4 };
     self.query.layout(self.field_rect.width, font);
     self.replacement.layout(self.replace_rect.width, font);
@@ -135,8 +136,8 @@ pub fn rowButton(self: *const SearchPanel, font: Font, row_top: f32, row: Row) r
 
 pub fn rowButtonLabel(row: Row) []const u8 {
     return switch (row) {
-        .file => "Replace all",
-        .match => "Replace",
+        .file => i18n.tr().search.replace_in_file,
+        .match => i18n.tr().search.replace_match,
     };
 }
 

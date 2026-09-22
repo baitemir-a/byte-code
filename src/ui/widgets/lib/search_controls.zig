@@ -5,6 +5,7 @@ const builtin = @import("builtin");
 const rl = @import("raylib");
 const theme = @import("../../theme/lib/theme.zig");
 const Font = @import("../../Font.zig");
+const i18n = @import("../../../i18n/i18n.zig");
 
 pub const Option = enum {
     match_case,
@@ -17,11 +18,13 @@ pub const Option = enum {
         };
     }
 
-    pub fn tooltip(self: Option) []const u8 {
+    /// Its name and shortcut, into `buf`.
+    pub fn tooltip(self: Option, buf: []u8) []const u8 {
         const mac = builtin.os.tag == .macos;
+        const t = i18n.tr().find;
         return switch (self) {
-            .match_case => if (mac) "Match Case (Cmd+Option+C)" else "Match Case (Alt+C)",
-            .whole_word => if (mac) "Match Whole Word (Cmd+Option+W)" else "Match Whole Word (Alt+W)",
+            .match_case => i18n.fill(buf, t.match_case_tooltip, .{if (mac) "Cmd+Option+C" else "Alt+C"}),
+            .whole_word => i18n.fill(buf, t.whole_word_tooltip, .{if (mac) "Cmd+Option+W" else "Alt+W"}),
         };
     }
 };
@@ -33,7 +36,7 @@ pub fn toggleWidth(font: Font) f32 {
 
 /// Width of a button showing `label`.
 pub fn buttonWidth(font: Font, label: []const u8) f32 {
-    return @as(f32, @floatFromInt(label.len)) * font.cell_width + 16;
+    return font.textWidth(label) + 16;
 }
 
 /// An option toggle: filled with the accent while on.
@@ -70,14 +73,14 @@ pub fn drawButton(font: Font, r: rl.Rectangle, label: []const u8, enabled: bool,
     rl.drawRectangleRounded(r, 0.25, 8, theme.copy(fill));
     if (!enabled or !primary) rl.drawRectangleRoundedLinesEx(r, 0.25, 8, 1, theme.popup_border);
     const color = if (!enabled) theme.popup_detail else if (primary) theme.background else theme.foreground;
-    const w = @as(f32, @floatFromInt(label.len)) * font.cell_width;
+    const w = font.textWidth(label);
     _ = font.drawFit(label, r.x + @max(4, (r.width - w) / 2), r.y + (r.height - theme.font_size) / 2, r.x + r.width, color);
 }
 
 /// A one-line tooltip under `anchor`, kept inside the window.
 pub fn drawTooltip(font: Font, anchor: rl.Rectangle, text: []const u8) void {
     const window_width = @as(f32, @floatFromInt(rl.getScreenWidth())) / theme.zoom;
-    const w = @as(f32, @floatFromInt(text.len)) * font.cell_width + 12;
+    const w = font.textWidth(text) + 12;
     const h = theme.line_height;
     const x = std.math.clamp(anchor.x + anchor.width / 2 - w / 2, 4, @max(4, window_width - w - 4));
     const r: rl.Rectangle = .{ .x = x, .y = anchor.y + anchor.height + 6, .width = w, .height = h };

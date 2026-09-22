@@ -4,12 +4,13 @@ const core = @import("core");
 const keymap = @import("../../input/lib/keymap.zig");
 const clipboard = @import("clipboard.zig");
 const App = @import("../App.zig");
+const i18n = @import("../../i18n/i18n.zig");
 
 pub fn execute(self: *App, cmd: core.Command) !void {
     // Commands that work anywhere, including the welcome tab.
     switch (cmd) {
-        .open => return self.openWithDialog() catch |err| self.reportError("Couldn't open file", "", err),
-        .open_folder => return self.openFolderWithDialog() catch |err| self.reportError("Couldn't open folder", "", err),
+        .open => return self.openWithDialog() catch |err| self.reportError(i18n.tr().errors.open_file, "", err),
+        .open_folder => return self.openFolderWithDialog() catch |err| self.reportError(i18n.tr().errors.open_folder, "", err),
         .new_file => return self.newFile(),
         .close_tab => {
             _ = try self.closeTab(self.active);
@@ -92,7 +93,7 @@ pub fn execute(self: *App, cmd: core.Command) !void {
     switch (cmd) {
         .copy, .cut => try clipboard.copyOrCut(self.gpa, b, cmd == .cut),
         .paste => if (clipboard.getClipboard()) |s| try clipboard.pasteAtCursors(self.gpa, b, s),
-        .save, .save_as => _ = self.save(cmd == .save_as) catch |err| self.reportError("Couldn't save file", "", err),
+        .save, .save_as => _ = self.save(cmd == .save_as) catch |err| self.reportError(i18n.tr().errors.save_file, "", err),
         .complete => {},
         .expand_selection => try self.expandSelection(b),
         .shrink_selection => self.shrinkSelection(b),

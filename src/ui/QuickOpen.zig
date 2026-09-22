@@ -7,6 +7,7 @@ const theme = @import("theme/lib/theme.zig");
 const Font = @import("Font.zig");
 const TextField = @import("widgets/TextField.zig");
 const file_icon = @import("widgets/lib/file_icon.zig");
+const i18n = @import("../i18n/i18n.zig");
 
 const QuickOpen = @This();
 
@@ -98,12 +99,12 @@ pub fn draw(self: *const QuickOpen, search: *const core.FileSearch, font: Font, 
     rl.drawRectangleRec(.{ .x = r.x + 3, .y = r.y + 5, .width = r.width, .height = r.height }, theme.popup_shadow);
     rl.drawRectangleRec(r, theme.popup_background);
     rl.drawRectangleLinesEx(r, 1, theme.popup_border);
-    self.query.draw(self.field_rect, font, "Go to file...", true, show_caret);
+    self.query.draw(self.field_rect, font, i18n.tr().quick_open.placeholder, true, show_caret);
 
     const cw = font.cell_width;
     const top = self.listTop();
     if (self.results.items.len == 0) {
-        const msg = if (!has_project) "Open a folder first to find files in it" else "No matching files";
+        const msg = if (!has_project) i18n.tr().quick_open.open_folder_first else i18n.tr().quick_open.no_matches;
         _ = drawText(font, msg, r.x + pad + 4, top + (row_height - theme.font_size) / 2, theme.popup_detail, 0, 0);
         return;
     }

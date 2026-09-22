@@ -7,24 +7,27 @@ const core = @import("core");
 const theme = @import("../theme/lib/theme.zig");
 const Font = @import("../Font.zig");
 const WelcomePage_draw = @import("WelcomePage_draw.zig");
+const i18n = @import("../../i18n/i18n.zig");
 
 const WelcomePage = @This();
 
-pub const Action = struct { label: []const u8, command: core.Command };
+/// The "Start" rows.
+pub const actions = [_]core.Command{ .open, .open_folder, .new_file, .open_settings, .open_help };
 
-pub const actions = [_]Action{
-    .{ .label = "Open File...", .command = .open },
-    .{ .label = "Open Folder...", .command = .open_folder },
-    .{ .label = "New File", .command = .new_file },
-    .{ .label = "Settings...", .command = .open_settings },
-    .{ .label = "Keyboard Shortcuts...", .command = .open_help },
-};
+/// A "Start" row's text, in the chosen language.
+pub fn actionLabel(command: core.Command) []const u8 {
+    const t = i18n.tr().welcome;
+    return switch (command) {
+        .open => t.open_file,
+        .open_folder => t.open_folder,
+        .new_file => t.new_file,
+        .open_settings => t.settings,
+        .open_help => t.shortcuts,
+        else => unreachable,
+    };
+}
 
 pub const title = "byte code";
-pub const subtitle = "A lightweight code editor";
-pub const drop_hint = "You can also drop files or folders onto this window.";
-pub const favorites_heading = "Favorites";
-pub const recent_heading = "Recent Folders";
 pub const content_cols = 56;
 /// Rows a section lists at most; a short window fits fewer still.
 pub const max_section_rows = 6;
@@ -130,7 +133,7 @@ fn layoutProjects(self: *WelcomePage, area: rl.Rectangle, w: f32, projects: []co
 /// What a click at `p` asks for, if anything.
 pub fn hitTest(self: *const WelcomePage, p: rl.Vector2) ?Hit {
     for (self.action_rects, actions) |r, a| {
-        if (rl.checkCollisionPointRec(p, r)) return .{ .command = a.command };
+        if (rl.checkCollisionPointRec(p, r)) return .{ .command = a };
     }
     for (self.rows[0..self.row_count]) |row| {
         if (rl.checkCollisionPointRec(p, row.star)) return .{ .favorite = row.entry };

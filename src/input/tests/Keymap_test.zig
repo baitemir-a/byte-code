@@ -109,7 +109,7 @@ test "clearing a combination leaves the action unbound" {
 test "every action has a label and shows up once" {
     var seen = [_]bool{false} ** Keymap.count;
     for (Keymap.entries) |e| {
-        try testing.expect(e.label.len > 0);
+        try testing.expect(Keymap.label(e.action).len > 0);
         try testing.expect(!seen[@intFromEnum(e.action)]);
         seen[@intFromEnum(e.action)] = true;
     }

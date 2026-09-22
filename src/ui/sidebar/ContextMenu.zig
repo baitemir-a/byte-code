@@ -6,11 +6,12 @@ const Font = @import("../Font.zig");
 
 const ContextMenu = @This();
 
-pub const max_items = 8;
+/// Enough for the language menu.
+pub const max_items = 12;
 /// Labels are copied in, so they can be built on the spot (a file's path
 /// and line, say). A longer one keeps its end, where the telling part of
-/// a path is.
-pub const max_label = 44;
+/// a path is. In bytes: text in other scripts takes 2-3 per character.
+pub const max_label = 96;
 const row_height = theme.line_height + 4;
 const pad: f32 = 12;
 
@@ -24,9 +25,12 @@ hovered: ?usize = null,
 /// Opens at `at`, kept inside `bounds`.
 pub fn open(self: *ContextMenu, labels: []const []const u8, at: rl.Vector2, bounds: rl.Vector2, font: Font) void {
     self.count = @min(labels.len, max_items);
-    var longest: usize = 0;
-    for (labels[0..self.count], 0..) |l, i| longest = @max(longest, self.setLabel(i, l));
-    const w = @as(f32, @floatFromInt(longest)) * font.cell_width + 2 * pad;
+    var widest: f32 = 0;
+    for (labels[0..self.count], 0..) |l, i| {
+        const kept = self.setLabel(i, l);
+        widest = @max(widest, font.textWidth(self.labels[i][0..kept]));
+    }
+    const w = widest + 2 * pad;
     const h = @as(f32, @floatFromInt(self.count)) * row_height + 4;
     self.rect = .{
         .x = @min(at.x, bounds.x - w - 2),
@@ -46,11 +50,14 @@ fn setLabel(self: *ContextMenu, i: usize, label: []const u8) usize {
         return label.len;
     }
     const dots = "...";
-    const tail = label[label.len - (max_label - dots.len) ..];
+    // Starting on a whole character, not inside one.
+    var from = label.len - (max_label - dots.len);
+    while (from < label.len and label[from] & 0xC0 == 0x80) from += 1;
+    const tail = label[from..];
     @memcpy(self.labels[i][0..dots.len], dots);
-    @memcpy(self.labels[i][dots.len..max_label], tail);
-    self.label_lens[i] = max_label;
-    return max_label;
+    @memcpy(self.labels[i][dots.len..][0..tail.len], tail);
+    self.label_lens[i] = dots.len + tail.len;
+    return dots.len + tail.len;
 }
 
 pub fn close(self: *ContextMenu) void {
@@ -82,11 +89,7 @@ pub fn draw(self: *const ContextMenu, font: Font) void {
         const label = chars[0..len];
         const top = r.y + 2 + @as(f32, @floatFromInt(i)) * row_height;
         if (self.hovered == i) rl.drawRectangleRec(.{ .x = r.x + 2, .y = top, .width = r.width - 4, .height = row_height }, theme.accentDim(0.35));
-        var x = r.x + pad;
         const y = top + (row_height - theme.font_size) / 2;
-        for (label) |c| {
-            if (c != ' ') font.drawCodepoint(c, x, y, theme.foreground);
-            x += font.cell_width;
-        }
+        _ = font.drawText(label, r.x + pad, y, theme.font_size, theme.foreground);
     }
 }

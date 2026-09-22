@@ -6,6 +6,7 @@ const core = @import("core");
 const dialogs = @import("../../platform/lib/dialogs.zig");
 const Sidebar = @import("../../ui/sidebar/Sidebar.zig");
 const App = @import("../App.zig");
+const i18n = @import("../../i18n/i18n.zig");
 
 /// Shows the sidebar's name box for a new file or folder in `folder`.
 pub fn startCreate(self: *App, kind: core.FileTree.EntryKind, folder: u32) !void {
@@ -60,6 +61,7 @@ pub fn runMenuAction(self: *App, action: App.MenuAction) !void {
         // Ctrl+click's list of where a name is used.
         .go_to_ref => |i| if (i < self.refs.items.len) try self.openRef(self.refs.items[i]),
         .all_refs => self.showRefsInSearch(),
+        .set_language => |l| try self.setLanguage(l),
     }
 }
 
@@ -76,7 +78,7 @@ pub fn finishRename(self: *App, node: u32) !void {
     defer self.gpa.free(old_path);
     const name = self.sidebar.name.text();
     const new_path = project.rename(self.io, node, name) catch |err| {
-        return self.reportError("Couldn't rename", name, err);
+        return self.reportError(i18n.tr().errors.rename, name, err);
     };
     defer self.gpa.free(new_path);
     self.sidebar.cancelInput();
@@ -158,7 +160,7 @@ pub fn moveEntry(self: *App, node: u32, folder: u32) !void {
     const old_path = try self.gpa.dupe(u8, project.node(node).path);
     defer self.gpa.free(old_path);
     const new_path = project.move(self.io, node, folder) catch |err| {
-        return self.reportError("Couldn't move", old_path, err);
+        return self.reportError(i18n.tr().errors.move, old_path, err);
     };
     defer self.gpa.free(new_path);
     try self.retargetTabs(old_path, new_path);
@@ -172,17 +174,18 @@ pub fn deleteEntry(self: *App, node: u32) !void {
     const n = project.node(node);
     const path = try self.gpa.dupe(u8, n.path);
     defer self.gpa.free(path);
-    const question = try std.fmt.allocPrint(self.gpa, "Delete \"{s}\"?", .{n.name});
+    const text = i18n.tr().dialogs;
+    const question = try i18n.fillAlloc(self.gpa, text.delete_question, .{n.name});
     defer self.gpa.free(question);
-    const detail = if (n.is_dir) "The folder and everything in it will be moved to the Trash." else "It will be moved to the Trash.";
+    const detail = if (n.is_dir) text.delete_folder_detail else text.delete_file_detail;
 
-    if (!(dialogs.confirm(self.gpa, self.io, question, detail, "Move to Trash") catch false)) return;
+    if (!(dialogs.confirm(self.gpa, self.io, question, detail, text.move_to_trash) catch false)) return;
     if (dialogs.moveToTrash(self.gpa, self.io, path)) {
         try self.refreshProject();
     } else |_| {
-        const permanent = dialogs.confirm(self.gpa, self.io, question, "It can't be moved to the Trash. Delete it permanently? This can't be undone.", "Delete Permanently") catch false;
+        const permanent = dialogs.confirm(self.gpa, self.io, question, text.cant_trash_detail, text.delete_permanently) catch false;
         if (!permanent) return;
-        project.deletePermanently(self.io, node) catch |err| return self.reportError("Couldn't delete", path, err);
+        project.deletePermanently(self.io, node) catch |err| return self.reportError(i18n.tr().errors.delete, path, err);
     }
 
     var i = self.tabs.items.len;
@@ -201,7 +204,7 @@ pub fn finishCreate(self: *App) !void {
     const input = self.sidebar.input orelse return;
     const name = self.sidebar.name.text();
     const path = project.create(self.io, input.folder, name, input.kind) catch |err| {
-        const what = if (input.kind == .file) "Couldn't create file" else "Couldn't create folder";
+        const what = if (input.kind == .file) i18n.tr().errors.create_file else i18n.tr().errors.create_folder;
         return self.reportError(what, name, err);
     };
     defer self.gpa.free(path);
@@ -217,7 +220,7 @@ pub fn openFromTree(self: *App, path: []const u8) !void {
     // `path` lives in the tree, which may be refreshed (freed) meanwhile.
     const owned = try self.gpa.dupe(u8, path);
     defer self.gpa.free(owned);
-    self.openFile(owned) catch |err| self.reportError("Couldn't open file", owned, err);
+    self.openFile(owned) catch |err| self.reportError(i18n.tr().errors.open_file, owned, err);
 }
 
 /// Expands the sidebar down to the active file and scrolls to it.

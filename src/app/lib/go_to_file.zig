@@ -4,12 +4,13 @@ const core = @import("core");
 const QuickOpen = @import("../../ui/QuickOpen.zig");
 const App = @import("../App.zig");
 const clipboard = @import("clipboard.zig");
+const i18n = @import("../../i18n/i18n.zig");
 
 /// Cmd+P: lists the project's files (read fresh each time) to pick from.
 pub fn openQuickOpen(self: *App) !void {
     self.file_search.files.clearRetainingCapacity();
     if (self.project) |*p| self.file_search.scan(self.io, p.root().path) catch |err| {
-        self.reportError("Couldn't list the project's files", p.root().path, err);
+        self.reportError(i18n.tr().errors.list_files, p.root().path, err);
     };
     try self.quick_open.open(&self.file_search);
     self.completion.close();
@@ -47,5 +48,5 @@ pub fn openQuickOpenSelection(self: *App) !void {
     const path = try std.fs.path.join(self.gpa, &.{ project.root().path, self.file_search.files.items[file] });
     defer self.gpa.free(path);
     self.quick_open.close();
-    self.openFile(path) catch |err| self.reportError("Couldn't open file", path, err);
+    self.openFile(path) catch |err| self.reportError(i18n.tr().errors.open_file, path, err);
 }

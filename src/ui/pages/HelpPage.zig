@@ -5,6 +5,7 @@ const std = @import("std");
 const rl = @import("raylib");
 const theme = @import("../theme/lib/theme.zig");
 const Font = @import("../Font.zig");
+const i18n = @import("../../i18n/i18n.zig");
 const Keymap = @import("../../input/Keymap.zig");
 const HelpPage_draw = @import("HelpPage_draw.zig");
 
@@ -39,9 +40,6 @@ pub const Message = union(enum) {
     took_from: Keymap.Action,
 };
 
-pub const title = "Keyboard Shortcuts";
-pub const hint = "Click a shortcut, then press the keys. Esc cancels, Backspace clears it.";
-pub const capture_label = "Press keys...";
 pub const unbound_label = "—";
 
 const content_cols = 68;
@@ -87,7 +85,8 @@ pub fn layout(self: *HelpPage, area: rl.Rectangle, font: Font) void {
     self.max_scroll = @max(0, self.contentHeight() - area.height);
     self.scroll = std.math.clamp(self.scroll, 0, self.max_scroll);
 
-    self.reset_all_rect = .{ .x = x + w - 110, .y = self.origin.y - self.scroll, .width = 110, .height = button_height };
+    const reset_all_w = @max(110, font.textWidth(i18n.tr().help.reset_all) + 16);
+    self.reset_all_rect = .{ .x = x + w - reset_all_w, .y = self.origin.y - self.scroll, .width = reset_all_w, .height = button_height };
 
     var y = self.origin.y + headerHeight() - self.scroll;
     var group: ?Keymap.Group = null;
@@ -128,7 +127,7 @@ pub fn chordRect(row: rl.Rectangle, font: Font) rl.Rectangle {
 
 pub fn resetRect(row: rl.Rectangle, font: Font) rl.Rectangle {
     const chord = chordRect(row, font);
-    const w = reset_cols * font.cell_width;
+    const w = @max(reset_cols * font.cell_width, font.textWidth(i18n.tr().common.reset) + 2 * font.cell_width);
     return .{ .x = chord.x - w - 8, .y = row.y + 2, .width = w, .height = row.height - 4 };
 }
 

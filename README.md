@@ -152,6 +152,16 @@ Stored as JSON, and editable by hand:
 - Linux: `~/.config/byte-code/settings.json` (or `$XDG_CONFIG_HOME`)
 - Windows: `%APPDATA%\byte-code\settings.json`
 
+## Languages
+
+Settings → Language switches the app's own text between English, Russian,
+German, Kyrgyz, Turkish, Spanish, Simplified Chinese, Japanese, French,
+Italian, Portuguese (Brazil) and Korean. Each language is a file in
+`src/i18n/lang/`, and a test fails if one misses a string or a `{1}`-style
+placeholder. Chinese, Japanese and Korean text uses a font the system
+already has (Hiragino / Apple SD Gothic Neo on macOS, Microsoft YaHei /
+Yu Gothic / Malgun Gothic on Windows, Noto Sans CJK on Linux).
+
 ## Project layout
 
 Each folder has the same shape:

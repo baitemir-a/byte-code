@@ -9,6 +9,7 @@ const rl = @import("raylib");
 const core = @import("core");
 const ContextMenu = @import("../../ui/sidebar/ContextMenu.zig");
 const App = @import("../App.zig");
+const i18n = @import("../../i18n/i18n.zig");
 
 /// Uses kept for the menu; far more than it can list, but "All uses"
 /// hands the rest to the Search view anyway.
@@ -54,7 +55,7 @@ pub fn openRef(self: *App, ref: App.Ref) !void {
         if (f >= files.len) return; // the search was re-run under us
         const path = try std.fs.path.join(self.gpa, &.{ project.root().path, files[f].path });
         defer self.gpa.free(path);
-        self.openFile(path) catch |err| return self.reportError("Couldn't open file", path, err);
+        self.openFile(path) catch |err| return self.reportError(i18n.tr().errors.open_file, path, err);
     }
     const buf = self.buf();
     if (ref.end > buf.items().len) return; // the file changed since the search
@@ -154,7 +155,7 @@ fn openRefsMenu(self: *App, at: rl.Vector2) void {
     }
     if (all) {
         self.menu_actions[shown] = .all_refs;
-        labels[shown] = std.fmt.bufPrint(&rows[shown], "All {d} uses...", .{self.refs.items.len}) catch "All uses...";
+        labels[shown] = i18n.fill(&rows[shown], i18n.tr().refs.all_uses, .{self.refs.items.len});
     }
     self.menu_node = null;
     self.menu.open(labels[0 .. shown + @as(usize, if (all) 1 else 0)], at, App.windowSize(), self.view.font);
@@ -162,7 +163,7 @@ fn openRefsMenu(self: *App, at: rl.Vector2) void {
 
 /// "src/app/App.zig:214", or "line 214" for a place in the current file.
 fn refLabel(self: *App, ref: App.Ref, out: []u8) []const u8 {
-    const file = ref.file orelse return std.fmt.bufPrint(out, "line {d}", .{ref.line + 1}) catch "this file";
+    const file = ref.file orelse return i18n.fill(out, i18n.tr().refs.line, .{ref.line + 1});
     const files = self.search_panel.results.files.items;
     if (file >= files.len) return "?";
     return std.fmt.bufPrint(out, "{s}:{d}", .{ files[file].path, ref.line + 1 }) catch files[file].path;

@@ -9,6 +9,7 @@ const std = @import("std");
 const builtin = @import("builtin");
 const rl = @import("raylib");
 const core = @import("core");
+const i18n = @import("../i18n/i18n.zig");
 
 const Keymap = @This();
 const is_mac = builtin.os.tag == .macos;
@@ -223,21 +224,23 @@ pub const Group = enum {
     cursor,
     selection,
 
+    /// The Help tab's heading for it, in the chosen language.
     pub fn title(self: Group) []const u8 {
         return switch (self) {
-            .files => "Files",
-            .views => "Tabs and views",
-            .find => "Find",
-            .editing => "Editing",
-            .cursor => "Moving the cursor",
-            .selection => "Selecting",
+            inline else => |g| @field(i18n.tr().shortcut_groups, @tagName(g)),
         };
     }
 };
 
+/// What the Help tab calls an action, in the chosen language.
+pub fn label(action: Action) []const u8 {
+    return switch (action) {
+        inline else => |a| @field(i18n.tr().actions, @tagName(a)),
+    };
+}
+
 pub const Entry = struct {
     action: Action,
-    label: []const u8,
     group: Group,
     /// What it's bound to out of the box; null for actions that start
     /// without a shortcut.
@@ -273,167 +276,152 @@ const shift: Mods = .{ .shift = true };
 
 pub const entries = [_]Entry{
     // ----------------------------------------------------------- files
-    .{ .action = .open, .label = "Open File...", .group = .files, .default = primary(.o, .{}) },
-    .{ .action = .open_folder, .label = "Open Folder...", .group = .files, .default = primary(.o, shift) },
-    .{ .action = .new_file, .label = "New File", .group = .files, .default = primary(.n, .{}) },
-    .{ .action = .save, .label = "Save", .group = .files, .default = primary(.s, .{}) },
-    .{ .action = .save_as, .label = "Save As...", .group = .files, .default = primary(.s, shift) },
-    .{ .action = .close_folder, .label = "Close Folder", .group = .files, .default = primary(.k, .{}) },
-    .{ .action = .open_settings, .label = "Settings", .group = .files, .default = primary(.comma, .{}) },
-    .{ .action = .open_help, .label = "Keyboard Shortcuts", .group = .files, .default = null },
-    .{ .action = .quick_open, .label = "Go to File", .group = .files, .default = primary(.p, .{}) },
+    .{ .action = .open, .group = .files, .default = primary(.o, .{}) },
+    .{ .action = .open_folder, .group = .files, .default = primary(.o, shift) },
+    .{ .action = .new_file, .group = .files, .default = primary(.n, .{}) },
+    .{ .action = .save, .group = .files, .default = primary(.s, .{}) },
+    .{ .action = .save_as, .group = .files, .default = primary(.s, shift) },
+    .{ .action = .close_folder, .group = .files, .default = primary(.k, .{}) },
+    .{ .action = .open_settings, .group = .files, .default = primary(.comma, .{}) },
+    .{ .action = .open_help, .group = .files, .default = null },
+    .{ .action = .quick_open, .group = .files, .default = primary(.p, .{}) },
     // ----------------------------------------------------- tabs and views
-    .{ .action = .close_tab, .label = "Close Tab", .group = .views, .default = primary(.w, .{}) },
+    .{ .action = .close_tab, .group = .views, .default = primary(.w, .{}) },
     .{
         .action = .next_tab,
-        .label = "Next Tab",
         .group = .views,
         .default = with(.tab, .{ .ctrl = true }),
         .also = &.{ with(.tab, .{ .alt = true }), primary(.right_bracket, shift) },
     },
     .{
         .action = .prev_tab,
-        .label = "Previous Tab",
         .group = .views,
         .default = with(.tab, .{ .ctrl = true, .shift = true }),
         .also = &.{ with(.tab, .{ .alt = true, .shift = true }), primary(.left_bracket, shift) },
     },
-    .{ .action = .toggle_sidebar, .label = "Toggle Sidebar", .group = .views, .default = primary(.b, .{}) },
+    .{ .action = .toggle_sidebar, .group = .views, .default = primary(.b, .{}) },
     .{
         .action = .toggle_terminal,
-        .label = "Toggle Terminal",
         .group = .views,
         .default = primary(.t, .{}),
         .also = &.{ primary(.j, .{}), with(.grave, .{ .ctrl = true }) },
     },
-    .{ .action = .show_explorer, .label = "Show Explorer", .group = .views, .default = primary(.e, shift) },
-    .{ .action = .show_search, .label = "Search in Project", .group = .views, .default = primary(.f, shift) },
-    .{ .action = .show_git, .label = "Show Git", .group = .views, .default = primary(.g, .{}) },
-    .{ .action = .toggle_word_wrap, .label = "Word Wrap", .group = .views, .default = with(.z, .{ .alt = true }) },
+    .{ .action = .show_explorer, .group = .views, .default = primary(.e, shift) },
+    .{ .action = .show_search, .group = .views, .default = primary(.f, shift) },
+    .{ .action = .show_git, .group = .views, .default = primary(.g, .{}) },
+    .{ .action = .toggle_word_wrap, .group = .views, .default = with(.z, .{ .alt = true }) },
     .{
         .action = .zoom_in,
-        .label = "Zoom In",
         .group = .views,
         .default = primary(.equal, .{}),
         .also = &.{ primary(.equal, shift), primary(.kp_add, .{}) },
     },
-    .{ .action = .zoom_out, .label = "Zoom Out", .group = .views, .default = primary(.minus, .{}), .also = &.{primary(.kp_subtract, .{})} },
-    .{ .action = .zoom_reset, .label = "Reset Zoom", .group = .views, .default = primary(.zero, .{}), .also = &.{primary(.kp_0, .{})} },
+    .{ .action = .zoom_out, .group = .views, .default = primary(.minus, .{}), .also = &.{primary(.kp_subtract, .{})} },
+    .{ .action = .zoom_reset, .group = .views, .default = primary(.zero, .{}), .also = &.{primary(.kp_0, .{})} },
     // ------------------------------------------------------------- find
-    .{ .action = .find, .label = "Find", .group = .find, .default = primary(.f, .{}) },
+    .{ .action = .find, .group = .find, .default = primary(.f, .{}) },
     .{
         .action = .find_replace,
-        .label = "Find and Replace",
         .group = .find,
         .default = if (is_mac) with(.f, .{ .cmd = true, .alt = true }) else with(.h, .{ .ctrl = true }),
     },
-    .{ .action = .find_next, .label = "Find Next", .group = .find, .default = plain(.f3) },
-    .{ .action = .find_prev, .label = "Find Previous", .group = .find, .default = with(.f3, shift) },
+    .{ .action = .find_next, .group = .find, .default = plain(.f3) },
+    .{ .action = .find_prev, .group = .find, .default = with(.f3, shift) },
     .{
         .action = .toggle_match_case,
-        .label = "Match Case",
         .group = .find,
         .default = if (is_mac) with(.c, .{ .cmd = true, .alt = true }) else with(.c, .{ .alt = true }),
     },
     .{
         .action = .toggle_whole_word,
-        .label = "Whole Word",
         .group = .find,
         .default = if (is_mac) with(.w, .{ .cmd = true, .alt = true }) else with(.w, .{ .alt = true }),
     },
     // ---------------------------------------------------------- editing
-    .{ .action = .copy, .label = "Copy", .group = .editing, .default = primary(.c, .{}) },
-    .{ .action = .cut, .label = "Cut", .group = .editing, .default = primary(.x, .{}) },
-    .{ .action = .paste, .label = "Paste", .group = .editing, .default = primary(.v, .{}) },
-    .{ .action = .undo, .label = "Undo", .group = .editing, .default = primary(.z, .{}) },
+    .{ .action = .copy, .group = .editing, .default = primary(.c, .{}) },
+    .{ .action = .cut, .group = .editing, .default = primary(.x, .{}) },
+    .{ .action = .paste, .group = .editing, .default = primary(.v, .{}) },
+    .{ .action = .undo, .group = .editing, .default = primary(.z, .{}) },
     .{
         .action = .redo,
-        .label = "Redo",
         .group = .editing,
         .default = primary(.z, shift),
         .also = if (is_mac) &.{} else &.{with(.y, .{ .ctrl = true })},
     },
-    .{ .action = .select_all, .label = "Select All", .group = .editing, .default = primary(.a, .{}) },
-    .{ .action = .clear_selection, .label = "Clear Selection / Close", .group = .editing, .default = plain(.escape) },
-    .{ .action = .complete, .label = "Show Suggestions", .group = .editing, .default = with(.space, .{ .ctrl = true }) },
-    .{ .action = .indent, .label = "Indent", .group = .editing, .default = plain(.tab), .also = &.{with(.tab, shift)} },
+    .{ .action = .select_all, .group = .editing, .default = primary(.a, .{}) },
+    .{ .action = .clear_selection, .group = .editing, .default = plain(.escape) },
+    .{ .action = .complete, .group = .editing, .default = with(.space, .{ .ctrl = true }) },
+    .{ .action = .indent, .group = .editing, .default = plain(.tab), .also = &.{with(.tab, shift)} },
     .{
         .action = .newline,
-        .label = "New Line",
         .group = .editing,
         .default = plain(.enter),
         .also = &.{ with(.enter, shift), primary(.enter, .{}), plain(.kp_enter), with(.kp_enter, shift) },
     },
-    .{ .action = .backspace, .label = "Delete Left", .group = .editing, .default = plain(.backspace), .also = &.{with(.backspace, shift)} },
-    .{ .action = .delete_forward, .label = "Delete Right", .group = .editing, .default = plain(.delete), .also = &.{with(.delete, shift)} },
-    .{ .action = .delete_word_left, .label = "Delete Word Left", .group = .editing, .default = word(.backspace, .{}) },
-    .{ .action = .delete_word_right, .label = "Delete Word Right", .group = .editing, .default = word(.delete, .{}) },
+    .{ .action = .backspace, .group = .editing, .default = plain(.backspace), .also = &.{with(.backspace, shift)} },
+    .{ .action = .delete_forward, .group = .editing, .default = plain(.delete), .also = &.{with(.delete, shift)} },
+    .{ .action = .delete_word_left, .group = .editing, .default = word(.backspace, .{}) },
+    .{ .action = .delete_word_right, .group = .editing, .default = word(.delete, .{}) },
     .{
         .action = .delete_line_start,
-        .label = "Delete to Line Start",
         .group = .editing,
         .default = if (is_mac) with(.backspace, .{ .cmd = true }) else with(.backspace, .{ .ctrl = true, .shift = true }),
     },
     .{
         .action = .delete_line_end,
-        .label = "Delete to Line End",
         .group = .editing,
         .default = if (is_mac) with(.delete, .{ .cmd = true }) else with(.delete, .{ .ctrl = true, .shift = true }),
     },
-    .{ .action = .move_line_up, .label = "Move Line Up", .group = .editing, .default = with(.up, .{ .alt = true }) },
-    .{ .action = .move_line_down, .label = "Move Line Down", .group = .editing, .default = with(.down, .{ .alt = true }) },
-    .{ .action = .expand_selection, .label = "Select Scope", .group = .editing, .default = with(.up, .{ .alt = true, .shift = true }) },
-    .{ .action = .shrink_selection, .label = "Shrink Scope", .group = .editing, .default = with(.down, .{ .alt = true, .shift = true }) },
+    .{ .action = .move_line_up, .group = .editing, .default = with(.up, .{ .alt = true }) },
+    .{ .action = .move_line_down, .group = .editing, .default = with(.down, .{ .alt = true }) },
+    .{ .action = .expand_selection, .group = .editing, .default = with(.up, .{ .alt = true, .shift = true }) },
+    .{ .action = .shrink_selection, .group = .editing, .default = with(.down, .{ .alt = true, .shift = true }) },
     // ----------------------------------------------------------- cursor
-    .{ .action = .cursor_left, .label = "Left", .group = .cursor, .default = plain(.left) },
-    .{ .action = .cursor_right, .label = "Right", .group = .cursor, .default = plain(.right) },
-    .{ .action = .cursor_up, .label = "Up", .group = .cursor, .default = plain(.up) },
-    .{ .action = .cursor_down, .label = "Down", .group = .cursor, .default = plain(.down) },
-    .{ .action = .cursor_word_left, .label = "Word Left", .group = .cursor, .default = word(.left, .{}) },
-    .{ .action = .cursor_word_right, .label = "Word Right", .group = .cursor, .default = word(.right, .{}) },
+    .{ .action = .cursor_left, .group = .cursor, .default = plain(.left) },
+    .{ .action = .cursor_right, .group = .cursor, .default = plain(.right) },
+    .{ .action = .cursor_up, .group = .cursor, .default = plain(.up) },
+    .{ .action = .cursor_down, .group = .cursor, .default = plain(.down) },
+    .{ .action = .cursor_word_left, .group = .cursor, .default = word(.left, .{}) },
+    .{ .action = .cursor_word_right, .group = .cursor, .default = word(.right, .{}) },
     .{
         .action = .cursor_line_start,
-        .label = "Line Start",
         .group = .cursor,
         .default = if (is_mac) with(.left, .{ .cmd = true }) else plain(.home),
         .also = if (is_mac) &.{plain(.home)} else &.{},
     },
     .{
         .action = .cursor_line_end,
-        .label = "Line End",
         .group = .cursor,
         .default = if (is_mac) with(.right, .{ .cmd = true }) else plain(.end),
         .also = if (is_mac) &.{plain(.end)} else &.{},
     },
-    .{ .action = .cursor_doc_start, .label = "File Start", .group = .cursor, .default = primary(.up, .{}), .also = &.{primary(.home, .{})} },
-    .{ .action = .cursor_doc_end, .label = "File End", .group = .cursor, .default = primary(.down, .{}), .also = &.{primary(.end, .{})} },
-    .{ .action = .cursor_page_up, .label = "Page Up", .group = .cursor, .default = plain(.page_up) },
-    .{ .action = .cursor_page_down, .label = "Page Down", .group = .cursor, .default = plain(.page_down) },
+    .{ .action = .cursor_doc_start, .group = .cursor, .default = primary(.up, .{}), .also = &.{primary(.home, .{})} },
+    .{ .action = .cursor_doc_end, .group = .cursor, .default = primary(.down, .{}), .also = &.{primary(.end, .{})} },
+    .{ .action = .cursor_page_up, .group = .cursor, .default = plain(.page_up) },
+    .{ .action = .cursor_page_down, .group = .cursor, .default = plain(.page_down) },
     // -------------------------------------------------------- selection
-    .{ .action = .select_left, .label = "Select Left", .group = .selection, .default = with(.left, shift) },
-    .{ .action = .select_right, .label = "Select Right", .group = .selection, .default = with(.right, shift) },
-    .{ .action = .select_up, .label = "Select Up", .group = .selection, .default = with(.up, shift) },
-    .{ .action = .select_down, .label = "Select Down", .group = .selection, .default = with(.down, shift) },
-    .{ .action = .select_word_left, .label = "Select Word Left", .group = .selection, .default = word(.left, shift) },
-    .{ .action = .select_word_right, .label = "Select Word Right", .group = .selection, .default = word(.right, shift) },
+    .{ .action = .select_left, .group = .selection, .default = with(.left, shift) },
+    .{ .action = .select_right, .group = .selection, .default = with(.right, shift) },
+    .{ .action = .select_up, .group = .selection, .default = with(.up, shift) },
+    .{ .action = .select_down, .group = .selection, .default = with(.down, shift) },
+    .{ .action = .select_word_left, .group = .selection, .default = word(.left, shift) },
+    .{ .action = .select_word_right, .group = .selection, .default = word(.right, shift) },
     .{
         .action = .select_line_start,
-        .label = "Select to Line Start",
         .group = .selection,
         .default = if (is_mac) with(.left, .{ .cmd = true, .shift = true }) else with(.home, shift),
         .also = if (is_mac) &.{with(.home, shift)} else &.{},
     },
     .{
         .action = .select_line_end,
-        .label = "Select to Line End",
         .group = .selection,
         .default = if (is_mac) with(.right, .{ .cmd = true, .shift = true }) else with(.end, shift),
         .also = if (is_mac) &.{with(.end, shift)} else &.{},
     },
-    .{ .action = .select_doc_start, .label = "Select to File Start", .group = .selection, .default = primary(.up, shift), .also = &.{primary(.home, shift)} },
-    .{ .action = .select_doc_end, .label = "Select to File End", .group = .selection, .default = primary(.down, shift), .also = &.{primary(.end, shift)} },
-    .{ .action = .select_page_up, .label = "Select Page Up", .group = .selection, .default = with(.page_up, shift) },
-    .{ .action = .select_page_down, .label = "Select Page Down", .group = .selection, .default = with(.page_down, shift) },
+    .{ .action = .select_doc_start, .group = .selection, .default = primary(.up, shift), .also = &.{primary(.home, shift)} },
+    .{ .action = .select_doc_end, .group = .selection, .default = primary(.down, shift), .also = &.{primary(.end, shift)} },
+    .{ .action = .select_page_up, .group = .selection, .default = with(.page_up, shift) },
+    .{ .action = .select_page_down, .group = .selection, .default = with(.page_down, shift) },
 };
 
 comptime {

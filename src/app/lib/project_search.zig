@@ -4,6 +4,7 @@ const core = @import("core");
 const dialogs = @import("../../platform/lib/dialogs.zig");
 const Tab = @import("../Tab.zig");
 const App = @import("../App.zig");
+const i18n = @import("../../i18n/i18n.zig");
 
 /// Searches the project for the Search view's query. Open tabs are searched
 /// as they are in the editor, unsaved edits included. `.keep` the scroll
@@ -17,7 +18,7 @@ pub fn runSearch(self: *App, scroll: enum { top, keep }) !void {
     if (scroll == .top) panel.scroll = 0;
     const project = if (self.project) |*p| p else return panel.results.clear();
     self.file_search.scan(self.io, project.root().path) catch |err| {
-        return self.reportError("Couldn't list the project's files", project.root().path, err);
+        return self.reportError(i18n.tr().errors.list_files, project.root().path, err);
     };
     const overlay: core.ProjectSearch.Overlay = .{ .ctx = self, .get = openTabText };
     try panel.results.run(self.io, project.root().path, self.file_search.files.items, panel.query.text(), panel.options, overlay);
@@ -71,13 +72,13 @@ pub fn replaceInProject(self: *App) !void {
     const results = &panel.results;
     if (results.matches.items.len == 0) return;
 
-    var question_buf: [160]u8 = undefined;
-    const question = std.fmt.bufPrint(&question_buf, "Replace {d}{s} matches in {d} files?", .{
-        results.matches.items.len, if (results.truncated) "+" else "", results.files.items.len,
-    }) catch "Replace all matches?";
-    const detail = "Files open in tabs change in the editor, where you can undo it. Other files are saved directly.";
+    const t = i18n.tr().dialogs;
+    var count_buf: [16]u8 = undefined;
+    const count = std.fmt.bufPrint(&count_buf, "{d}{s}", .{ results.matches.items.len, if (results.truncated) "+" else "" }) catch "";
+    var question_buf: [256]u8 = undefined;
+    const question = i18n.fill(&question_buf, t.replace_question, .{ count, results.files.items.len });
     // Without a way to ask (no dialogs on this system), the click decides.
-    if (!(dialogs.confirm(self.gpa, self.io, question, detail, "Replace All") catch true)) return;
+    if (!(dialogs.confirm(self.gpa, self.io, question, t.replace_detail, i18n.tr().common.replace_all) catch true)) return;
 
     var failed: ?struct { path: []u8, err: anyerror } = null;
     defer if (failed) |f| self.gpa.free(f.path);
@@ -86,7 +87,7 @@ pub fn replaceInProject(self: *App) !void {
             if (failed == null) failed = .{ .path = try std.fs.path.join(self.gpa, &.{ root, f.path }), .err = err };
         };
     }
-    if (failed) |f| self.reportError("Couldn't replace in a file", f.path, f.err);
+    if (failed) |f| self.reportError(i18n.tr().errors.replace_in_file, f.path, f.err);
     self.git_dirty = true;
     try self.runSearch(.keep); // what's left, if anything
 }
@@ -101,7 +102,7 @@ pub fn replaceInProjectFile(self: *App, file: u32) !void {
     self.replaceAllInFile(project.root().path, rel, panel.query.text(), panel.replacement.text(), panel.options) catch |err| {
         const path = try std.fs.path.join(self.gpa, &.{ project.root().path, rel });
         defer self.gpa.free(path);
-        self.reportError("Couldn't replace in a file", path, err);
+        self.reportError(i18n.tr().errors.replace_in_file, path, err);
     };
     self.git_dirty = true;
     try self.runSearch(.keep);
@@ -128,7 +129,7 @@ pub fn replaceMatchInProject(self: *App, index: u32) !void {
         const path = try std.fs.path.join(self.gpa, &.{ root, rel });
         defer self.gpa.free(path);
         replaceRangeInFile(self.gpa, self.io, path, m.start, query, replacement, panel.options) catch |err| {
-            self.reportError("Couldn't replace in a file", path, err);
+            self.reportError(i18n.tr().errors.replace_in_file, path, err);
         };
         self.git_dirty = true;
     }

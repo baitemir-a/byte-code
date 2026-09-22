@@ -6,6 +6,8 @@ const theme = @import("../../ui/theme/lib/theme.zig");
 const Font = @import("../../ui/Font.zig");
 const SettingsPage = @import("../../ui/pages/SettingsPage.zig");
 const App = @import("../App.zig");
+const ContextMenu = @import("../../ui/sidebar/ContextMenu.zig");
+const i18n = @import("../../i18n/i18n.zig");
 
 /// Accent and zoom live in the theme, where drawing code reads them.
 /// Mouse scale is App.matchMouseToLayout's job: it also depends on the
@@ -15,19 +17,21 @@ pub fn applyToTheme(s: core.Settings) void {
     theme.setMode(s.theme);
     theme.accent = .{ .r = s.accent[0], .g = s.accent[1], .b = s.accent[2], .a = 255 };
     theme.zoom = @as(f32, @floatFromInt(s.zoom)) / 100;
+    i18n.setLanguage(s.language);
 }
 
 /// After changing `self.settings`: applies them and saves settings.json.
 pub fn settingsChanged(self: *App, old: core.Settings) !void {
     self.settings.clamp();
     applyToTheme(self.settings);
-    if (self.settings.zoom != old.zoom) {
-        // Re-render the font for the new size, so text stays sharp.
+    if (self.settings.zoom != old.zoom or self.settings.language != old.language) {
+        // Re-render the font for the new size, so text stays sharp, or for
+        // the characters of the new language.
         self.view.font.unload();
         self.view.font = Font.load();
     }
     self.settings.save(self.gpa, self.io, std.Io.Dir.cwd(), self.settings_path) catch |err| {
-        self.reportError("Couldn't save settings", self.settings_path, err);
+        self.reportError(i18n.tr().errors.save_settings, self.settings_path, err);
     };
 }
 
@@ -42,6 +46,7 @@ pub fn openSettings(self: *App) !void {
 pub fn runSettingsAction(self: *App, action: SettingsPage.Action) !void {
     // Not a setting: it opens a tab.
     if (action == .open_help) return self.openHelp();
+    if (action == .choose_language) return openLanguageMenu(self, action.choose_language);
     const old = self.settings;
     switch (action) {
         .theme => |t| self.settings.theme = t,
@@ -54,8 +59,26 @@ pub fn runSettingsAction(self: *App, action: SettingsPage.Action) !void {
         .toggle_minimap => self.settings.minimap = !self.settings.minimap,
         .toggle_word_wrap => self.settings.word_wrap = !self.settings.word_wrap,
         .toggle_new_window => self.settings.open_folder_in_new_window = !self.settings.open_folder_in_new_window,
-        .open_help => unreachable,
+        .open_help, .choose_language => unreachable,
     }
+    try self.settingsChanged(old);
+}
+
+/// The languages, each by its own name, in a menu under `button`.
+fn openLanguageMenu(self: *App, button: rl.Rectangle) void {
+    var labels: [ContextMenu.max_items][]const u8 = undefined;
+    const languages = std.enums.values(core.Settings.Language);
+    for (languages, 0..) |lang, i| {
+        labels[i] = lang.nativeName();
+        self.menu_actions[i] = .{ .set_language = lang };
+    }
+    self.menu_node = null;
+    self.menu.open(labels[0..languages.len], .{ .x = button.x, .y = button.y + button.height + 2 }, App.windowSize(), self.view.font);
+}
+
+pub fn setLanguage(self: *App, lang: core.Settings.Language) !void {
+    const old = self.settings;
+    self.settings.language = lang;
     try self.settingsChanged(old);
 }
 
@@ -77,7 +100,7 @@ pub fn autosave(self: *App) void {
         t.document.save(self.gpa, self.io, std.Io.Dir.cwd(), &t.buffer) catch |err| {
             if (!t.autosave_error_shown) {
                 t.autosave_error_shown = true;
-                self.reportError("Auto save failed", t.document.path.?, err);
+                self.reportError(i18n.tr().errors.autosave_failed, t.document.path.?, err);
             }
             continue;
         };

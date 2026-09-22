@@ -36,6 +36,10 @@
             .url = "git+https://github.com/raylib-zig/raylib-zig?ref=devel#8758f4cd3a5ae0df6941c4715257223d34c5ad3e",
             .hash = "raylib_zig-6.0.0-KE8RECZ8BQDm-txuospkpZHbJ6DNpacUF7D88RWQ_qAe",
         },
+        .lucide = .{
+            .url = "https://registry.npmjs.org/lucide-static/-/lucide-static-1.47.0.tgz",
+            .hash = "N-V-__8AABQKBQNfwtpjeZbN__wtym29X2ePXx3QQ8H-ixWt",
+        },
     },
     .paths = .{
         "build.zig",

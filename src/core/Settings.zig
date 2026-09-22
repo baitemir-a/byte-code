@@ -11,6 +11,41 @@ pub const default_accent = [3]u8{ 24, 163, 255 };
 
 pub const Theme = enum { dark, light };
 
+/// The language of the app's own text (menus, pages, messages). Stored
+/// by its ISO 639-1 code; listed in this order in Settings.
+pub const Language = enum {
+    en,
+    ru,
+    de,
+    ky,
+    tr,
+    es,
+    zh,
+    ja,
+    fr,
+    it,
+    pt,
+    ko,
+
+    /// The language's name in itself, as the language menu lists it.
+    pub fn nativeName(self: Language) []const u8 {
+        return switch (self) {
+            .en => "English",
+            .ru => "Русский",
+            .de => "Deutsch",
+            .ky => "Кыргызча",
+            .tr => "Türkçe",
+            .es => "Español",
+            .zh => "简体中文",
+            .ja => "日本語",
+            .fr => "Français",
+            .it => "Italiano",
+            .pt => "Português",
+            .ko => "한국어",
+        };
+    }
+};
+
 /// Zoom steps: 50% to 200%.
 pub const min_zoom = 50;
 pub const max_zoom = 200;
@@ -21,6 +56,7 @@ pub const min_delay_ms = 250;
 pub const max_delay_ms = 60_000;
 
 theme: Theme = .dark,
+language: Language = .en,
 /// Color of highlights: active tab, focused inputs, links, drop targets.
 accent: [3]u8 = default_accent,
 /// Save files with unsaved changes once typing pauses for `autosave_delay_ms`.

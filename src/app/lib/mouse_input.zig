@@ -3,6 +3,7 @@ const rl = @import("raylib");
 const Sidebar = @import("../../ui/sidebar/Sidebar.zig");
 const Keymap = @import("../../input/Keymap.zig");
 const App = @import("../App.zig");
+const i18n = @import("../../i18n/i18n.zig");
 
 /// Clicks go to whatever is on top: the suggestion popup, the find bar, the
 /// tab bar, the sidebar, then the welcome page or the text (which also takes
@@ -109,7 +110,7 @@ pub fn handleMouse(self: *App) !bool {
             .view_tab => |v| self.showView(v),
             .settings_button => try self.openSettings(),
             .help_button => try self.openHelp(),
-            .open_folder_button => self.openFolderWithDialog() catch |err| self.reportError("Couldn't open folder", "", err),
+            .open_folder_button => self.openFolderWithDialog() catch |err| self.reportError(i18n.tr().errors.open_folder, "", err),
             .panel => try self.panelClick(point),
             // Acted on at release: the press may turn into a drag.
             .node => |index| try self.startTreePress(index, point),

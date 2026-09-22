@@ -6,6 +6,7 @@ const theme = @import("../theme/lib/theme.zig");
 const Font = @import("../Font.zig");
 const core = @import("core");
 const TerminalPanel = @import("TerminalPanel.zig");
+const i18n = @import("../../i18n/i18n.zig");
 
 const Screen = core.TerminalScreen;
 
@@ -17,7 +18,7 @@ pub fn draw(self: *const TerminalPanel, screen: *const Screen, font: Font, focus
 
     // Header: TERMINAL, the shell's title, and a close button.
     const hy = r.y + (TerminalPanel.header_height - theme.font_size) / 2;
-    var x = drawText(font, "TERMINAL", r.x + 12, hy, if (focused) theme.foreground else theme.sidebar_header);
+    var x = drawText(font, i18n.tr().terminal.title, r.x + 12, hy, if (focused) theme.foreground else theme.sidebar_header);
     x = drawText(font, "  ", x, hy, theme.sidebar_header);
     _ = drawText(font, title[0..@min(title.len, 60)], x, hy, theme.popup_detail);
     const close = self.closeRect();
@@ -82,13 +83,8 @@ pub fn inSelection(s: [2]Screen.Pos, line: usize, col: usize) bool {
     return true;
 }
 
-pub fn drawText(font: Font, s: []const u8, x0: f32, y: f32, color: rl.Color) f32 {
-    var x = x0;
-    var it = std.unicode.Utf8View.initUnchecked(s).iterator();
-    while (it.nextCodepoint()) |cp| : (x += font.cell_width) {
-        if (cp != ' ') font.drawCodepoint(cp, x, y, color);
-    }
-    return x;
+pub fn drawText(font: Font, s: []const u8, x: f32, y: f32, color: rl.Color) f32 {
+    return font.drawText(s, x, y, theme.font_size, color);
 }
 
 pub fn colorOf(c: Screen.Color, is_fg: bool, bold: bool) rl.Color {
