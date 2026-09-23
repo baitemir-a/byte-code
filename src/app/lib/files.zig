@@ -163,7 +163,7 @@ pub fn refreshProjectOnFocus(self: *App) !void {
     defer self.was_focused = focused;
     if (focused and !self.was_focused) {
         try self.refreshProject();
-        self.git_dirty = true; // files may have changed elsewhere
+        self.gitChanged(); // things may have changed elsewhere
     }
 }
 
@@ -236,7 +236,7 @@ pub fn confirmClose(self: *App) !bool {
 /// Saves the active tab, asking for a path first if it has none (or always,
 /// with `choose_path`). Returns false if cancelled or failed.
 pub fn save(self: *App, choose_path: bool) !bool {
-    self.git_dirty = true;
+    self.gitChanged();
     const t = self.tab();
     if (t.kind != .file) return false;
     if (choose_path or t.document.path == null) {

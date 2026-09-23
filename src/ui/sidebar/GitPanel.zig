@@ -1,5 +1,6 @@
 //! The sidebar's Git view: the branch, a commit message box, and the
-//! changed files: staged ones (− to unstage) and the rest (+ to stage).
+//! changed files: staged ones (− to unstage) and the rest (+ to stage,
+//! ↺ to throw the changes away).
 const std = @import("std");
 const rl = @import("raylib");
 const core = @import("core");
@@ -22,10 +23,14 @@ pub const Hit = union(enum) {
     commit,
     stage_all,
     unstage_all,
-    /// A file row: open it.
-    open: u32,
+    /// A file row: show what changed in it. `staged` tells which of the
+    /// two lists it is in, and so which changes to show.
+    open: struct { index: u32, staged: bool },
     stage: u32,
     unstage: u32,
+    /// Throw a file's unstaged changes away, or all of them.
+    discard: u32,
+    discard_all,
 };
 
 /// A row of the file list: a section header or an entry in a section.
@@ -105,9 +110,23 @@ pub fn scrollBy(self: *GitPanel, wheel_y: f32) void {
     self.scroll = std.math.clamp(self.scroll - wheel_y * row_height * 3, 0, self.max_scroll);
 }
 
-/// The + / − button at the right of a row.
-pub fn actionRect(self: *const GitPanel, y: f32) rl.Rectangle {
-    return .{ .x = self.rect.x + self.rect.width - pad - 16 - action_size, .y = y + (row_height - action_size) / 2, .width = action_size, .height = action_size };
+/// A row's buttons, counted from the right: 0 is + / −, 1 is ↺.
+pub fn actionRect(self: *const GitPanel, y: f32, index: usize) rl.Rectangle {
+    const from_right = @as(f32, @floatFromInt(index + 1)) * action_size;
+    return .{ .x = self.rect.x + self.rect.width - pad - 16 - from_right, .y = y + (row_height - action_size) / 2, .width = action_size, .height = action_size };
+}
+
+/// Whether a row offers to throw its changes away: anything in the work
+/// tree does. A file git doesn't know yet has no copy to go back to, so
+/// for it that means deleting the file.
+pub fn canDiscard(e: Git.Entry) bool {
+    return e.isUnstaged();
+}
+
+/// Whether any row does, so the button is offered on the header too.
+pub fn canDiscardAll(git: *const Git) bool {
+    for (git.entries.items) |e| if (canDiscard(e)) return true;
+    return false;
 }
 
 pub fn hitTest(self: *const GitPanel, git: *const Git, p: rl.Vector2) ?Hit {
@@ -118,9 +137,20 @@ pub fn hitTest(self: *const GitPanel, git: *const Git, p: rl.Vector2) ?Hit {
     const n: usize = @intFromFloat((p.y - self.listTop() + self.scroll) / row_height);
     const row = rowAtIndex(git, n) orelse return null;
     const y = self.listTop() + @as(f32, @floatFromInt(n)) * row_height - self.scroll;
-    const on_action = rl.checkCollisionPointRec(p, self.actionRect(y));
+    const on_action = rl.checkCollisionPointRec(p, self.actionRect(y, 0));
+    const on_discard = rl.checkCollisionPointRec(p, self.actionRect(y, 1));
     return switch (row) {
-        .header => |s| if (on_action) (if (s == .staged) Hit.unstage_all else Hit.stage_all) else null,
-        .entry => |e| if (on_action) (if (e.section == .staged) Hit{ .unstage = e.index } else Hit{ .stage = e.index }) else .{ .open = e.index },
+        .header => |s| if (on_action)
+            (if (s == .staged) Hit.unstage_all else Hit.stage_all)
+        else if (on_discard and s == .changes and canDiscardAll(git))
+            Hit.discard_all
+        else
+            null,
+        .entry => |e| if (on_action)
+            (if (e.section == .staged) Hit{ .unstage = e.index } else Hit{ .stage = e.index })
+        else if (on_discard and e.section == .changes and canDiscard(git.entries.items[e.index]))
+            Hit{ .discard = e.index }
+        else
+            .{ .open = .{ .index = e.index, .staged = e.section == .staged } },
     };
 }

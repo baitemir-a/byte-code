@@ -5,17 +5,20 @@ const rl = @import("raylib");
 const theme = @import("../theme/lib/theme.zig");
 const core = @import("core");
 const View = @import("View.zig");
+const View_diff = @import("View_diff.zig");
 
 const Buffer = core.Buffer;
 const Highlighter = core.syntax.Highlighter;
 const text = core.text;
 
-pub fn draw(self: View, buf: *const Buffer, hl: *const Highlighter, marks: ?View.Highlights, show_caret: bool) void {
+pub fn draw(self: View, buf: *const Buffer, hl: *const Highlighter, marks: ?View.Highlights, show_caret: bool, changes: ?View.Changes) void {
     const rs = self.rows.items;
     if (rs.len == 0) return;
     const first: usize = @min(@as(usize, @intFromFloat(@max(0, self.scroll.y / theme.line_height))), rs.len - 1);
     const last = @min(rs.len - 1, first + @as(usize, @intFromFloat(self.area.height / theme.line_height)) + 2);
     const b = buf.items();
+    // The lines git sees as changed, under everything else.
+    if (changes) |ch| View_diff.drawBands(self, ch, first, last);
 
     // Current line: a band behind the text, under the selection (on every
     // cursor's row).
@@ -63,7 +66,8 @@ pub fn draw(self: View, buf: *const Buffer, hl: *const Highlighter, marks: ?View
     }
 
     // Last, so it covers text scrolled horizontally under it.
-    drawGutter(self, buf, first, last);
+    drawGutter(self, buf, first, last, changes);
+    if (changes) |ch| View_diff.drawOverlay(self, ch);
 }
 
 pub fn drawLineBand(self: View, buf: *const Buffer, pos: usize) void {
@@ -80,7 +84,7 @@ pub fn drawCaret(self: View, buf: *const Buffer, pos: usize) void {
 
 /// Line numbers, right-aligned on each line's first row, with the cursor's
 /// line brighter.
-pub fn drawGutter(self: View, buf: *const Buffer, first: usize, last: usize) void {
+pub fn drawGutter(self: View, buf: *const Buffer, first: usize, last: usize, changes: ?View.Changes) void {
     rl.drawRectangleRec(.{ .x = self.area.x, .y = self.area.y, .width = self.gutter_width, .height = self.area.height }, theme.background);
 
     const w = self.font.cell_width;
@@ -91,9 +95,17 @@ pub fn drawGutter(self: View, buf: *const Buffer, first: usize, last: usize) voi
     for (first..last + 1) |row| {
         if (row > 0 and rs[row - 1].line == rs[row].line) continue; // a continuation row
         const index = rs[row].line;
-        const number = std.fmt.bufPrint(&digits, "{d}", .{index + 1}) catch unreachable;
-        const y = self.rowTop(row) + (theme.line_height - theme.font_size) / 2;
-        const color = if (index == current) theme.line_number_current else theme.line_number;
+        const top = self.rowTop(row);
+        const y = top + (theme.line_height - theme.font_size) / 2;
+        // A changed line is marked, and takes its mark's color; in the
+        // diff tab a line also keeps the number it has in its own copy.
+        const g: View_diff.Gutter = if (changes) |ch|
+            View_diff.drawGutter(self, ch, row, index, top)
+        else
+            .{ .number = @intCast(index + 1), .color = null };
+        if (g.number == 0) continue;
+        const number = std.fmt.bufPrint(&digits, "{d}", .{g.number}) catch unreachable;
+        const color = g.color orelse if (index == current) theme.line_number_current else theme.line_number;
         var x = numbers_right - @as(f32, @floatFromInt(number.len)) * w;
         for (number) |d| {
             self.font.drawCodepoint(d, x, y, color);

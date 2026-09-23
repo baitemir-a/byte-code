@@ -62,6 +62,8 @@ pub fn execute(self: *App, cmd: core.Command) !void {
         return;
     }
     if (!self.isEditing()) return;
+    // A file's changes are shown, not edited.
+    if (self.readOnly() and core.command.changesText(cmd)) return;
 
     const b = self.buf();
     // Find shortcuts work wherever the focus is.

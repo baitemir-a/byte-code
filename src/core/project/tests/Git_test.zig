@@ -62,3 +62,56 @@ test "real repository: status, stage, commit" {
     try std.testing.expectError(error.GitFailed, g.commit(io, root, "empty"));
     try std.testing.expect(g.last_error.items.len > 0);
 }
+
+test "real repository: throwing changes away keeps what is staged" {
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const root = try tmp.dir.realPathFileAlloc(io, ".", gpa);
+    defer gpa.free(root);
+
+    var g = Git.init(gpa);
+    defer g.deinit();
+    try g.refresh(io, root);
+    if (g.state == .no_git) return error.SkipZigTest;
+    for ([_][]const []const u8{
+        &.{"init"},
+        &.{ "config", "user.email", "test@example.com" },
+        &.{ "config", "user.name", "Test" },
+    }) |args| try g.expectOk(io, root, args);
+    try tmp.dir.writeFile(io, .{ .sub_path = "a.txt", .data = "one\n" });
+    try tmp.dir.writeFile(io, .{ .sub_path = "b.txt", .data = "two\n" });
+    try g.expectOk(io, root, &.{ "add", "." });
+    try g.expectOk(io, root, &.{ "commit", "--quiet", "-m", "first" });
+
+    // b.txt has a staged change on top of which the work tree changed
+    // again; a.txt changed in the work tree only.
+    try tmp.dir.writeFile(io, .{ .sub_path = "b.txt", .data = "staged\n" });
+    try g.expectOk(io, root, &.{ "add", "b.txt" });
+    try tmp.dir.writeFile(io, .{ .sub_path = "b.txt", .data = "and then some\n" });
+    try tmp.dir.writeFile(io, .{ .sub_path = "a.txt", .data = "one changed\n" });
+    try tmp.dir.writeFile(io, .{ .sub_path = "new.txt", .data = "untracked\n" });
+
+    // One file at a time: a.txt goes back to the commit.
+    try g.discard(io, root, "a.txt");
+    const a = try tmp.dir.readFileAlloc(io, "a.txt", gpa, .limited(64));
+    defer gpa.free(a);
+    try std.testing.expectEqualStrings("one\n", a);
+
+    // All of them: b.txt goes back to what is staged, which stays staged,
+    // and the file git doesn't know is left where it is.
+    try g.discardAll(io, root);
+    const b = try tmp.dir.readFileAlloc(io, "b.txt", gpa, .limited(64));
+    defer gpa.free(b);
+    try std.testing.expectEqualStrings("staged\n", b);
+    const untracked = try tmp.dir.readFileAlloc(io, "new.txt", gpa, .limited(64));
+    defer gpa.free(untracked);
+    try std.testing.expectEqualStrings("untracked\n", untracked);
+
+    try g.refresh(io, root);
+    try std.testing.expectEqual(@as(usize, 2), g.entries.items.len); // b.txt staged, new.txt untracked
+    for (g.entries.items) |e| {
+        if (std.mem.eql(u8, e.path, "b.txt")) try std.testing.expect(e.isStaged() and !e.isUnstaged());
+    }
+}

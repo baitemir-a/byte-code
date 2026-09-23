@@ -11,6 +11,7 @@ const core = @import("core");
 const theme = @import("../theme/lib/theme.zig");
 const Font = @import("../Font.zig");
 const View_draw = @import("View_draw.zig");
+const View_diff = @import("View_diff.zig");
 
 const Buffer = core.Buffer;
 const Highlighter = core.syntax.Highlighter;
@@ -52,6 +53,10 @@ pub const Highlights = struct {
 
 // Drawing, in View_draw.zig.
 pub const draw = View_draw.draw;
+
+// The file's Git changes, in View_diff.zig.
+pub const Changes = View_diff.Changes;
+pub const hunkButtonAt = View_diff.buttonAt;
 
 pub fn init(gpa: std.mem.Allocator, font: Font) View {
     return .{ .gpa = gpa, .font = font };
@@ -225,6 +230,12 @@ pub fn scrollToLine(self: *View, line: f32) void {
 }
 
 // --------------------------------------------------------- hit-testing
+
+/// The screen row at a window y (it may be past the last one).
+pub fn rowAtY(self: View, y: f32) usize {
+    const row = (y + self.scroll.y - self.textTop()) / theme.line_height;
+    return if (row < 0) 0 else @intFromFloat(row);
+}
 
 /// Row and on-screen column under a point (the row may be past the end).
 fn rowColAt(self: View, p: rl.Vector2) struct { row: usize, col: usize } {

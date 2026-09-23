@@ -63,6 +63,8 @@ pub const Strings = struct {
         word_wrap_hint: []const u8,
         new_window: []const u8,
         new_window_hint: []const u8,
+        confirm_discard: []const u8,
+        confirm_discard_hint: []const u8,
         shortcuts: []const u8,
         shortcuts_hint: []const u8,
     },
@@ -120,6 +122,40 @@ pub const Strings = struct {
         no_changes: []const u8,
         staged_changes: []const u8,
         changes: []const u8,
+        /// What the tab showing a file's changes is called, after the file
+        /// name: "App.zig (changes)" and "App.zig (staged)".
+        changes_tab: []const u8,
+        staged_tab: []const u8,
+        /// Before throwing changes away: the question, the line under it,
+        /// and the button that goes through with it.
+        discard_all_question: []const u8,
+        /// {1}: the file's name.
+        discard_question: []const u8,
+        /// The same for a file git doesn't know, which can only be
+        /// thrown away by deleting it.
+        delete_question: []const u8,
+        delete_detail: []const u8,
+        discard_detail: []const u8,
+        /// Used instead when new files go with the changes.
+        discard_all_detail: []const u8,
+        discard: []const u8,
+        /// The button that goes ahead and stops asking.
+        discard_always: []const u8,
+    },
+    /// The bar along the bottom: what git says about the line the cursor
+    /// is on, and where the cursor is.
+    status: struct {
+        /// {1}: how many of them ago.
+        just_now: []const u8,
+        minutes: []const u8,
+        hours: []const u8,
+        days: []const u8,
+        months: []const u8,
+        years: []const u8,
+        /// A line that isn't in any commit yet.
+        uncommitted: []const u8,
+        /// {1}: the line, {2}: the column.
+        line_column: []const u8,
     },
     /// The find bar in the editor.
     find: struct {

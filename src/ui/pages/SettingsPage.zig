@@ -1,5 +1,6 @@
 //! The Settings tab: language, theme, accent color, auto save, zoom,
-//! minimap and word wrap.
+//! minimap, word wrap and whether the Git view asks before throwing
+//! changes away.
 //! Changes apply immediately and are saved to settings.json.
 const std = @import("std");
 const builtin = @import("builtin");
@@ -30,6 +31,7 @@ pub const Action = union(enum) {
     toggle_minimap,
     toggle_word_wrap,
     toggle_new_window,
+    toggle_confirm_discard,
     /// Opens the Help tab, where the shortcuts are.
     open_help,
 };
@@ -71,6 +73,7 @@ zoom_reset: rl.Rectangle = undefined,
 minimap_toggle: rl.Rectangle = undefined,
 wrap_toggle: rl.Rectangle = undefined,
 new_window_toggle: rl.Rectangle = undefined,
+confirm_discard_toggle: rl.Rectangle = undefined,
 shortcuts_button: rl.Rectangle = undefined,
 
 // Drawing, in SettingsPage_draw.zig.
@@ -112,8 +115,9 @@ pub fn layout(self: *SettingsPage, area: rl.Rectangle, font: Font) void {
     self.minimap_toggle = .{ .x = right - 46, .y = self.rowY(6) + 3, .width = 46, .height = 22 };
     self.wrap_toggle = .{ .x = right - 46, .y = self.rowY(7) + 3, .width = 46, .height = 22 };
     self.new_window_toggle = .{ .x = right - 46, .y = self.rowY(8) + 3, .width = 46, .height = 22 };
+    self.confirm_discard_toggle = .{ .x = right - 46, .y = self.rowY(9) + 3, .width = 46, .height = 22 };
     const open_w = @max(80, font.textWidth(i18n.tr().common.open) + 16);
-    self.shortcuts_button = .{ .x = right - open_w, .y = self.rowY(9), .width = open_w, .height = button };
+    self.shortcuts_button = .{ .x = right - open_w, .y = self.rowY(10), .width = open_w, .height = button };
 }
 
 /// Row numbers, top to bottom.
@@ -127,9 +131,10 @@ pub const rows = struct {
     pub const minimap = 6;
     pub const word_wrap = 7;
     pub const new_window = 8;
-    pub const shortcuts = 9;
+    pub const confirm_discard = 9;
+    pub const shortcuts = 10;
     /// "Saved to:" and the path.
-    pub const path = 10;
+    pub const path = 11;
 };
 
 pub fn rowY(self: *const SettingsPage, row: usize) f32 {
@@ -169,6 +174,7 @@ pub fn actionAt(self: *const SettingsPage, p: rl.Vector2, settings: *const Setti
     if (hit(p, self.minimap_toggle)) return .toggle_minimap;
     if (hit(p, self.wrap_toggle)) return .toggle_word_wrap;
     if (hit(p, self.new_window_toggle)) return .toggle_new_window;
+    if (hit(p, self.confirm_discard_toggle)) return .toggle_confirm_discard;
     if (hit(p, self.shortcuts_button)) return .open_help;
     return null;
 }

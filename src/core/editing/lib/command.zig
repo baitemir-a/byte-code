@@ -68,6 +68,16 @@ pub const Command = union(enum) {
     toggle_word_wrap,
 };
 
+/// Whether the command changes the text. A read-only view (the tab
+/// showing a file's Git changes) lets the others through and ignores
+/// these.
+pub fn changesText(cmd: Command) bool {
+    return switch (cmd) {
+        .type_char, .newline, .indent, .backspace, .delete_forward, .delete, .undo, .redo, .cut, .paste, .complete, .move_line_up, .move_line_down, .save, .save_as, .find_replace => true,
+        else => false,
+    };
+}
+
 /// Runs a buffer command at every cursor (see `Buffer.eachCursor`).
 pub fn runAtCursors(buf: *Buffer, cmd: Command, page_lines: usize) !void {
     switch (cmd) {

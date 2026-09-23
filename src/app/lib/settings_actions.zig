@@ -57,6 +57,7 @@ pub fn runSettingsAction(self: *App, action: SettingsPage.Action) !void {
         .zoom_out => self.settings.zoomOut(),
         .zoom_reset => self.settings.zoom = 100,
         .toggle_minimap => self.settings.minimap = !self.settings.minimap,
+        .toggle_confirm_discard => self.settings.confirm_discard = !self.settings.confirm_discard,
         .toggle_word_wrap => self.settings.word_wrap = !self.settings.word_wrap,
         .toggle_new_window => self.settings.open_folder_in_new_window = !self.settings.open_folder_in_new_window,
         .open_help, .choose_language => unreachable,

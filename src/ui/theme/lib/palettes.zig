@@ -52,6 +52,14 @@ pub const Palette = struct {
     git_deleted: rl.Color,
     git_renamed: rl.Color,
 
+    /// A file's changes in the editor: the marks beside the line numbers,
+    /// and (in the Git view) the bands behind the lines themselves.
+    diff_added: rl.Color,
+    diff_modified: rl.Color,
+    diff_deleted: rl.Color,
+    diff_added_band: rl.Color,
+    diff_deleted_band: rl.Color,
+
     find_match: rl.Color,
     find_current: rl.Color,
     find_no_results: rl.Color,
@@ -110,6 +118,12 @@ pub const dark: Palette = .{
     .git_added = rgb(115, 201, 145),
     .git_deleted = rgb(229, 115, 115),
     .git_renamed = rgb(100, 170, 240),
+
+    .diff_added = rgb(78, 181, 116),
+    .diff_modified = rgb(70, 145, 230),
+    .diff_deleted = rgb(220, 85, 85),
+    .diff_added_band = rgba(60, 160, 100, 46),
+    .diff_deleted_band = rgba(200, 70, 70, 52),
 
     .find_match = rgb(82, 66, 36),
     .find_current = rgb(150, 105, 20),
@@ -187,6 +201,12 @@ pub const light: Palette = .{
     .git_added = rgb(56, 132, 60),
     .git_deleted = rgb(173, 11, 11),
     .git_renamed = rgb(0, 100, 190),
+
+    .diff_added = rgb(56, 142, 60),
+    .diff_modified = rgb(0, 110, 200),
+    .diff_deleted = rgb(196, 45, 45),
+    .diff_added_band = rgba(70, 180, 110, 54),
+    .diff_deleted_band = rgba(225, 90, 90, 54),
 
     .find_match = rgb(255, 232, 170),
     .find_current = rgb(255, 196, 80),

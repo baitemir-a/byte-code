@@ -25,6 +25,7 @@ const QuickOpen = @import("../ui/QuickOpen.zig");
 const SearchPanel = @import("../ui/sidebar/SearchPanel.zig");
 const GitPanel = @import("../ui/sidebar/GitPanel.zig");
 const TabBar = @import("../ui/TabBar.zig");
+const StatusBar = @import("../ui/StatusBar.zig");
 const WelcomePage = @import("../ui/pages/WelcomePage.zig");
 const HelpPage = @import("../ui/pages/HelpPage.zig");
 const render = @import("lib/render.zig");
@@ -37,6 +38,8 @@ const tab_actions = @import("lib/tab_actions.zig");
 const files = @import("lib/files.zig");
 const tree = @import("lib/tree.zig");
 const mouse_input = @import("lib/mouse_input.zig");
+const git_diff = @import("lib/git_diff.zig");
+const git_blame = @import("lib/git_blame.zig");
 const symbol_nav = @import("lib/symbol_nav.zig");
 const editing = @import("lib/editing.zig");
 const clipboard = @import("lib/clipboard.zig");
@@ -166,6 +169,13 @@ git: core.Git,
 /// re-read every few seconds while the Git view shows.
 git_dirty: bool = true,
 git_read_at: f64 = 0,
+/// The same for git's copy of the file being edited, which the change
+/// marks in the gutter are compared with, and for who last touched each
+/// of its lines (the bar at the bottom).
+diff_dirty: bool = true,
+blame_dirty: bool = true,
+/// The bar along the bottom of the window.
+status: StatusBar = .{},
 /// Which sidebar text box has the keyboard, if any.
 side_focus: enum { none, search, search_replace, git_message } = .none,
 /// Scroll the editor to its cursor on the next frame (e.g. after opening
@@ -209,6 +219,17 @@ pub const setLanguage = settings_actions.setLanguage;
 pub const openQuickOpen = go_to_file.openQuickOpen;
 pub const quickOpenKey = go_to_file.quickOpenKey;
 pub const openQuickOpenSelection = go_to_file.openQuickOpenSelection;
+
+// git_diff.zig
+pub const updateDiff = git_diff.updateDiff;
+pub const changes = git_diff.changes;
+pub const hunkClick = git_diff.hunkClick;
+pub const openDiffTab = git_diff.openDiffTab;
+
+// git_blame.zig
+pub const updateBlame = git_blame.updateBlame;
+pub const blameAt = git_blame.blameAt;
+pub const cursorPosition = git_blame.cursorPosition;
 
 // panels.zig
 pub const showView = panels.showView;
@@ -376,8 +397,24 @@ pub fn buf(self: *App) *core.Buffer {
     return &self.tab().buffer;
 }
 
+/// Whether the active tab shows text (a file, or a file's changes).
+/// Something changed what git would say: the status, the change marks
+/// and the blame are all read again.
+pub fn gitChanged(self: *App) void {
+    self.git_dirty = true;
+    self.diff_dirty = true;
+    self.blame_dirty = true;
+}
+
 pub fn isEditing(self: *const App) bool {
-    return self.activeTab().kind == .file;
+    const kind = self.activeTab().kind;
+    return kind == .file or kind == .diff;
+}
+
+/// The tab showing a file's changes is a view of two copies at once:
+/// moving around and copying work, changing the text doesn't.
+pub fn readOnly(self: *const App) bool {
+    return self.activeTab().kind == .diff;
 }
 
 // ------------------------------------------------------------------ frame
@@ -431,6 +468,9 @@ pub fn update(self: *App) !void {
     }
     self.autosave();
     try self.updateSidebarViews();
+    try self.updateDiff();
+    try self.updateBlame();
+
     try self.updateTitle();
 }
 
@@ -455,7 +495,10 @@ pub fn windowSize() rl.Vector2 {
 }
 
 /// Sidebar on the left; tab bar on top of the rest; the editor below it.
-pub fn layout(self: *App, window: rl.Vector2) !void {
+pub fn layout(self: *App, full_window: rl.Vector2) !void {
+    // The bar at the bottom takes its height off everything else.
+    self.status.layout(full_window);
+    const window: rl.Vector2 = .{ .x = full_window.x, .y = @max(0, full_window.y - StatusBar.height) };
     self.sidebar.layout(if (self.project) |*p| p else null, window, self.view.font);
     switch (self.sidebar.view) {
         .explorer => {},
@@ -485,7 +528,7 @@ pub fn layout(self: *App, window: rl.Vector2) !void {
         .welcome => self.welcome.layout(editor, self.view.font, self.projects.entries.items),
         .settings => self.settings_page.layout(editor, self.view.font),
         .help => self.help_page.layout(editor, self.view.font),
-        .file => {},
+        .file, .diff => {},
     }
 }
 

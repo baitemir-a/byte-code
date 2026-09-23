@@ -55,7 +55,22 @@ the system warns the first time you open them:
   is declared; click the declaration itself to list where it is used. It
   reads the shape of the code, not a language server, so it is a good guess
   rather than an answer
-- **Git** — branch, changed files, stage/unstage, commit
+- **Git** — branch, changed files, stage/unstage, discard, commit
+- **Discard changes** — the ↺ beside a file (or beside CHANGES, for all
+  of them) puts git's copy back; a file git doesn't know yet goes to the
+  trash instead. What is staged stays staged. It asks first, and the
+  question can be turned off in Settings
+- **Changes in the editor** — every line git sees as changed is marked
+  beside its number and in the minimap: green for a new line, blue for a
+  changed one, red where lines were removed
+- **What changed in a file** — a row in the Git view opens a tab with both
+  copies of the file at once: the removed lines in red where they were,
+  the added ones in green. Hovering a change offers the buttons that undo
+  it or stage just it; on a staged row the tab compares what's staged with
+  the last commit, and the button takes the change back out
+- **Who wrote this line** — the bar along the bottom shows the author of
+  the commit the line under the cursor came from, how long ago it was,
+  the commit and its message; hovering it gives the exact date and time
 - **Integrated terminal** — your shell on a real pseudo-terminal, with
   colors, scrollback and full-screen programs (vim, htop)
 - **Word wrap** (Option+Z) — long lines break to fit the window
@@ -191,20 +206,22 @@ src/
     buffer/             text, undo history; lib/cursors (multi-cursor)
     editing/            lib/: edit, motion, command, scope, wrap, text
     search/             Search, ProjectSearch, FileSearch; lib/find
-    project/            FileTree, Git
+    project/            FileTree, Git, Diff (what changed since git saw
+                        it), Blame (who last touched each line)
     syntax/             syntax.zig lists the languages; lib/ has one lexer
                         per language; Highlighter
     completion/         Completion, Index; lib/fuzzy, lib/builtins
     terminal/           Screen; lib/escapes (parsing escape sequences)
     Document.zig, Settings.zig
   ui/                 drawing and hit-testing
-    editor/             View, Minimap, FindBar, CompletionPopup
+    editor/             View (View_diff draws the Git changes), Minimap,
+                        FindBar, CompletionPopup
     sidebar/            Sidebar, SearchPanel, GitPanel, ContextMenu
     pages/              WelcomePage, SettingsPage
     terminal/           TerminalPanel
     widgets/            TextField; lib/ file icons, search toggles
     theme/              lib/theme (colors, sizes, zoom), lib/palettes
-    Font.zig, TabBar.zig, QuickOpen.zig
+    Font.zig, TabBar.zig, StatusBar.zig, QuickOpen.zig
   input/              Mouse; lib/keymap, lib/terminal_keys
   platform/           Pty; lib/dialogs, lib/paths
 scripts/              release packaging

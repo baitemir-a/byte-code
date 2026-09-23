@@ -11,6 +11,10 @@ pub const Error = error{DialogUnavailable} || Allocator.Error;
 
 pub const Choice = enum { save, discard, cancel };
 
+/// The answer to `confirmRemember`: go ahead, go ahead and stop asking,
+/// or do nothing.
+pub const Confirmation = enum { cancel, ok, ok_always };
+
 /// Asks for a file to open. Returns its path (caller frees), or null if cancelled.
 pub fn openFile(gpa: Allocator, io: Io, start_dir: ?[]const u8) Error!?[]u8 {
     const title = i18n.tr().dialogs.open;
@@ -125,6 +129,53 @@ pub fn confirm(gpa: Allocator, io: Io, message: []const u8, detail: []const u8, 
     } orelse return false;
     gpa.free(answer);
     return true;
+}
+
+/// The same warning as `confirm`, with a third button that goes ahead and
+/// says not to ask again (there is no room for a checkbox in a system
+/// dialog, so it is a button).
+pub fn confirmRemember(gpa: Allocator, io: Io, message: []const u8, detail: []const u8, ok_label: []const u8, always_label: []const u8) Error!Confirmation {
+    const cancel = i18n.tr().common.cancel;
+    const answer = switch (builtin.os.tag) {
+        .macos => try appleScript(gpa, io, &.{
+            "set r to display alert (item 1 of argv) message (item 2 of argv) as warning " ++
+                "buttons {item 4 of argv, item 5 of argv, item 3 of argv} default button (item 3 of argv) cancel button (item 4 of argv)",
+            "button returned of r",
+        }, &.{ message, detail, ok_label, cancel, always_label }),
+        .linux => blk: {
+            const text = try std.fmt.allocPrint(gpa, "--text={s}\n\n{s}", .{ message, detail });
+            defer gpa.free(text);
+            const ok = try std.fmt.allocPrint(gpa, "--ok-label={s}", .{ok_label});
+            defer gpa.free(ok);
+            const cancel_arg = try std.fmt.allocPrint(gpa, "--cancel-label={s}", .{cancel});
+            defer gpa.free(cancel_arg);
+            const extra = try std.fmt.allocPrint(gpa, "--extra-button={s}", .{always_label});
+            defer gpa.free(extra);
+            // OK answers straight away; the extra button prints its label.
+            const r = try runTool(gpa, io, &.{ "zenity", "--question", "--icon=dialog-warning", text, ok, cancel_arg, extra });
+            if (r.ok) {
+                gpa.free(r.stdout);
+                return .ok;
+            }
+            break :blk @as(?[]u8, r.stdout);
+        },
+        // A message box can't relabel its buttons: Yes goes ahead, No goes
+        // ahead and stops asking.
+        .windows => {
+            const text = try std.fmt.allocPrint(gpa, "{s}\n\n{s}\n\n{s}", .{ message, detail, always_label });
+            defer gpa.free(text);
+            return switch (try win32.messageBox(gpa, ok_label, text, win32.MB_YESNOCANCEL | win32.MB_ICONWARNING)) {
+                win32.IDYES => .ok,
+                win32.IDNO => .ok_always,
+                else => .cancel,
+            };
+        },
+        else => return error.DialogUnavailable,
+    } orelse return .cancel;
+    defer gpa.free(answer);
+    if (std.mem.eql(u8, std.mem.trim(u8, answer, " \n"), always_label)) return .ok_always;
+    if (std.mem.eql(u8, std.mem.trim(u8, answer, " \n"), ok_label)) return .ok;
+    return .cancel;
 }
 
 /// A zenity dialog with a window title.

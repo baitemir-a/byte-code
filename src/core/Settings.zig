@@ -70,6 +70,9 @@ word_wrap: bool = false,
 /// Opening a folder while one is open starts a new window for it
 /// (otherwise it replaces the current project).
 open_folder_in_new_window: bool = false,
+/// Ask before throwing away changes in the Git view. Turned off by the
+/// "don't ask again" button in that question.
+confirm_discard: bool = true,
 /// Width of the project sidebar, in UI units (dragged by its edge).
 sidebar_width: u16 = 240,
 

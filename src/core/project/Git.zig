@@ -1,6 +1,6 @@
 //! Git for the sidebar's Git view: the working tree's status (via
-//! `git status --porcelain`), staging, unstaging and committing. Runs the
-//! `git` command-line tool in the project folder.
+//! `git status --porcelain`), staging, unstaging, throwing changes away
+//! and committing. Runs the `git` command-line tool in the project folder.
 const std = @import("std");
 const Io = std.Io;
 const Allocator = std.mem.Allocator;
@@ -139,12 +139,108 @@ fn topPath(gpa: Allocator, path: []const u8) ![]u8 {
     return std.fmt.allocPrint(gpa, ":(top){s}", .{path});
 }
 
+/// Throws away what isn't staged in a file: git puts the staged copy back
+/// in the work tree. A file git doesn't know has nothing to go back to, so
+/// it is left alone.
+pub fn discard(self: *Git, io: Io, root: []const u8, path: []const u8) !void {
+    const spec = try topPath(self.gpa, path);
+    defer self.gpa.free(spec);
+    try self.expectOk(io, root, &.{ "checkout", "--quiet", "--", spec });
+}
+
+/// The same for the whole repository. What is staged stays staged.
+pub fn discardAll(self: *Git, io: Io, root: []const u8) !void {
+    try self.expectOk(io, root, &.{ "checkout", "--quiet", "--", ":/" });
+}
+
 pub fn stageAll(self: *Git, io: Io, root: []const u8) !void {
     try self.expectOk(io, root, &.{ "add", "--all" });
 }
 
 pub fn unstageAll(self: *Git, io: Io, root: []const u8) !void {
     try self.expectOk(io, root, &.{ "reset", "--quiet" });
+}
+
+/// The top folder of the repository `dir` is in, or null when it isn't in
+/// one (or git isn't installed). Caller frees. Used for the change marks
+/// in the editor, which work on any open file, not just the project's.
+pub fn topLevel(gpa: Allocator, io: Io, dir: []const u8) !?[]u8 {
+    const r = runGit(gpa, io, dir, &.{ "rev-parse", "--show-toplevel" }) catch return null;
+    defer r.deinit(gpa);
+    if (!r.ok) return null;
+    const top = std.mem.trimEnd(u8, r.stdout, "\r\n");
+    if (top.len == 0) return null;
+    return try gpa.dupe(u8, top);
+}
+
+/// The file as git has it staged: the copy the editor's changes are
+/// compared with. Null when git doesn't know the file (it is untracked,
+/// so all of it is new). Caller frees.
+pub fn showIndex(gpa: Allocator, io: Io, root: []const u8, rel: []const u8) !?[]u8 {
+    return show(gpa, io, root, "", rel);
+}
+
+/// The file as the last commit has it, which the staged copy is compared
+/// with. Caller frees.
+pub fn showHead(gpa: Allocator, io: Io, root: []const u8, rel: []const u8) !?[]u8 {
+    return show(gpa, io, root, "HEAD", rel);
+}
+
+fn show(gpa: Allocator, io: Io, root: []const u8, rev: []const u8, rel: []const u8) !?[]u8 {
+    const spec = try std.fmt.allocPrint(gpa, "{s}:{s}", .{ rev, rel });
+    defer gpa.free(spec);
+    const r = runGit(gpa, io, root, &.{ "show", spec }) catch return null;
+    defer r.deinit(gpa);
+    if (!r.ok) return null;
+    return try gpa.dupe(u8, r.stdout);
+}
+
+/// Who last touched each line of a file, as `git blame --porcelain`
+/// prints it (see Blame.zig). Null when git can't say — the file is
+/// untracked, or isn't text. Caller frees.
+pub fn blame(gpa: Allocator, io: Io, root: []const u8, rel: []const u8) !?[]u8 {
+    const r = runGit(gpa, io, root, &.{ "blame", "--porcelain", "--", rel }) catch return null;
+    defer r.deinit(gpa);
+    if (!r.ok) return null;
+    return try gpa.dupe(u8, r.stdout);
+}
+
+/// Where a patch lands: in what's staged, or in the file itself.
+pub const ApplyTo = enum { index, work_tree };
+
+/// Applies one change a patch describes (see `Diff.hunkPatch`), leaving
+/// the rest of the file alone; `reverse` takes the change back out. git
+/// reads the patch from a file, which goes in the repository's own .git
+/// folder so nothing shows up in the work tree.
+pub fn apply(self: *Git, io: Io, root: []const u8, patch: []const u8, to: ApplyTo, reverse: bool) !void {
+    const dir = try self.gitDir(io, root);
+    defer self.gpa.free(dir);
+    const path = try std.fs.path.join(self.gpa, &.{ dir, "byte-code-stage.patch" });
+    defer self.gpa.free(path);
+    const cwd = Io.Dir.cwd();
+    {
+        var file = try cwd.createFileAtomic(io, path, .{ .replace = true });
+        defer file.deinit(io);
+        try file.file.writeStreamingAll(io, patch);
+        try file.replace(io);
+    }
+    defer cwd.deleteFile(io, path) catch {};
+    var args: std.ArrayList([]const u8) = .empty;
+    defer args.deinit(self.gpa);
+    try args.appendSlice(self.gpa, &.{ "apply", "--whitespace=nowarn" });
+    if (to == .index) try args.append(self.gpa, "--cached");
+    if (reverse) try args.append(self.gpa, "--reverse");
+    try args.appendSlice(self.gpa, &.{ "--", path });
+    try self.expectOk(io, root, args.items);
+}
+
+/// The repository's .git folder (a plain file points elsewhere in a work
+/// tree or submodule, so git is asked). Caller frees.
+fn gitDir(self: *Git, io: Io, root: []const u8) ![]u8 {
+    const r = try runGit(self.gpa, io, root, &.{ "rev-parse", "--absolute-git-dir" });
+    defer r.deinit(self.gpa);
+    if (!r.ok) return error.GitFailed;
+    return self.gpa.dupe(u8, std.mem.trimEnd(u8, r.stdout, "\r\n"));
 }
 
 /// Commits what's staged. On failure (e.g. a hook refused, or no name and

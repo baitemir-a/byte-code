@@ -5,6 +5,7 @@ const rl = @import("raylib");
 const theme = @import("../theme/lib/theme.zig");
 const Font = @import("../Font.zig");
 const file_icon = @import("../widgets/lib/file_icon.zig");
+const Icons = @import("../Icons.zig");
 const core = @import("core");
 const GitPanel = @import("GitPanel.zig");
 const i18n = @import("../../i18n/i18n.zig");
@@ -66,30 +67,41 @@ pub fn draw(self: *const GitPanel, git: *const Git, font: Font, focused: bool, s
             .header => |s| {
                 var hbuf: [128]u8 = undefined;
                 const title = std.fmt.bufPrint(&hbuf, "{s} ({d})", .{ if (s == .staged) t.staged_changes else t.changes, if (s == .staged) c.staged else c.changes }) catch "";
-                _ = font.drawFit(title, r.x + GitPanel.pad, ty, r.x + r.width - GitPanel.pad - GitPanel.action_size - 20, theme.sidebar_header);
-                if (row_hovered) drawAction(font, self.actionRect(y), s == .changes, mouse);
+                // The changes can also all be thrown away at once.
+                const discard_all = s == .changes and GitPanel.canDiscardAll(git);
+                const buttons: usize = if (discard_all) 2 else 1;
+                _ = font.drawFit(title, r.x + GitPanel.pad, ty, self.actionRect(y, buttons - 1).x - 8, theme.sidebar_header);
+                if (row_hovered) {
+                    drawAction(font, self.actionRect(y, 0), if (s == .changes) .plus else .minus, mouse);
+                    if (discard_all) drawAction(font, self.actionRect(y, 1), .undo_2, mouse);
+                }
             },
             .entry => |e| {
                 const entry = git.entries.items[e.index];
                 const letter = if (e.section == .staged) entry.staged else entry.unstaged;
                 const base = if (std.mem.lastIndexOfScalar(u8, entry.path, '/')) |i| i + 1 else 0;
                 const status_x = r.x + r.width - GitPanel.pad - font.cell_width;
-                const text_end = if (row_hovered) self.actionRect(y).x - 4 else status_x - 8;
+                const buttons: usize = if (e.section == .changes and GitPanel.canDiscard(entry)) 2 else 1;
+                const text_end = if (row_hovered) self.actionRect(y, buttons - 1).x - 4 else status_x - 8;
                 file_icon.draw(entry.path[base..], .{ .x = r.x + GitPanel.pad + 10 + file_icon.radius, .y = y + row_height / 2 });
                 const x = font.drawFit(entry.path[base..], r.x + GitPanel.pad + 10 + file_icon.radius * 2 + 8, ty, text_end, theme.foreground);
                 if (base > 0) _ = font.drawFit(entry.path[0 .. base - 1], x + font.cell_width, ty, text_end, theme.popup_detail);
                 font.drawCodepoint(if (letter == '?') 'U' else letter, status_x, ty, statusColor(letter));
-                if (row_hovered) drawAction(font, self.actionRect(y), e.section == .changes, mouse);
+                if (row_hovered) {
+                    drawAction(font, self.actionRect(y, 0), if (e.section == .changes) .plus else .minus, mouse);
+                    if (buttons > 1) drawAction(font, self.actionRect(y, 1), .undo_2, mouse);
+                }
             },
         }
     }
 }
 
-/// "+" (stage) or "−" (unstage) button.
-pub fn drawAction(font: Font, b: rl.Rectangle, plus: bool, mouse: rl.Vector2) void {
+/// One of a row's buttons: "+" (stage), "−" (unstage) or "↺" (throw the
+/// changes away).
+pub fn drawAction(font: Font, b: rl.Rectangle, icon: Icons.Icon, mouse: rl.Vector2) void {
     if (rl.checkCollisionPointRec(mouse, b)) rl.drawRectangleRounded(b, 0.3, 6, theme.tab_close_hover);
     const c: rl.Vector2 = .{ .x = b.x + b.width / 2, .y = b.y + b.height / 2 };
-    font.drawIcon(if (plus) .plus else .minus, c, .small, theme.foreground);
+    font.drawIcon(icon, c, .small, theme.foreground);
 }
 
 pub fn statusColor(letter: u8) rl.Color {

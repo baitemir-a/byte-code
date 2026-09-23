@@ -53,6 +53,10 @@ pub fn handleMouse(self: *App) !bool {
     const text_drag = editing and self.mouse.dragging;
     if (!self.menu.is_open and !text_drag and self.handleTerminalMouse(point, pressed)) return true;
 
+    // The bar along the bottom takes the mouse itself: clicking it must
+    // not move the cursor in the text. A selection being dragged keeps it.
+    if (!self.mouse.dragging and self.status.contains(point)) return pressed;
+
     // The context menu is on top of everything; any click closes it.
     if (self.menu.is_open and (pressed or right_pressed)) {
         const chosen = if (pressed) self.menu.itemAt(point) else null;
@@ -140,10 +144,13 @@ pub fn handleMouse(self: *App) !bool {
             .welcome => try self.welcomeClick(point),
             .settings => if (self.settings_page.actionAt(point, &self.settings)) |a| try self.runSettingsAction(a),
             .help => if (self.help_page.actionAt(point, self.view.font, &self.keys)) |a| try self.runHelpAction(a),
-            .file => {},
+            .file, .diff => {},
         };
         return captured or pressed;
     }
+
+    // The buttons beside a change in the Git view, in the gutter.
+    if (pressed and !captured and try self.hunkClick(point)) return true;
 
     // Ctrl+click (Cmd+click on macOS) on a name: go to where it is
     // declared, or list where it is used. Option is left to the extra

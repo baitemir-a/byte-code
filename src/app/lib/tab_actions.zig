@@ -7,6 +7,7 @@ pub fn activate(self: *App, index: usize) !void {
     self.active = index;
     self.view.scroll = self.tab().scroll;
     self.completion.close();
+    if (self.readOnly()) self.find.close(); // nothing here to replace
     self.mouse.dragging = false;
     try self.revealCurrentFile();
 }

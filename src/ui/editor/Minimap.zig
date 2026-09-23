@@ -1,14 +1,18 @@
 //! The minimap: a zoomed-out picture of the whole file at the editor's
-//! right edge, with the visible part marked. Click or drag it to scroll.
+//! right edge, with the visible part marked and the lines git sees as
+//! changed marked along its left edge. Click or drag it to scroll.
 const std = @import("std");
 const rl = @import("raylib");
 const core = @import("core");
 const theme = @import("../theme/lib/theme.zig");
 const View = @import("View.zig");
+const View_diff = @import("View_diff.zig");
 
 const Minimap = @This();
 
 pub const width: f32 = 96;
+/// Width of a change's mark along the left edge.
+const mark_w: f32 = 3;
 /// Size of one line and one character, in UI units.
 const line_h: f32 = 2;
 const char_w: f32 = 1;
@@ -65,7 +69,7 @@ pub fn handleMouse(self: *Minimap, view: *View, buf: *const core.Buffer, p: rl.V
     return true;
 }
 
-pub fn draw(self: *const Minimap, view: *const View, buf: *const core.Buffer, hl: *const core.syntax.Highlighter) void {
+pub fn draw(self: *const Minimap, view: *const View, buf: *const core.Buffer, hl: *const core.syntax.Highlighter, changes: ?View.Changes) void {
     const r = self.rect;
     rl.drawRectangleRec(r, faded(theme.minimap_background));
     theme.clip(r);
@@ -81,6 +85,10 @@ pub fn draw(self: *const Minimap, view: *const View, buf: *const core.Buffer, hl
         const end = std.mem.indexOfScalarPos(u8, text, pos, '\n') orelse text.len;
         const line = text[pos..end];
         const y = r.y + @as(f32, @floatFromInt(index - first)) * line_h;
+        // What git makes of the line, on the edge nearest the text.
+        if (changes) |ch| if (View_diff.lineColor(ch, index)) |c| {
+            rl.drawRectangleRec(.{ .x = r.x, .y = y, .width = mark_w, .height = line_h }, faded(c));
+        };
         var tokens = hl.tokens(index, line);
         // One block per run of non-blank characters, in the token's color.
         var col: usize = 0;

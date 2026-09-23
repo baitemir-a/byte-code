@@ -74,6 +74,10 @@ pub fn draw(self: *const SettingsPage, font: Font, settings: *const Settings, se
     label(font, t.new_window, t.new_window_hint, x, self.rowY(rows.new_window), self.new_window_toggle.x);
     drawToggle(self.new_window_toggle, settings.open_folder_in_new_window);
 
+    // Asking before changes are thrown away in the Git view.
+    label(font, t.confirm_discard, t.confirm_discard_hint, x, self.rowY(rows.confirm_discard), self.confirm_discard_toggle.x);
+    drawToggle(self.confirm_discard_toggle, settings.confirm_discard);
+
     // Keyboard shortcuts live in their own tab.
     label(font, t.shortcuts, t.shortcuts_hint, x, self.rowY(rows.shortcuts), self.shortcuts_button.x);
     drawButton(font, self.shortcuts_button, i18n.tr().common.open, true);
