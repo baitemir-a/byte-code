@@ -6,6 +6,7 @@ pub const strings: Strings = .{
         .reset = "リセット",
         .open = "開く",
         .cancel = "キャンセル",
+        .ok = "OK",
         .replace = "置換",
         .replace_all = "すべて置換",
         .saved_to = "保存先：",

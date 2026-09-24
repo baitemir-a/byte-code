@@ -6,6 +6,7 @@ pub const strings: Strings = .{
         .reset = "초기화",
         .open = "열기",
         .cancel = "취소",
+        .ok = "확인",
         .replace = "바꾸기",
         .replace_all = "모두 바꾸기",
         .saved_to = "저장 위치:",

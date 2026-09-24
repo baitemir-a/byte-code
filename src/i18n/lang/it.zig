@@ -6,6 +6,7 @@ pub const strings: Strings = .{
         .reset = "Reimposta",
         .open = "Apri",
         .cancel = "Annulla",
+        .ok = "OK",
         .replace = "Sostituisci",
         .replace_all = "Sostituisci tutto",
         .saved_to = "Salvato in:",

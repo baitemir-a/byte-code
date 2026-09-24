@@ -25,6 +25,9 @@ pub const Icon = enum {
     plus,
     minus,
     undo_2,
+    triangle_alert,
+    circle_x,
+    check,
 
     pub fn codepoint(self: Icon) u21 {
         return codepoints[@intFromEnum(self)];

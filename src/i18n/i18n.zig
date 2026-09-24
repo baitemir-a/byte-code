@@ -16,6 +16,7 @@ pub const Strings = struct {
         reset: []const u8,
         open: []const u8,
         cancel: []const u8,
+        ok: []const u8,
         replace: []const u8,
         replace_all: []const u8,
         /// Above the path of settings.json / keybindings.json.

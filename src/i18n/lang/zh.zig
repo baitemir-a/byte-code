@@ -6,6 +6,7 @@ pub const strings: Strings = .{
         .reset = "重置",
         .open = "打开",
         .cancel = "取消",
+        .ok = "确定",
         .replace = "替换",
         .replace_all = "全部替换",
         .saved_to = "保存位置：",
