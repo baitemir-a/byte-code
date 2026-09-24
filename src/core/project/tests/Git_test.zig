@@ -2,6 +2,7 @@
 const std = @import("std");
 const Git = @import("../Git.zig");
 const GitLog = @import("../GitLog.zig");
+const GitRefs = @import("../GitRefs.zig");
 
 test "parses porcelain status" {
     var g = Git.init(std.testing.allocator);
@@ -175,16 +176,16 @@ test "real repository: branches, stashing, and a remote to push to" {
     try g.createBranch(io, work, "feature", null);
     try g.refresh(io, work);
     try std.testing.expectEqualStrings("feature", g.branch);
-    const list = (try Git.branches(gpa, io, work, false)).?;
+    const list = (try Git.readBranches(gpa, io, work)).?;
     defer gpa.free(list);
-    try std.testing.expect(std.mem.indexOf(u8, list, "feature") != null);
+    try std.testing.expect(std.mem.indexOf(u8, list, "refs/heads/feature") != null);
     try g.checkout(io, work, first);
     try g.refresh(io, work);
     try std.testing.expectEqualStrings(first, g.branch);
 
     // Changes put aside and brought back.
     try dir.writeFile(io, .{ .sub_path = "a.txt", .data = "changed\n" });
-    try g.stash(io, work);
+    try g.stash(io, work, "");
     try g.refresh(io, work);
     try std.testing.expectEqual(@as(usize, 0), g.entries.items.len);
     try g.stashPop(io, work);
@@ -270,4 +271,128 @@ test "real repository: history, amending, undoing, and a merge" {
     try g.refresh(io, root);
     try std.testing.expect(!g.merging);
     try std.testing.expectEqual(@as(usize, 0), g.entries.items.len);
+}
+
+test "real repository: managing branches and stashes, with progress" {
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const root = try tmp.dir.realPathFileAlloc(io, ".", gpa);
+    defer gpa.free(root);
+
+    var g = Git.init(gpa);
+    defer g.deinit();
+    try g.refresh(io, root);
+    if (g.state == .no_git) return error.SkipZigTest;
+    for ([_][]const []const u8{
+        &.{"init"},
+        &.{ "config", "user.email", "test@example.com" },
+        &.{ "config", "user.name", "Test" },
+    }) |args| try g.expectOk(io, root, args);
+    try tmp.dir.writeFile(io, .{ .sub_path = "a.txt", .data = "one\n" });
+    try g.stage(io, root, "a.txt");
+    try g.commit(io, root, "first");
+    try g.refresh(io, root);
+    const main = try gpa.dupe(u8, g.branch);
+    defer gpa.free(main);
+    try std.testing.expect(g.git_dir.len > 0);
+
+    // What .git looks like (taken after git status, which may touch the
+    // index itself) stays put until something changes it, like a commit.
+    const stamp = g.watchStamp(io);
+    try std.testing.expect(stamp != 0);
+    try std.testing.expectEqual(stamp, g.watchStamp(io));
+
+    // A branch with a commit of its own, renamed, merged, and deleted.
+    try g.createBranch(io, root, "topic", null);
+    try tmp.dir.writeFile(io, .{ .sub_path = "b.txt", .data = "two\n" });
+    try g.stage(io, root, "b.txt");
+    try g.commit(io, root, "second");
+    try g.renameBranch(io, root, "topic", "feature");
+    try std.testing.expect(g.watchStamp(io) != stamp);
+    try g.checkout(io, root, main);
+    // Not merged yet: git won't delete it without being told to.
+    try std.testing.expectError(error.GitFailed, g.deleteBranch(io, root, "feature", false));
+    try g.merge(io, root, "feature");
+    try g.deleteBranch(io, root, "feature", false);
+
+    var refs = GitRefs.init(gpa);
+    defer refs.deinit();
+    const branches = (try Git.readBranches(gpa, io, root)).?;
+    defer gpa.free(branches);
+    try refs.parseBranches(branches);
+    try std.testing.expectEqual(@as(usize, 1), refs.branches.items.len);
+    try std.testing.expect(refs.branches.items[0].current);
+
+    // Two stashes, one with a message; the older one comes back first.
+    try tmp.dir.writeFile(io, .{ .sub_path = "a.txt", .data = "first stash\n" });
+    try g.stash(io, root, "");
+    try tmp.dir.writeFile(io, .{ .sub_path = "a.txt", .data = "second stash\n" });
+    try g.stash(io, root, "the second");
+    const stashes = (try Git.readStashes(gpa, io, root)).?;
+    defer gpa.free(stashes);
+    try refs.parseStashes(stashes);
+    try std.testing.expectEqual(@as(usize, 2), refs.stashes.items.len);
+    try std.testing.expect(std.mem.endsWith(u8, refs.stashes.items[0].message, "the second"));
+    try g.stashApply(io, root, "stash@{1}");
+    const a = try tmp.dir.readFileAlloc(io, "a.txt", gpa, .limited(64));
+    defer gpa.free(a);
+    try std.testing.expectEqualStrings("first stash\n", a);
+    try g.stashDrop(io, root, "stash@{1}");
+    try g.discardAll(io, root);
+    try g.stashPopAt(io, root, "stash@{0}");
+    const stashes_left = (try Git.readStashes(gpa, io, root)).?;
+    defer gpa.free(stashes_left);
+    try std.testing.expectEqualStrings("", stashes_left);
+
+    // A clone with a progress: git's stderr is read as it comes, and
+    // what goes wrong is still reported.
+    var progress: Git.Progress = .{};
+    var g2 = Git.init(gpa);
+    defer g2.deinit();
+    g2.progress = &progress;
+    try tmp.dir.createDirPath(io, "copies");
+    const copies = try tmp.dir.realPathFileAlloc(io, "copies", gpa);
+    defer gpa.free(copies);
+    try g2.clone(io, copies, root);
+    try std.testing.expectError(error.GitFailed, g2.clone(io, copies, root)); // already there
+    try std.testing.expect(std.mem.indexOf(u8, g2.last_error.items, "already exists") != null);
+
+    // Called off before it starts: nothing runs.
+    progress.cancel(io);
+    try std.testing.expectError(error.GitCancelled, g2.fetch(io, copies));
+}
+
+test "real repository: a command that hangs can be stopped" {
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const root = try tmp.dir.realPathFileAlloc(io, ".", gpa);
+    defer gpa.free(root);
+
+    var g = Git.init(gpa);
+    defer g.deinit();
+    try g.refresh(io, root);
+    if (g.state == .no_git) return error.SkipZigTest;
+    if (@import("builtin").os.tag == .windows) return error.SkipZigTest; // no `sleep` to stand in for a remote
+    try g.expectOk(io, root, &.{"init"});
+
+    // A "remote" that never answers: git waits on it until stopped.
+    var progress: Git.Progress = .{};
+    g.progress = &progress;
+    const Stopper = struct {
+        fn run(p: *Git.Progress, stop_io: std.Io) void {
+            stop_io.sleep(.fromMilliseconds(300), .awake) catch {};
+            p.cancel(stop_io);
+        }
+    };
+    const stopper = try std.Thread.spawn(.{}, Stopper.run, .{ &progress, io });
+    defer stopper.join();
+    const started = std.Io.Timestamp.now(io, .awake);
+    const result = g.expectOk(io, root, &.{ "-c", "protocol.ext.allow=always", "fetch", "ext::sleep 30" });
+    try std.testing.expectError(error.GitCancelled, result);
+    const took = started.durationTo(std.Io.Timestamp.now(io, .awake));
+    try std.testing.expect(took.toMilliseconds() < 5000);
 }

@@ -18,6 +18,7 @@ pub const Git = @import("project/Git.zig");
 pub const Diff = @import("project/Diff.zig");
 pub const Blame = @import("project/Blame.zig");
 pub const GitLog = @import("project/GitLog.zig");
+pub const GitRefs = @import("project/GitRefs.zig");
 pub const Conflicts = @import("project/Conflicts.zig");
 pub const History = @import("buffer/History.zig");
 pub const text = @import("editing/lib/text.zig");

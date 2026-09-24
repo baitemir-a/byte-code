@@ -228,7 +228,7 @@ fn runGitCommand(self: *App, command: GitPanel.Command, at: rl.Vector2) !void {
         .amend => try git_commands.amendCommit(self, root),
         .undo_commit => try git_commands.undoCommit(self, root),
         .abort_merge => try git_commands.abortMerge(self, root),
-        .stash => self.gitAction(self.git.stash(self.io, root)),
+        .stash => self.gitAction(self.git.stash(self.io, root, "")),
         .stash_pop => self.gitAction(self.git.stashPop(self.io, root)),
         .clone => {
             try self.git_panel.ask(.clone, "");
