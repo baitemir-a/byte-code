@@ -42,9 +42,17 @@ pub fn updateSidebarViews(self: *App) !void {
     // Not while a push or pull runs: git status can hold the index lock
     // it needs.
     if (self.gitBusy()) return;
+    // A commit, checkout or stash made elsewhere changes .git: everything
+    // git shows is read again (the view, the change marks, the blame).
+    if (now - self.git_watch_at > 0.5) {
+        self.git_watch_at = now;
+        if (self.git.watchStamp(self.io) != self.git_stamp) self.gitChanged();
+    }
     if (self.sidebar.width() > 0 or self.git_dirty) if (self.project) |*p| {
         if (self.git_dirty or now - self.git_read_at > 5) {
             try self.git.refresh(self.io, p.root().path);
+            // Taken after git status, which may itself touch the index.
+            self.git_stamp = self.git.watchStamp(self.io);
             if (self.git_panel.history_open) try git_commands.readHistory(self, p.root().path);
             self.git_dirty = false;
             self.git_read_at = now;
@@ -157,7 +165,7 @@ pub fn panelClick(self: *App, point: rl.Vector2) !void {
             const hit = self.git_panel.hitTest(&self.git, self.view.font, point) orelse return;
             // While a push or pull runs, the rest of git waits for it.
             if (self.gitBusy()) switch (hit) {
-                .message, .toggle_commands, .prompt, .open, .toggle_history, .commit_row, .commit_file => {},
+                .message, .toggle_commands, .prompt, .open, .toggle_history, .commit_row, .commit_file, .cancel_job => {},
                 else => return,
             };
             switch (hit) {
@@ -166,7 +174,7 @@ pub fn panelClick(self: *App, point: rl.Vector2) !void {
                     const f = &self.git_panel.message;
                     f.buffer.moveTo(f.posAtX(self.git_panel.field_rect, self.view.font, point.x), false);
                 },
-                .commit => if (GitPanel.syncing(&self.git)) self.startGitJob(.sync, null) else try self.gitCommit(),
+                .commit => if (GitPanel.syncing(&self.git)) self.startGitJob(.sync) else try self.gitCommit(),
                 .toggle_commands => {
                     self.git_panel.commands_open = !self.git_panel.commands_open;
                     self.git_panel.cancelPrompt();
@@ -179,6 +187,7 @@ pub fn panelClick(self: *App, point: rl.Vector2) !void {
                 },
                 .resolve => |i| try git_commands.markResolved(self, root, i),
                 .branch => try self.openBranchPicker(.checkout),
+                .cancel_job => self.cancelGitJob(),
                 .toggle_history => try git_commands.toggleHistory(self, root),
                 .commit_row => |i| try git_commands.openCommit(self, root, i, false),
                 .commit_file => |i| try git_commands.openCommitFile(self, i),
@@ -215,16 +224,16 @@ fn runGitCommand(self: *App, command: GitPanel.Command) !void {
     self.side_focus = .none;
     self.git_panel.cancelPrompt();
     switch (command) {
-        .push => self.startGitJob(.push, command),
-        .pull => self.startGitJob(.pull, command),
-        .fetch => self.startGitJob(.fetch, command),
+        .push => self.startGitJob(.push),
+        .pull => self.startGitJob(.pull),
+        .fetch => self.startGitJob(.fetch),
         .commit_push => {
             try self.gitCommit();
-            if (self.git.last_error.items.len == 0) self.startGitJob(.push, command);
+            if (self.git.last_error.items.len == 0) self.startGitJob(.push);
         },
         .commit_sync => {
             try self.gitCommit();
-            if (self.git.last_error.items.len == 0) self.startGitJob(.sync, command);
+            if (self.git.last_error.items.len == 0) self.startGitJob(.sync);
         },
         .amend => try git_commands.amendCommit(self, root),
         .undo_commit => try git_commands.undoCommit(self, root),

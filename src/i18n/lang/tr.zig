@@ -248,6 +248,11 @@ pub const strings: Strings = .{
         .drop_stash_detail = "İçindeki değişiklikler kalıcı olarak kaybolur.",
         .stash_title = "Değişiklikleri zulaya koy",
         .stash_message = "Sonra bulmak için bir mesaj (isteğe bağlı)",
+        .running_push = "Gönderiliyor…",
+        .running_pull = "Çekiliyor…",
+        .running_fetch = "Getiriliyor…",
+        .running_sync = "Eşitleniyor…",
+        .running_clone = "Klonlanıyor…",
     },
     .status = .{
         .just_now = "az önce",

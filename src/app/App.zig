@@ -175,6 +175,10 @@ git: core.Git,
 /// re-read every few seconds while the Git view shows.
 git_dirty: bool = true,
 git_read_at: f64 = 0,
+/// What .git looked like when the status was last read, and when it was
+/// last looked at: git run elsewhere (the terminal) shows up at once.
+git_stamp: u64 = 0,
+git_watch_at: f64 = 0,
 /// A push, pull or fetch running in the background, if any.
 git_job: ?*git_jobs.Job = null,
 /// The editor's environment, which git commands that may ask for a
@@ -273,6 +277,7 @@ pub const pickerMouse = git_pickers.pickerMouse;
 // git_job.zig
 pub const startGitJob = git_jobs.startGitJob;
 pub const startClone = git_jobs.startClone;
+pub const cancelGitJob = git_jobs.cancelGitJob;
 pub const pollGitJob = git_jobs.pollGitJob;
 pub const gitBusy = git_jobs.gitBusy;
 

@@ -248,6 +248,11 @@ pub const strings: Strings = .{
         .drop_stash_detail = "其中的更改将永久丢失。",
         .stash_title = "储藏更改",
         .stash_message = "便于以后查找的说明（可选）",
+        .running_push = "正在推送…",
+        .running_pull = "正在拉取…",
+        .running_fetch = "正在获取…",
+        .running_sync = "正在同步…",
+        .running_clone = "正在克隆…",
     },
     .status = .{
         .just_now = "刚刚",

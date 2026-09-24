@@ -67,10 +67,7 @@ pub fn draw(self: *const GitPanel, git: *const Git, font: Font, focused: bool, p
     const lw = font.textWidth(label);
     const lx = self.commit_rect.x + (self.commit_rect.width - lw) / 2;
     _ = font.drawFit(label, lx, self.commit_rect.y + (self.commit_rect.height - theme.font_size) / 2, self.commit_rect.x + self.commit_rect.width, if (can_commit) theme.background else theme.popup_detail);
-    // The button itself started what is running: it spins beside its label.
-    if (self.busy) |b| if (b.from == null) {
-        drawSpinner(.{ .x = lx - 12, .y = self.commit_rect.y + self.commit_rect.height / 2 }, theme.popup_detail);
-    };
+    if (self.busy) |*b| drawProgress(self, b, font, mouse);
 
     const top = self.listTop();
     theme.clip(.{ .x = r.x, .y = top, .width = r.width, .height = r.y + r.height - top });
@@ -87,18 +84,12 @@ pub fn draw(self: *const GitPanel, git: *const Git, font: Font, focused: bool, p
             .commands_header => {
                 const icon: Icons.Icon = if (self.commands_open) .chevron_down else .chevron_right;
                 font.drawIcon(icon, .{ .x = r.x + GitPanel.pad + 6, .y = y + row_height / 2 }, .small, theme.sidebar_arrow);
-                _ = font.drawFit(t.commands, r.x + GitPanel.pad + 18, ty, r.x + r.width - GitPanel.pad - 16, theme.sidebar_header);
-                // Folded away, the running command spins here instead.
-                if (self.busy) |b| if (b.from != null and !self.commands_open) {
-                    drawSpinner(spinnerAt(r, y), theme.sidebar_header);
-                };
+                _ = font.drawFit(t.commands, r.x + GitPanel.pad + 18, ty, r.x + r.width - GitPanel.pad, theme.sidebar_header);
             },
             .command => |c| {
-                const running = if (self.busy) |b| b.from == c else false;
-                // The others wait until it is done.
-                const color = if (busy and !running) theme.popup_detail else theme.foreground;
-                _ = font.drawFit(c.label(), r.x + GitPanel.pad + 18, ty, r.x + r.width - GitPanel.pad - 16, color);
-                if (running) drawSpinner(spinnerAt(r, y), theme.accent);
+                // They wait while something runs.
+                const color = if (busy) theme.popup_detail else theme.foreground;
+                _ = font.drawFit(c.label(), r.x + GitPanel.pad + 18, ty, r.x + r.width - GitPanel.pad, color);
             },
             .header => |s| {
                 var hbuf: [128]u8 = undefined;
@@ -204,9 +195,16 @@ fn drawPrompt(self: *const GitPanel, font: Font, focused: bool, show_caret: bool
     self.prompt_field.draw(box, font, prompt.placeholder(&buf, self.promptBase()), focused, show_caret);
 }
 
-/// Where a row's spinner goes: at its right end.
-fn spinnerAt(r: rl.Rectangle, y: f32) rl.Vector2 {
-    return .{ .x = r.x + r.width - GitPanel.pad - 8, .y = y + row_height / 2 };
+/// What runs in the background: a spinner, what it is ("Pushing…"),
+/// the last thing git said about how far it got, and a button to stop.
+fn drawProgress(self: *const GitPanel, b: *const GitPanel.Busy, font: Font, mouse: rl.Vector2) void {
+    const p = self.progressRect();
+    const ty = p.y + (row_height - theme.font_size) / 2;
+    drawSpinner(.{ .x = p.x + GitPanel.pad + 6, .y = p.y + row_height / 2 }, theme.accent);
+    const stop = self.cancelRect();
+    const x = font.drawFit(b.label, p.x + GitPanel.pad + 18, ty, stop.x - 6, theme.foreground);
+    _ = font.drawFit(b.progressText(), x + font.cell_width, ty, stop.x - 6, theme.popup_detail);
+    drawAction(font, stop, .x, mouse);
 }
 
 /// Something is running: an arc going round, a turn a second.
@@ -233,6 +231,10 @@ const Counter = struct {
 /// The name of the counter under the pointer.
 pub fn drawBadgeTooltip(self: *const GitPanel, git: *const Git, font: Font) void {
     const mouse = rl.getMousePosition();
+    // Drawn here, outside the view's clipping: the stop button's name.
+    if (self.busy != null and rl.checkCollisionPointRec(mouse, self.cancelRect())) {
+        return search_controls.drawTooltip(font, self.cancelRect(), i18n.tr().common.cancel);
+    }
     const badge = self.badgeAt(git, font, mouse) orelse return;
     const Anchor = struct {
         want: GitPanel.Badge,

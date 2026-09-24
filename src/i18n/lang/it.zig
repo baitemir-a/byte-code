@@ -248,6 +248,11 @@ pub const strings: Strings = .{
         .drop_stash_detail = "Le modifiche che contiene vanno perse per sempre.",
         .stash_title = "Metti da parte le modifiche",
         .stash_message = "Un messaggio per ritrovarle dopo (facoltativo)",
+        .running_push = "Invio…",
+        .running_pull = "Ricezione…",
+        .running_fetch = "Recupero…",
+        .running_sync = "Sincronizzazione…",
+        .running_clone = "Clonazione…",
     },
     .status = .{
         .just_now = "proprio ora",

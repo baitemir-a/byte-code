@@ -248,6 +248,11 @@ pub const strings: Strings = .{
         .drop_stash_detail = "Андагы өзгөртүүлөр биротоло жоголот.",
         .stash_title = "Өзгөртүүлөрдү катуу",
         .stash_message = "Кийин табуу үчүн билдирүү (милдеттүү эмес)",
+        .running_push = "Жөнөтүлүүдө…",
+        .running_pull = "Алынууда…",
+        .running_fetch = "Жүктөлүүдө…",
+        .running_sync = "Шайкештелүүдө…",
+        .running_clone = "Клондолууда…",
     },
     .status = .{
         .just_now = "азыр эле",

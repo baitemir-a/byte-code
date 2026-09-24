@@ -248,6 +248,11 @@ pub const strings: Strings = .{
         .drop_stash_detail = "含まれる変更は完全に失われます。",
         .stash_title = "変更をスタッシュ",
         .stash_message = "後で見つけるためのメッセージ（任意）",
+        .running_push = "プッシュ中…",
+        .running_pull = "プル中…",
+        .running_fetch = "フェッチ中…",
+        .running_sync = "同期中…",
+        .running_clone = "クローン中…",
     },
     .status = .{
         .just_now = "たった今",

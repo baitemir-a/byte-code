@@ -226,6 +226,12 @@ pub const Strings = struct {
         /// Asked when stashing.
         stash_title: []const u8,
         stash_message: []const u8,
+        /// What runs in the background, beside how far it got.
+        running_push: []const u8,
+        running_pull: []const u8,
+        running_fetch: []const u8,
+        running_sync: []const u8,
+        running_clone: []const u8,
     },
     /// The bar along the bottom: what git says about the line the cursor
     /// is on, and where the cursor is.

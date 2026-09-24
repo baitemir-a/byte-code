@@ -39,6 +39,8 @@ pub const Hit = union(enum) {
     prompt,
     /// The branch's name: pick another one.
     branch,
+    /// Stop what is running in the background.
+    cancel_job,
     /// A file a merge left half-done: mark it sorted out (stage it).
     resolve: u32,
     /// The history: fold it open or shut, open a commit to list its
@@ -325,9 +327,21 @@ field_rect: rl.Rectangle = std.mem.zeroes(rl.Rectangle),
 commit_rect: rl.Rectangle = std.mem.zeroes(rl.Rectangle),
 scroll: f32 = 0,
 max_scroll: f32 = 0,
-/// A push, pull or fetch is running; `from` is the command row that
-/// started it (null for the commit button), which shows the spinner.
-busy: ?struct { from: ?Command } = null,
+/// Something runs in the background (a push, a pull...): a row under the
+/// commit button says what, how far it got, and offers to stop it.
+busy: ?Busy = null,
+
+pub const Busy = struct {
+    /// "Pushing…"
+    label: []const u8,
+    /// The last line git printed about how far it got.
+    progress: [200]u8 = undefined,
+    progress_len: usize = 0,
+
+    pub fn progressText(b: *const Busy) []const u8 {
+        return b.progress[0..b.progress_len];
+    }
+};
 
 // Drawing, in GitPanel_draw.zig.
 pub const draw = GitPanel_draw.draw;
@@ -429,7 +443,19 @@ fn rowCount(self: *const GitPanel, git: *const Git) usize {
 }
 
 pub fn listTop(self: *const GitPanel) f32 {
-    return self.commit_rect.y + self.commit_rect.height + 10;
+    const progress: f32 = if (self.busy != null) row_height else 0;
+    return self.commit_rect.y + self.commit_rect.height + 10 + progress;
+}
+
+/// The row saying what runs in the background, between the commit
+/// button and the list, and its stop button.
+pub fn progressRect(self: *const GitPanel) rl.Rectangle {
+    return .{ .x = self.rect.x, .y = self.commit_rect.y + self.commit_rect.height + 6, .width = self.rect.width, .height = row_height };
+}
+
+pub fn cancelRect(self: *const GitPanel) rl.Rectangle {
+    const p = self.progressRect();
+    return .{ .x = p.x + p.width - pad - action_size, .y = p.y + (row_height - action_size) / 2, .width = action_size, .height = action_size };
 }
 
 /// The branch's name on the top line, which picks another branch.
@@ -474,6 +500,7 @@ pub fn canDiscardAll(git: *const Git) bool {
 pub fn hitTest(self: *const GitPanel, git: *const Git, font: Font, p: rl.Vector2) ?Hit {
     if (!rl.checkCollisionPointRec(p, self.rect) or git.state != .ok) return null;
     if (rl.checkCollisionPointRec(p, self.branchRect(git, font))) return .branch;
+    if (self.busy != null and rl.checkCollisionPointRec(p, self.cancelRect())) return .cancel_job;
     if (rl.checkCollisionPointRec(p, self.field_rect)) return .message;
     if (rl.checkCollisionPointRec(p, self.commit_rect)) return .commit;
     if (self.prompt != null and rl.checkCollisionPointRec(p, self.promptRect())) return .prompt;

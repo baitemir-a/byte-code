@@ -248,6 +248,11 @@ pub const strings: Strings = .{
         .drop_stash_detail = "그 안의 변경 사항은 영구히 사라집니다.",
         .stash_title = "변경 사항 스태시",
         .stash_message = "나중에 찾기 위한 메시지(선택)",
+        .running_push = "푸시 중…",
+        .running_pull = "풀 중…",
+        .running_fetch = "가져오는 중…",
+        .running_sync = "동기화 중…",
+        .running_clone = "복제 중…",
     },
     .status = .{
         .just_now = "방금",
