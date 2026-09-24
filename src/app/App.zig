@@ -199,6 +199,8 @@ side_focus: enum { none, search, search_replace, git_message, git_prompt } = .no
 /// what it is for, and the branches and stashes it shows.
 picker: Picker,
 picker_mode: git_pickers.Mode = .checkout,
+/// The branch a two-step list was started from (cherry-pick, compare).
+picker_rev: std.ArrayList(u8) = .empty,
 git_refs: core.GitRefs,
 /// Scroll the editor to its cursor on the next frame (e.g. after opening
 /// a search result).
@@ -257,6 +259,7 @@ pub const changes = git_diff.changes;
 pub const hunkClick = git_diff.hunkClick;
 pub const openDiffTab = git_diff.openDiffTab;
 pub const openCommitDiff = git_diff.openCommitDiff;
+pub const openRevDiff = git_diff.openRevDiff;
 
 // git_blame.zig
 pub const updateBlame = git_blame.updateBlame;
@@ -414,6 +417,7 @@ pub fn deinit(self: *App) void {
     self.projects.deinit();
     self.scope_steps.deinit(self.gpa);
     self.picker.deinit();
+    self.picker_rev.deinit(self.gpa);
     self.git_refs.deinit();
     self.refs.deinit(self.gpa);
     self.ref_name.deinit(self.gpa);

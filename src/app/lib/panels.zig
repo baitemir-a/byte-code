@@ -190,6 +190,7 @@ pub fn panelClick(self: *App, point: rl.Vector2) !void {
                 .cancel_job => self.cancelGitJob(),
                 .toggle_history => try git_commands.toggleHistory(self, root),
                 .commit_row => |i| try git_commands.openCommit(self, root, i, false),
+                .revert_commit => |i| try git_commands.revertCommit(self, root, i),
                 .commit_file => |i| try git_commands.openCommitFile(self, i),
                 .stage_all => self.gitAction(self.git.stageAll(self.io, root)),
                 .unstage_all => self.gitAction(self.git.unstageAll(self.io, root)),
@@ -237,7 +238,14 @@ fn runGitCommand(self: *App, command: GitPanel.Command) !void {
         },
         .amend => try git_commands.amendCommit(self, root),
         .undo_commit => try git_commands.undoCommit(self, root),
-        .abort_merge => try git_commands.abortMerge(self, root),
+        .abort_operation => try git_commands.abortOperation(self, root),
+        .skip_rebase => try git_commands.skipRebaseCommit(self, root),
+        .push_tags => self.startGitJob(.push_tags),
+        .rebase_onto => try self.openBranchPicker(.rebase),
+        .cherry_pick => try self.openBranchPicker(.cherry_branch),
+        .compare_branch => try self.openBranchPicker(.compare),
+        .create_tag => try git_commands.createTag(self, root),
+        .delete_tag => try git_pickers.openTagPicker(self),
         .stash => try git_pickers.stashWithMessage(self, root),
         .stashes => try self.openStashPicker(),
         .merge_branch => try self.openBranchPicker(.merge),
@@ -391,13 +399,8 @@ pub fn gitAction(self: *App, result: anyerror!void) void {
 pub fn gitCommit(self: *App) !void {
     const project = if (self.project) |*p| p else return;
     const message = std.mem.trim(u8, self.git_panel.message.text(), " \t");
-    // A merge whose conflicts are sorted out is committed as it is, under
-    // git's own message unless another was typed.
-    if (self.git.merging) {
-        self.git.commitMerge(self.io, project.root().path, message) catch |err| return self.gitAction(err);
-        try self.git_panel.message.setText("");
-        return self.gitChanged();
-    }
+    // A merge (rebase...) whose conflicts are sorted out carries on.
+    if (self.git.operation) |op| return git_commands.continueOperation(self, project.root().path, op);
     var staged = false;
     for (self.git.entries.items) |e| staged = staged or e.isStaged();
     const t = i18n.tr().errors;

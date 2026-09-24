@@ -12,6 +12,8 @@ pub const Commit = struct {
     /// Seconds since the epoch.
     time: i64,
     subject: []const u8,
+    /// Its tags, comma separated ("" for none).
+    tags: []const u8 = "",
 
     pub fn shortHash(c: Commit) []const u8 {
         return c.hash[0..@min(7, c.hash.len)];
@@ -31,7 +33,10 @@ pub const File = struct {
 pub const limit = 200;
 
 /// The arguments for `git log` that `parseLog` reads.
-pub const log_args = [_][]const u8{ "log", "-n", std.fmt.comptimePrint("{d}", .{limit}), "--format=%H%x1f%an%x1f%at%x1f%s%x1e" };
+pub const log_args = [_][]const u8{ "log", "-n", std.fmt.comptimePrint("{d}", .{limit}), format };
+/// Hash, author, time, what points at it ("HEAD -> main, tag: v1"), and
+/// the first line of the message; records end with 0x1e.
+pub const format = "--format=%H%x1f%an%x1f%at%x1f%D%x1f%s%x1e";
 
 gpa: Allocator,
 arena: std.heap.ArenaAllocator,
@@ -71,7 +76,18 @@ pub fn parseLog(self: *GitLog, out: []const u8) !void {
     defer if (was_open) |h| self.gpa.free(h);
     self.commits.clearRetainingCapacity();
     _ = self.arena.reset(.retain_capacity);
-    const alloc = self.arena.allocator();
+    try parseCommits(self.gpa, self.arena.allocator(), out, &self.commits);
+    self.open = null;
+    if (was_open) |h| {
+        for (self.commits.items, 0..) |c, i| if (std.mem.eql(u8, c.hash, h)) {
+            self.open = @intCast(i);
+        };
+    }
+    if (self.open == null) self.closeFiles();
+}
+
+/// Reads commits in `format` into `list`, their text copied with `alloc`.
+pub fn parseCommits(gpa: Allocator, alloc: Allocator, out: []const u8, list: *std.ArrayList(Commit)) !void {
     var records = std.mem.splitScalar(u8, out, 0x1e);
     while (records.next()) |raw| {
         const record = std.mem.trim(u8, raw, "\r\n");
@@ -80,21 +96,28 @@ pub fn parseLog(self: *GitLog, out: []const u8) !void {
         const hash = fields.next() orelse continue;
         const author = fields.next() orelse continue;
         const time = fields.next() orelse continue;
-        const subject = fields.rest();
-        try self.commits.append(self.gpa, .{
+        const refs = fields.next() orelse continue;
+        try list.append(gpa, .{
             .hash = try alloc.dupe(u8, hash),
             .author = try alloc.dupe(u8, author),
             .time = std.fmt.parseInt(i64, time, 10) catch 0,
-            .subject = try alloc.dupe(u8, subject),
+            .subject = try alloc.dupe(u8, fields.rest()),
+            .tags = try tagsOf(alloc, refs),
         });
     }
-    self.open = null;
-    if (was_open) |h| {
-        for (self.commits.items, 0..) |c, i| if (std.mem.eql(u8, c.hash, h)) {
-            self.open = @intCast(i);
-        };
+}
+
+/// The tag names in `%D` output ("HEAD -> main, tag: v1, tag: v2" →
+/// "v1, v2").
+fn tagsOf(alloc: Allocator, refs: []const u8) ![]const u8 {
+    var out: std.ArrayList(u8) = .empty;
+    var names = std.mem.splitSequence(u8, refs, ", ");
+    while (names.next()) |name| {
+        if (!std.mem.startsWith(u8, name, "tag: ")) continue;
+        if (out.items.len > 0) try out.appendSlice(alloc, ", ");
+        try out.appendSlice(alloc, name["tag: ".len..]);
     }
-    if (self.open == null) self.closeFiles();
+    return out.items;
 }
 
 /// The arguments for `git diff-tree` that `parseFiles` reads: what a
@@ -108,7 +131,12 @@ pub fn filesArgs(hash: []const u8) [9][]const u8 {
 pub fn parseFiles(self: *GitLog, index: u32, out: []const u8) !void {
     self.closeFiles();
     self.open = index;
-    const alloc = self.files_arena.allocator();
+    try parseNameStatus(self.gpa, self.files_arena.allocator(), out, &self.files);
+}
+
+/// Reads `--name-status -z` output (from `git diff-tree` or `git diff`)
+/// into `list`, the paths copied with `alloc`.
+pub fn parseNameStatus(gpa: Allocator, alloc: Allocator, out: []const u8, list: *std.ArrayList(File)) !void {
     var items = std.mem.splitScalar(u8, out, 0);
     while (items.next()) |status| {
         if (status.len == 0) continue;
@@ -120,7 +148,7 @@ pub fn parseFiles(self: *GitLog, index: u32, out: []const u8) !void {
             const new_path = items.next() orelse break;
             file.path = try alloc.dupe(u8, new_path);
         }
-        try self.files.append(self.gpa, file);
+        try list.append(gpa, file);
     }
 }
 

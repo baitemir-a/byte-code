@@ -33,6 +33,7 @@ pub const Icon = enum {
     pencil,
     trash_2,
     archive_restore,
+    tag,
 
     pub fn codepoint(self: Icon) u21 {
         return codepoints[@intFromEnum(self)];

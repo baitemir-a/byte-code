@@ -76,19 +76,29 @@ pub fn openDiffTab(self: *App, path: []const u8, against: Against) !void {
 /// Opens (or brings up) the tab showing what a commit changed in one of
 /// its files: the file as its parent had it against the commit's copy.
 pub fn openCommitDiff(self: *App, hash: []const u8, file: core.GitLog.File) !void {
+    const parent = try std.fmt.allocPrint(self.gpa, "{s}^", .{hash});
+    defer self.gpa.free(parent);
+    const label = hash[0..@min(7, hash.len)];
+    try openRevDiff(self, parent, hash, file, label);
+}
+
+/// The same for any two revisions (branches, commits): the file as `old`
+/// has it against `new`'s copy. `label` goes after the file's name.
+pub fn openRevDiff(self: *App, old_rev: []const u8, new_rev: []const u8, file: core.GitLog.File, label: []const u8) !void {
+    if (old_rev.len + new_rev.len > 256) return error.NameTooLong; // see Diff.setRevs
     const repo = self.git.toplevel;
     const path = try std.fs.path.join(self.gpa, &.{ repo, file.path });
     defer self.gpa.free(path);
     for (self.tabs.items, 0..) |*t, i| {
-        if (t.kind == .diff and t.diff.against == .commit and t.diff.isFor(path) and std.mem.eql(u8, t.diff.commit(), hash)) {
+        if (t.kind == .diff and t.diff.against == .commit and t.diff.isFor(path) and
+            std.mem.eql(u8, t.diff.oldRev(), old_rev) and std.mem.eql(u8, t.diff.newRev(), new_rev))
+        {
             return self.activate(i);
         }
     }
-    const parent = try std.fmt.allocPrint(self.gpa, "{s}^", .{hash});
-    defer self.gpa.free(parent);
-    const old = try core.Git.showAt(self.gpa, self.io, repo, parent, file.old_path);
+    const old = try core.Git.showAt(self.gpa, self.io, repo, old_rev, file.old_path);
     defer if (old) |s| self.gpa.free(s);
-    const new = try core.Git.showAt(self.gpa, self.io, repo, hash, file.path);
+    const new = try core.Git.showAt(self.gpa, self.io, repo, new_rev, file.path);
     defer if (new) |s| self.gpa.free(s);
     // A file git keeps as something other than text can't be shown.
     const before = old orelse "";
@@ -97,14 +107,14 @@ pub fn openCommitDiff(self: *App, hash: []const u8, file: core.GitLog.File) !voi
 
     var tab: Tab = .initDiff(self.gpa);
     tab.highlighter.language = .fromPath(path);
-    tab.label = try std.fmt.allocPrint(self.gpa, "{s} ({s})", .{ std.fs.path.basename(path), hash[0..@min(7, hash.len)] });
+    tab.label = try std.fmt.allocPrint(self.gpa, "{s} ({s})", .{ std.fs.path.basename(path), label });
     const at = @min(self.active + 1, self.tabs.items.len);
     try self.tabs.insert(self.gpa, at, tab);
     try self.activate(at);
     self.view.scroll = .{ .x = 0, .y = 0 };
     const t = self.tab();
     try t.diff.setFile(path, repo, file.path, .commit);
-    t.diff.setCommit(hash);
+    try t.diff.setRevs(old_rev, new_rev);
     try t.diff.setBase(before, true);
     try t.diff.compute(after, t.buffer.version);
     try t.diff.buildCombined();

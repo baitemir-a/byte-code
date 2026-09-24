@@ -47,6 +47,8 @@ pub const Hit = union(enum) {
     /// files, or show what one of them changed.
     toggle_history,
     commit_row: u32,
+    /// The button on a commit's row that takes it back.
+    revert_commit: u32,
     commit_file: u32,
 };
 
@@ -212,20 +214,28 @@ pub const Command = enum {
     commit_push,
     commit_sync,
     fetch,
+    push_tags,
     clone,
     checkout,
     create_branch,
     create_branch_from,
     merge_branch,
+    rebase_onto,
+    cherry_pick,
+    compare_branch,
+    create_tag,
+    delete_tag,
     stash,
     stash_pop,
     stashes,
     amend,
     undo_commit,
-    /// Only while a merge is waiting (see `commandsFor`).
-    abort_merge,
+    /// Only while a merge, rebase, cherry-pick or revert waits half-way
+    /// (see `commandsFor`).
+    abort_operation,
+    skip_rebase,
 
-    pub fn label(self: Command) []const u8 {
+    pub fn label(self: Command, git: *const Git) []const u8 {
         const t = i18n.tr().git;
         return switch (self) {
             .push => t.push,
@@ -233,37 +243,64 @@ pub const Command = enum {
             .commit_push => t.commit_push,
             .commit_sync => t.commit_sync,
             .fetch => t.fetch,
+            .push_tags => t.push_tags,
             .clone => t.clone,
             .checkout => t.checkout,
             .create_branch => t.create_branch,
             .create_branch_from => t.create_branch_from,
             .merge_branch => t.merge_branch,
+            .rebase_onto => t.rebase_onto,
+            .cherry_pick => t.cherry_pick,
+            .compare_branch => t.compare_branch,
+            .create_tag => t.create_tag,
+            .delete_tag => t.delete_tag,
             .stash => t.stash,
             .stash_pop => t.stash_pop,
             .stashes => t.stashes,
             .amend => t.amend,
             .undo_commit => t.undo_commit,
-            .abort_merge => t.abort_merge,
+            .abort_operation => switch (git.operation orelse .merge) {
+                .merge => t.abort_merge,
+                .rebase => t.abort_rebase,
+                .cherry_pick => t.abort_cherry_pick,
+                .revert => t.abort_revert,
+            },
+            .skip_rebase => t.skip_rebase,
         };
     }
 };
 
-/// The commands on offer: calling a merge off comes first while one is
-/// waiting, and isn't there otherwise.
+/// The commands on offer. While something waits half-way, calling it
+/// off (and, for a rebase, leaving out the commit it stopped at) comes
+/// first; otherwise those aren't there.
 pub fn commandsFor(git: *const Git) []const Command {
     const all = comptime std.enums.values(Command);
     const usual = comptime blk: {
-        var list: [all.len - 1]Command = undefined;
+        var list: [all.len - 2]Command = undefined;
         var n = 0;
-        for (all) |c| if (c != .abort_merge) {
+        for (all) |c| if (c != .abort_operation and c != .skip_rebase) {
             list[n] = c;
             n += 1;
         };
         const final = list;
         break :blk &final;
     };
-    const merging = comptime [_]Command{.abort_merge} ++ usual.*;
-    return if (git.merging) &merging else usual;
+    const stopped = comptime [_]Command{.abort_operation} ++ usual.*;
+    const rebasing = comptime [_]Command{ .abort_operation, .skip_rebase } ++ usual.*;
+    const op = git.operation orelse return usual;
+    return if (op == .rebase) &rebasing else &stopped;
+}
+
+/// The commit button's words while something waits half-way: it carries
+/// it on.
+pub fn continueLabel(op: Git.Operation) []const u8 {
+    const t = i18n.tr().git;
+    return switch (op) {
+        .merge => t.commit_merge,
+        .rebase => t.continue_rebase,
+        .cherry_pick => t.continue_cherry_pick,
+        .revert => t.continue_revert,
+    };
 }
 
 /// What the box above the list is asking for, when a command needs
@@ -381,7 +418,7 @@ pub fn promptRect(self: *const GitPanel) rl.Rectangle {
 /// to send or take in, it offers to sync instead. While a merge waits it
 /// finishes the merge.
 pub fn syncing(git: *const Git) bool {
-    return !git.merging and count(git, .staged) == 0 and (git.ahead > 0 or git.behind > 0);
+    return git.operation == null and count(git, .staged) == 0 and (git.ahead > 0 or git.behind > 0);
 }
 
 /// How many files each list holds.
@@ -478,6 +515,12 @@ pub fn scrollBy(self: *GitPanel, wheel_y: f32) void {
     self.scroll = std.math.clamp(self.scroll - wheel_y * row_height * 3, 0, self.max_scroll);
 }
 
+/// The top of the list row under `p.y`.
+pub fn rowTopAt(self: *const GitPanel, p: rl.Vector2) f32 {
+    const n = @floor((p.y - self.listTop() + self.scroll) / row_height);
+    return self.listTop() + n * row_height - self.scroll;
+}
+
 /// A row's buttons, counted from the right: 0 is + / −, 1 is ↺.
 pub fn actionRect(self: *const GitPanel, y: f32, index: usize) rl.Rectangle {
     const from_right = @as(f32, @floatFromInt(index + 1)) * action_size;
@@ -515,7 +558,7 @@ pub fn hitTest(self: *const GitPanel, git: *const Git, font: Font, p: rl.Vector2
         .command => |c| Hit{ .command = c },
         .history_header => Hit.toggle_history,
         .no_changes, .no_commits => null,
-        .commit => |c| Hit{ .commit_row = c },
+        .commit => |c| if (on_action) Hit{ .revert_commit = c } else Hit{ .commit_row = c },
         .commit_file => |f| Hit{ .commit_file = f },
         .header => |s| switch (s) {
             // A half-done merge is sorted out file by file.

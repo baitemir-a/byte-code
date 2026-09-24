@@ -21,7 +21,8 @@ pub const Against = enum {
     /// What's staged against the last commit: the changes a commit would
     /// carry.
     head,
-    /// A commit against its parent: what it changed (see `setCommit`).
+    /// Two revisions: what a commit changed (against its parent), or how
+    /// two branches differ (see `setRevs`).
     commit,
 };
 
@@ -69,9 +70,10 @@ repo: ?[]u8 = null,
 rel: ?[]u8 = null,
 /// Which copies `base` and `new` are.
 against: Against = .index,
-/// For `.commit`: which one.
-commit_hash: [64]u8 = undefined,
-commit_len: u8 = 0,
+/// For `.commit`: the older and newer revision, one after the other.
+revs: [256]u8 = undefined,
+old_len: u8 = 0,
+new_len: u8 = 0,
 /// The older copy (git's) and its lines. Empty for a file git doesn't
 /// know yet, whose every line is then an addition.
 base: std.ArrayList(u8) = .empty,
@@ -137,17 +139,25 @@ pub fn clear(self: *Diff) void {
     self.tracked = false;
     self.crlf = false;
     self.version = null;
-    self.commit_len = 0;
+    self.old_len = 0;
+    self.new_len = 0;
 }
 
-/// Names the commit a `.commit` diff shows (after `setFile`).
-pub fn setCommit(self: *Diff, hash: []const u8) void {
-    self.commit_len = @intCast(@min(hash.len, self.commit_hash.len));
-    @memcpy(self.commit_hash[0..self.commit_len], hash[0..self.commit_len]);
+/// Names the two revisions a `.commit` diff compares (after `setFile`).
+pub fn setRevs(self: *Diff, old: []const u8, new: []const u8) error{NameTooLong}!void {
+    if (old.len + new.len > self.revs.len) return error.NameTooLong;
+    @memcpy(self.revs[0..old.len], old);
+    @memcpy(self.revs[old.len..][0..new.len], new);
+    self.old_len = @intCast(old.len);
+    self.new_len = @intCast(new.len);
 }
 
-pub fn commit(self: *const Diff) []const u8 {
-    return self.commit_hash[0..self.commit_len];
+pub fn oldRev(self: *const Diff) []const u8 {
+    return self.revs[0..self.old_len];
+}
+
+pub fn newRev(self: *const Diff) []const u8 {
+    return self.revs[self.old_len..][0..self.new_len];
 }
 
 /// Whether the diff is for `path` (so its base can be kept).

@@ -1,8 +1,9 @@
-//! The repository's branches (its own and the remote's) and its stashes,
-//! for the Git view's pickers. Parsed from `git for-each-ref` and
-//! `git stash list` output.
+//! What the Git view's pickers list: the repository's branches (its own
+//! and the remote's), stashes and tags, another branch's commits, and the
+//! files two revisions differ in. Parsed from git's output.
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const GitLog = @import("GitLog.zig");
 
 const GitRefs = @This();
 
@@ -23,14 +24,25 @@ pub const Stash = struct {
     time: i64,
 };
 
+pub const Tag = struct {
+    name: []const u8,
+    /// An annotated tag's message, or the commit's first line.
+    subject: []const u8,
+};
+
 /// Most recently worked on first; the remote's own "HEAD" is left out.
 pub const branch_args = [_][]const u8{ "for-each-ref", "--sort=-committerdate", "--format=%(refname)%1f%(HEAD)", "refs/heads", "refs/remotes" };
 pub const stash_args = [_][]const u8{ "stash", "list", "--format=%gd%x1f%ct%x1f%gs" };
+/// Newest first.
+pub const tag_args = [_][]const u8{ "for-each-ref", "--sort=-creatordate", "--format=%(refname:short)%1f%(subject)", "refs/tags" };
 
 gpa: Allocator,
 arena: std.heap.ArenaAllocator,
 branches: std.ArrayList(Branch) = .empty,
 stashes: std.ArrayList(Stash) = .empty,
+tags: std.ArrayList(Tag) = .empty,
+commits: std.ArrayList(GitLog.Commit) = .empty,
+files: std.ArrayList(GitLog.File) = .empty,
 
 pub fn init(gpa: Allocator) GitRefs {
     return .{ .gpa = gpa, .arena = .init(gpa) };
@@ -39,13 +51,45 @@ pub fn init(gpa: Allocator) GitRefs {
 pub fn deinit(self: *GitRefs) void {
     self.branches.deinit(self.gpa);
     self.stashes.deinit(self.gpa);
+    self.tags.deinit(self.gpa);
+    self.commits.deinit(self.gpa);
+    self.files.deinit(self.gpa);
     self.arena.deinit();
 }
 
 pub fn clear(self: *GitRefs) void {
     self.branches.clearRetainingCapacity();
     self.stashes.clearRetainingCapacity();
+    self.tags.clearRetainingCapacity();
+    self.commits.clearRetainingCapacity();
+    self.files.clearRetainingCapacity();
     _ = self.arena.reset(.retain_capacity);
+}
+
+/// Reads `git for-each-ref` output for tags (see `tag_args`).
+pub fn parseTags(self: *GitRefs, out: []const u8) !void {
+    self.tags.clearRetainingCapacity();
+    const alloc = self.arena.allocator();
+    var lines = std.mem.splitScalar(u8, out, '\n');
+    while (lines.next()) |raw| {
+        const line = std.mem.trimEnd(u8, raw, "\r");
+        if (line.len == 0) continue;
+        var fields = std.mem.splitScalar(u8, line, 0x1f);
+        const name = fields.next() orelse continue;
+        try self.tags.append(self.gpa, .{ .name = try alloc.dupe(u8, name), .subject = try alloc.dupe(u8, fields.rest()) });
+    }
+}
+
+/// Commits in `GitLog.format`.
+pub fn parseCommits(self: *GitRefs, out: []const u8) !void {
+    self.commits.clearRetainingCapacity();
+    try GitLog.parseCommits(self.gpa, self.arena.allocator(), out, &self.commits);
+}
+
+/// `--name-status -z` output.
+pub fn parseFiles(self: *GitRefs, out: []const u8) !void {
+    self.files.clearRetainingCapacity();
+    try GitLog.parseNameStatus(self.gpa, self.arena.allocator(), out, &self.files);
 }
 
 /// Reads `git for-each-ref` output (see `branch_args`).

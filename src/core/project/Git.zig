@@ -62,8 +62,9 @@ ahead: u32 = 0,
 behind: u32 = 0,
 /// Whether the branch has a remote one it pushes to and pulls from.
 has_upstream: bool = false,
-/// A merge is waiting to be committed (or called off).
-merging: bool = false,
+/// A merge, rebase, cherry-pick or revert that stopped half-way (at a
+/// conflict), waiting to be carried on or called off.
+operation: ?Operation = null,
 entries: std.ArrayList(Entry) = .empty,
 /// The branch's commits, read while the Git view shows them.
 history: GitLog,
@@ -112,18 +113,50 @@ pub fn refresh(self: *Git, io: Io, root: []const u8) !void {
         return;
     }
     try self.parse(r.stdout);
-    const merge_head = try runGit(self.gpa, io, root, &.{ "rev-parse", "-q", "--verify", "MERGE_HEAD" });
-    defer merge_head.deinit(self.gpa);
-    self.merging = merge_head.ok;
     var lines = std.mem.splitScalar(u8, top.stdout, '\n');
     self.toplevel = try self.arena.allocator().dupe(u8, std.mem.trimEnd(u8, lines.next() orelse "", "\r"));
     self.git_dir = try self.arena.allocator().dupe(u8, std.mem.trimEnd(u8, lines.next() orelse "", "\r"));
+    self.operation = try self.operationUnderway(io);
     self.state = .ok;
+}
+
+pub const Operation = enum {
+    merge,
+    rebase,
+    cherry_pick,
+    revert,
+
+    /// The git command that carries it on or calls it off.
+    fn command(op: Operation) []const u8 {
+        return switch (op) {
+            .merge => "merge",
+            .rebase => "rebase",
+            .cherry_pick => "cherry-pick",
+            .revert => "revert",
+        };
+    }
+};
+
+/// What git leaves in .git while each is half-way.
+fn operationUnderway(self: *const Git, io: Io) !?Operation {
+    const marks = [_]struct { name: []const u8, op: Operation }{
+        .{ .name = "rebase-merge", .op = .rebase },
+        .{ .name = "rebase-apply", .op = .rebase },
+        .{ .name = "MERGE_HEAD", .op = .merge },
+        .{ .name = "CHERRY_PICK_HEAD", .op = .cherry_pick },
+        .{ .name = "REVERT_HEAD", .op = .revert },
+    };
+    for (marks) |m| {
+        const path = try std.fs.path.join(self.gpa, &.{ self.git_dir, m.name });
+        defer self.gpa.free(path);
+        if (Io.Dir.cwd().access(io, path, .{})) |_| return m.op else |_| {}
+    }
+    return null;
 }
 
 /// The files in .git that change when anything git would report changes:
 /// a commit, a checkout, staging, a fetch, a merge, a stash.
-const watched = [_][]const u8{ "HEAD", "index", "logs/HEAD", "FETCH_HEAD", "MERGE_HEAD", "ORIG_HEAD", "refs/stash", "packed-refs" };
+const watched = [_][]const u8{ "HEAD", "index", "logs/HEAD", "FETCH_HEAD", "MERGE_HEAD", "ORIG_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD", "rebase-merge", "refs/stash", "refs/tags", "packed-refs" };
 
 /// A number that changes whenever one of those files does (its time or
 /// size), so git's own state is read again only then. 0 outside a
@@ -153,7 +186,7 @@ fn clear(self: *Git) void {
     self.ahead = 0;
     self.behind = 0;
     self.has_upstream = false;
-    self.merging = false;
+    self.operation = null;
 }
 
 /// Parses `git status --porcelain=v1 --branch -z` output.
@@ -337,7 +370,11 @@ pub fn push(self: *Git, io: Io, root: []const u8) !void {
     };
 }
 
-pub fn pull(self: *Git, io: Io, root: []const u8) !void {
+/// Takes in what the remote has: merged, or with `rebasing` this branch's
+/// own commits put back on top of it.
+/// Without it, git's own settings (`pull.rebase`) decide.
+pub fn pull(self: *Git, io: Io, root: []const u8, rebasing: bool) !void {
+    if (rebasing) return self.expectOk(io, root, &.{ "pull", "--progress", "--no-edit", "--rebase" });
     try self.expectOk(io, root, &.{ "pull", "--progress", "--no-edit" });
 }
 
@@ -348,9 +385,14 @@ pub fn fetch(self: *Git, io: Io, root: []const u8) !void {
 }
 
 /// Both ways round: take what the remote has, then send what it doesn't.
-pub fn sync(self: *Git, io: Io, root: []const u8) !void {
-    try self.pull(io, root);
+pub fn sync(self: *Git, io: Io, root: []const u8, rebasing: bool) !void {
+    try self.pull(io, root, rebasing);
     try self.push(io, root);
+}
+
+/// The tags too, which a plain push leaves behind.
+pub fn pushTags(self: *Git, io: Io, root: []const u8) !void {
+    try self.expectOk(io, root, &.{ "push", "--progress", "--tags" });
 }
 
 /// Copies a repository into `parent`, as a folder named after it.
@@ -387,9 +429,55 @@ pub fn renameBranch(self: *Git, io: Io, root: []const u8, old: []const u8, new: 
 }
 
 /// Merges a branch into the one checked out. A conflict leaves the merge
-/// half-done (`merging`), to be sorted out or called off.
+/// half-done (`operation`), to be sorted out or called off.
 pub fn merge(self: *Git, io: Io, root: []const u8, branch: []const u8) !void {
     try self.expectOk(io, root, &.{ "merge", "--no-edit", branch });
+}
+
+/// Puts this branch's own commits back on top of `onto`.
+pub fn rebase(self: *Git, io: Io, root: []const u8, onto: []const u8) !void {
+    try self.expectOk(io, root, &.{ "rebase", onto });
+}
+
+/// Makes a copy of another branch's commit here.
+pub fn cherryPick(self: *Git, io: Io, root: []const u8, hash: []const u8) !void {
+    try self.expectOk(io, root, &.{ "cherry-pick", hash });
+}
+
+/// A new commit that takes one back.
+pub fn revertCommit(self: *Git, io: Io, root: []const u8, hash: []const u8) !void {
+    try self.expectOk(io, root, &.{ "revert", "--no-edit", hash });
+}
+
+/// Calls off what stopped half-way: everything goes back to before it.
+pub fn abortOperation(self: *Git, io: Io, root: []const u8, op: Operation) !void {
+    try self.expectOk(io, root, &.{ op.command(), "--abort" });
+}
+
+/// Carries on once the conflicts are sorted out (and staged). A merge is
+/// committed, under `message` if there is one; the others go on with
+/// git's own messages (no editor opens: `core.editor` is `true`).
+pub fn continueOperation(self: *Git, io: Io, root: []const u8, op: Operation, message: []const u8) !void {
+    if (op == .merge) {
+        if (message.len == 0) return self.expectOk(io, root, &.{ "commit", "--quiet", "--no-edit" });
+        return self.expectOk(io, root, &.{ "commit", "--quiet", "-m", message });
+    }
+    try self.expectOk(io, root, &.{ "-c", "core.editor=true", op.command(), "--continue" });
+}
+
+/// Leaves out the commit a rebase stopped at, and goes on.
+pub fn skipRebaseCommit(self: *Git, io: Io, root: []const u8) !void {
+    try self.expectOk(io, root, &.{ "rebase", "--skip" });
+}
+
+/// A tag on the commit checked out: annotated when there is a message.
+pub fn createTag(self: *Git, io: Io, root: []const u8, name: []const u8, message: []const u8) !void {
+    if (message.len == 0) return self.expectOk(io, root, &.{ "tag", "--", name });
+    try self.expectOk(io, root, &.{ "tag", "-a", "-m", message, "--", name });
+}
+
+pub fn deleteTag(self: *Git, io: Io, root: []const u8, name: []const u8) !void {
+    try self.expectOk(io, root, &.{ "tag", "-d", "--", name });
 }
 
 /// Puts the changes aside, under `message` when there is one; `pop`
@@ -426,11 +514,33 @@ pub fn readBranches(gpa: Allocator, io: Io, root: []const u8) !?[]u8 {
 }
 
 pub fn readStashes(gpa: Allocator, io: Io, root: []const u8) !?[]u8 {
-    const r = runGit(gpa, io, root, &GitRefs.stash_args) catch return null;
+    return readOut(gpa, io, root, &GitRefs.stash_args);
+}
+
+pub fn readTags(gpa: Allocator, io: Io, root: []const u8) !?[]u8 {
+    return readOut(gpa, io, root, &GitRefs.tag_args);
+}
+
+/// The commits `branch` has that the one checked out doesn't, as
+/// `GitLog.parseCommits` reads them: the ones worth cherry-picking.
+pub fn readCommitsNotHere(gpa: Allocator, io: Io, root: []const u8, branch: []const u8) !?[]u8 {
+    return readOut(gpa, io, root, &.{ "log", "-n", "200", GitLog.format, branch, "--not", "HEAD", "--" });
+}
+
+/// The files that differ between two revisions (branches, commits), as
+/// `GitLog.parseNameStatus` reads them.
+pub fn readChangedFiles(gpa: Allocator, io: Io, root: []const u8, old: []const u8, new: []const u8) !?[]u8 {
+    return readOut(gpa, io, root, &.{ "diff", "--name-status", "-z", "-M", old, new, "--" });
+}
+
+/// What a command printed, when it worked. Caller frees.
+fn readOut(gpa: Allocator, io: Io, root: []const u8, args: []const []const u8) !?[]u8 {
+    const r = runGit(gpa, io, root, args) catch return null;
     defer r.deinit(gpa);
     if (!r.ok) return null;
     return try gpa.dupe(u8, r.stdout);
 }
+
 
 /// The branch's latest commits, as `GitLog.parseLog` reads them. Null
 /// when there are none yet. Caller frees.
@@ -475,18 +585,6 @@ pub fn undoCommit(self: *Git, io: Io, root: []const u8) ![]u8 {
         try self.expectOk(io, root, &.{ "update-ref", "-d", "HEAD" });
     }
     return self.gpa.dupe(u8, std.mem.trim(u8, msg.stdout, " \r\n"));
-}
-
-/// Calls the merge off: everything goes back to how it was before it.
-pub fn abortMerge(self: *Git, io: Io, root: []const u8) !void {
-    try self.expectOk(io, root, &.{ "merge", "--abort" });
-}
-
-/// Finishes a merge whose conflicts are sorted out, with git's own
-/// message unless another is given.
-pub fn commitMerge(self: *Git, io: Io, root: []const u8, message: []const u8) !void {
-    if (message.len == 0) return self.expectOk(io, root, &.{ "commit", "--quiet", "--no-edit" });
-    try self.expectOk(io, root, &.{ "commit", "--quiet", "-m", message });
 }
 
 /// Commits what's staged. On failure (e.g. a hook refused, or no name and

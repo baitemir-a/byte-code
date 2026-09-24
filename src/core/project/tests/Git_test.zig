@@ -265,11 +265,11 @@ test "real repository: history, amending, undoing, and a merge" {
     try g.checkout(io, root, main);
     try std.testing.expectError(error.GitFailed, g.expectOk(io, root, &.{ "merge", "other" }));
     try g.refresh(io, root);
-    try std.testing.expect(g.merging);
+    try std.testing.expectEqual(@as(?Git.Operation, .merge), g.operation);
     try std.testing.expect(g.entries.items[0].isConflict());
-    try g.abortMerge(io, root);
+    try g.abortOperation(io, root, .merge);
     try g.refresh(io, root);
-    try std.testing.expect(!g.merging);
+    try std.testing.expectEqual(@as(?Git.Operation, null), g.operation);
     try std.testing.expectEqual(@as(usize, 0), g.entries.items.len);
 }
 
@@ -395,4 +395,93 @@ test "real repository: a command that hangs can be stopped" {
     try std.testing.expectError(error.GitCancelled, result);
     const took = started.durationTo(std.Io.Timestamp.now(io, .awake));
     try std.testing.expect(took.toMilliseconds() < 5000);
+}
+
+test "real repository: rebasing, cherry-picking, reverting, tags, comparing" {
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const root = try tmp.dir.realPathFileAlloc(io, ".", gpa);
+    defer gpa.free(root);
+
+    var g = Git.init(gpa);
+    defer g.deinit();
+    try g.refresh(io, root);
+    if (g.state == .no_git) return error.SkipZigTest;
+    for ([_][]const []const u8{
+        &.{"init"},
+        &.{ "config", "user.email", "test@example.com" },
+        &.{ "config", "user.name", "Test" },
+    }) |args| try g.expectOk(io, root, args);
+    try tmp.dir.writeFile(io, .{ .sub_path = "a.txt", .data = "one\n" });
+    try g.stage(io, root, "a.txt");
+    try g.commit(io, root, "first");
+    try g.refresh(io, root);
+    const main = try gpa.dupe(u8, g.branch);
+    defer gpa.free(main);
+
+    // Another branch with two commits; one of them is copied over.
+    try g.createBranch(io, root, "topic", null);
+    try tmp.dir.writeFile(io, .{ .sub_path = "b.txt", .data = "b\n" });
+    try g.stage(io, root, "b.txt");
+    try g.commit(io, root, "add b");
+    try tmp.dir.writeFile(io, .{ .sub_path = "a.txt", .data = "topic\n" });
+    try g.stage(io, root, "a.txt");
+    try g.commit(io, root, "change a on topic");
+    try g.checkout(io, root, main);
+
+    var refs = GitRefs.init(gpa);
+    defer refs.deinit();
+    const not_here = (try Git.readCommitsNotHere(gpa, io, root, "topic")).?;
+    defer gpa.free(not_here);
+    try refs.parseCommits(not_here);
+    try std.testing.expectEqual(@as(usize, 2), refs.commits.items.len);
+    try std.testing.expectEqualStrings("add b", refs.commits.items[1].subject);
+    try g.cherryPick(io, root, refs.commits.items[1].hash);
+    const b = try tmp.dir.readFileAlloc(io, "b.txt", gpa, .limited(64));
+    defer gpa.free(b);
+    try std.testing.expectEqualStrings("b\n", b);
+
+    // What the two branches differ in, file by file.
+    const changed = (try Git.readChangedFiles(gpa, io, root, "HEAD", "topic")).?;
+    defer gpa.free(changed);
+    try refs.parseFiles(changed);
+    try std.testing.expectEqual(@as(usize, 1), refs.files.items.len);
+    try std.testing.expectEqualStrings("a.txt", refs.files.items[0].path);
+
+    // Reverting the copy takes b.txt away again, in a commit of its own.
+    try g.revertCommit(io, root, "HEAD");
+    try std.testing.expectError(error.FileNotFound, tmp.dir.access(io, "b.txt", .{}));
+
+    // A change to a.txt here too: rebasing topic onto it stops at the
+    // conflict, which is sorted out and carried on (without an editor).
+    try tmp.dir.writeFile(io, .{ .sub_path = "a.txt", .data = "main\n" });
+    try g.stage(io, root, "a.txt");
+    try g.commit(io, root, "change a on main");
+    try g.checkout(io, root, "topic");
+    try std.testing.expectError(error.GitFailed, g.rebase(io, root, main));
+    try g.refresh(io, root);
+    try std.testing.expectEqual(@as(?Git.Operation, .rebase), g.operation);
+    try tmp.dir.writeFile(io, .{ .sub_path = "a.txt", .data = "both\n" });
+    try g.stage(io, root, "a.txt");
+    try g.continueOperation(io, root, .rebase, "");
+    try g.refresh(io, root);
+    try std.testing.expectEqual(@as(?Git.Operation, null), g.operation);
+
+    // Tags: a plain one and one with a message, listed newest first, and
+    // shown on their commit in the history.
+    try g.createTag(io, root, "v1", "");
+    try g.createTag(io, root, "v2", "The second");
+    const tags = (try Git.readTags(gpa, io, root)).?;
+    defer gpa.free(tags);
+    try refs.parseTags(tags);
+    try std.testing.expectEqual(@as(usize, 2), refs.tags.items.len);
+    const log_out = (try Git.readLog(gpa, io, root)).?;
+    defer gpa.free(log_out);
+    var log = GitLog.init(gpa);
+    defer log.deinit();
+    try log.parseLog(log_out);
+    try std.testing.expect(std.mem.indexOf(u8, log.commits.items[0].tags, "v1") != null);
+    try g.deleteTag(io, root, "v1");
 }

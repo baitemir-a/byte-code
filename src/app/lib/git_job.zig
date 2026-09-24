@@ -11,7 +11,7 @@ const App = @import("../App.zig");
 const AskPass = @import("../../platform/AskPass.zig");
 const i18n = @import("../../i18n/i18n.zig");
 
-pub const Kind = enum { push, pull, fetch, sync, clone };
+pub const Kind = enum { push, pull, fetch, sync, clone, push_tags };
 
 pub const Job = struct {
     kind: Kind,
@@ -22,6 +22,8 @@ pub const Job = struct {
     root: []u8,
     /// What a clone copies.
     url: []u8 = &.{},
+    /// Pulling puts this branch's commits on top (Settings).
+    rebase: bool = false,
     /// Where git's password questions go, when the editor can take them.
     askpass: ?AskPass.Session = null,
     /// How far git got, and the way to stop it.
@@ -33,10 +35,11 @@ pub const Job = struct {
     fn run(job: *Job, io: std.Io) void {
         job.result = switch (job.kind) {
             .push => job.git.push(io, job.root),
-            .pull => job.git.pull(io, job.root),
+            .pull => job.git.pull(io, job.root, job.rebase),
             .fetch => job.git.fetch(io, job.root),
-            .sync => job.git.sync(io, job.root),
+            .sync => job.git.sync(io, job.root, job.rebase),
             .clone => job.git.clone(io, job.root, job.url),
+            .push_tags => job.git.pushTags(io, job.root),
         };
         job.done.store(true, .release);
     }
@@ -69,7 +72,7 @@ pub fn startClone(self: *App, parent: []const u8, url: []const u8) void {
 fn start(self: *App, kind: Kind, root: []const u8, url: []const u8) void {
     if (self.git_job != null) return;
     const job = self.gpa.create(Job) catch return;
-    job.* = .{ .kind = kind, .git = .init(self.gpa), .root = &.{} };
+    job.* = .{ .kind = kind, .git = .init(self.gpa), .root = &.{}, .rebase = self.settings.pull_rebase };
     job.root = self.gpa.dupe(u8, root) catch return job.destroy(self.gpa, self.io);
     job.url = self.gpa.dupe(u8, url) catch return job.destroy(self.gpa, self.io);
     job.git.progress = &job.progress;
@@ -90,6 +93,7 @@ fn start(self: *App, kind: Kind, root: []const u8, url: []const u8) void {
         .fetch => t.running_fetch,
         .sync => t.running_sync,
         .clone => t.running_clone,
+        .push_tags => t.running_push_tags,
     } };
 }
 

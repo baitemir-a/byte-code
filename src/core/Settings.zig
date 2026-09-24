@@ -73,6 +73,9 @@ open_folder_in_new_window: bool = false,
 /// Ask before throwing away changes in the Git view. Turned off by the
 /// "don't ask again" button in that question.
 confirm_discard: bool = true,
+/// Pull (and sync) put this branch's commits on top of what comes in,
+/// instead of merging it. Off, git's own `pull.rebase` decides.
+pull_rebase: bool = false,
 /// Width of the project sidebar, in UI units (dragged by its edge).
 sidebar_width: u16 = 240,
 

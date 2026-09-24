@@ -52,12 +52,12 @@ pub fn draw(self: *const GitPanel, git: *const Git, font: Font, focused: bool, p
     // it is sorted out, the merge can be committed even with nothing
     // staged.
     const busy = self.busy != null;
-    const can_commit = !busy and conflicts == 0 and (staged > 0 or syncing or git.merging);
+    const can_commit = !busy and conflicts == 0 and (staged > 0 or syncing or git.operation != null);
     const hov = can_commit and rl.checkCollisionPointRec(mouse, self.commit_rect);
     rl.drawRectangleRounded(self.commit_rect, 0.2, 8, if (can_commit) (if (hov) theme.accentDim(0.8) else theme.accent) else theme.popup_border);
     var label_buf: [96]u8 = undefined;
-    const label = if (git.merging)
-        t.commit_merge
+    const label = if (git.operation) |op|
+        GitPanel.continueLabel(op)
     else if (syncing)
         i18n.fill(&label_buf, t.sync_count, .{ git.behind, git.ahead })
     else if (staged > 0)
@@ -89,7 +89,7 @@ pub fn draw(self: *const GitPanel, git: *const Git, font: Font, focused: bool, p
             .command => |c| {
                 // They wait while something runs.
                 const color = if (busy) theme.popup_detail else theme.foreground;
-                _ = font.drawFit(c.label(), r.x + GitPanel.pad + 18, ty, r.x + r.width - GitPanel.pad, color);
+                _ = font.drawFit(c.label(git), r.x + GitPanel.pad + 18, ty, r.x + r.width - GitPanel.pad, color);
             },
             .header => |s| {
                 var hbuf: [128]u8 = undefined;
@@ -115,7 +115,10 @@ pub fn draw(self: *const GitPanel, git: *const Git, font: Font, focused: bool, p
                 font.drawIcon(icon, .{ .x = r.x + GitPanel.pad + 6, .y = y + row_height / 2 }, .small, theme.sidebar_arrow);
                 _ = font.drawFit(t.history, r.x + GitPanel.pad + 18, ty, r.x + r.width - GitPanel.pad, theme.sidebar_header);
             },
-            .commit => |i| drawCommit(self, git, font, i, y, now),
+            .commit => |i| {
+                drawCommit(self, git, font, i, y, now, row_hovered);
+                if (row_hovered) drawAction(font, self.actionRect(y, 0), .undo_2, mouse);
+            },
             .commit_file => |i| {
                 const f = git.history.files.items[i];
                 drawFile(font, f.path, f.status, r.x + GitPanel.pad + 30, ty, y, r.x + r.width - GitPanel.pad, false);
@@ -147,17 +150,24 @@ pub fn draw(self: *const GitPanel, git: *const Git, font: Font, focused: bool, p
 
 /// A commit in the history: its first line, and how long ago it was made.
 /// The open one points down at its files.
-fn drawCommit(self: *const GitPanel, git: *const Git, font: Font, index: u32, y: f32, now: i64) void {
+fn drawCommit(self: *const GitPanel, git: *const Git, font: Font, index: u32, y: f32, now: i64, hovered: bool) void {
     const r = self.rect;
     const c = git.history.commits.items[index];
     const ty = y + (row_height - theme.font_size) / 2;
     const open = git.history.open == index;
     font.drawIcon(if (open) .chevron_down else .chevron_right, .{ .x = r.x + GitPanel.pad + 18, .y = y + row_height / 2 }, .small, theme.sidebar_arrow);
+    // Under the pointer, the revert button takes the age's place.
     var age_buf: [48]u8 = undefined;
     const age = ageText(&age_buf, now, c.time);
-    const age_x = r.x + r.width - GitPanel.pad - font.textWidth(age);
-    _ = font.drawFit(age, age_x, ty, r.x + r.width - GitPanel.pad, theme.popup_detail);
-    _ = font.drawFit(c.subject, r.x + GitPanel.pad + 30, ty, age_x - 8, theme.foreground);
+    const text_end = if (hovered) self.actionRect(y, 0).x - 4 else r.x + r.width - GitPanel.pad - font.textWidth(age) - 8;
+    if (!hovered) _ = font.drawFit(age, text_end + 8, ty, r.x + r.width - GitPanel.pad, theme.popup_detail);
+    var x = r.x + GitPanel.pad + 30;
+    // Its tags first, in the accent color.
+    if (c.tags.len > 0) {
+        font.drawIcon(.tag, .{ .x = x + 6, .y = y + row_height / 2 }, .small, theme.accent);
+        x = font.drawFit(c.tags, x + 16, ty, text_end, theme.accent) + font.cell_width;
+    }
+    _ = font.drawFit(c.subject, x, ty, text_end, theme.foreground);
 }
 
 /// "3 d ago", in the words the bar at the bottom uses.
@@ -231,10 +241,14 @@ const Counter = struct {
 /// The name of the counter under the pointer.
 pub fn drawBadgeTooltip(self: *const GitPanel, git: *const Git, font: Font) void {
     const mouse = rl.getMousePosition();
-    // Drawn here, outside the view's clipping: the stop button's name.
+    // Drawn here, outside the view's clipping: the names of the stop
+    // button and of a commit's revert button.
     if (self.busy != null and rl.checkCollisionPointRec(mouse, self.cancelRect())) {
         return search_controls.drawTooltip(font, self.cancelRect(), i18n.tr().common.cancel);
     }
+    if (self.hitTest(git, font, mouse)) |hit| if (hit == .revert_commit) {
+        return search_controls.drawTooltip(font, self.actionRect(self.rowTopAt(mouse), 0), i18n.tr().git.revert_commit);
+    };
     const badge = self.badgeAt(git, font, mouse) orelse return;
     const Anchor = struct {
         want: GitPanel.Badge,

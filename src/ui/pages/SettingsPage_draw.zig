@@ -78,6 +78,10 @@ pub fn draw(self: *const SettingsPage, font: Font, settings: *const Settings, se
     label(font, t.confirm_discard, t.confirm_discard_hint, x, self.rowY(rows.confirm_discard), self.confirm_discard_toggle.x);
     drawToggle(self.confirm_discard_toggle, settings.confirm_discard);
 
+    // Pulling with a rebase instead of a merge.
+    label(font, t.pull_rebase, t.pull_rebase_hint, x, self.rowY(rows.pull_rebase), self.pull_rebase_toggle.x);
+    drawToggle(self.pull_rebase_toggle, settings.pull_rebase);
+
     // Keyboard shortcuts live in their own tab.
     label(font, t.shortcuts, t.shortcuts_hint, x, self.rowY(rows.shortcuts), self.shortcuts_button.x);
     drawButton(font, self.shortcuts_button, i18n.tr().common.open, true);

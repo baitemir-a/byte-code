@@ -1,7 +1,9 @@
 //! The Git view's lists to pick from, at the top of the editor: the
-//! branches (to check out, start a branch from, or merge; each row can
-//! also be merged, renamed or deleted), and the stashes (to bring back,
-//! apply or drop).
+//! branches (to check out, start a branch from, merge, rebase onto,
+//! cherry-pick from or compare with; while checking out each row can
+//! also be merged, renamed or deleted), another branch's commits (to
+//! cherry-pick), the files two branches differ in, the stashes (to bring
+//! back, apply or drop) and the tags (to delete).
 const std = @import("std");
 const rl = @import("raylib");
 const core = @import("core");
@@ -9,8 +11,22 @@ const App = @import("../App.zig");
 const Picker = @import("../../ui/Picker.zig");
 const i18n = @import("../../i18n/i18n.zig");
 const clipboard = @import("clipboard.zig");
+const git_commands = @import("git_commands.zig");
 
-pub const Mode = enum { checkout, branch_from, merge, stash };
+pub const Mode = enum {
+    checkout,
+    branch_from,
+    merge,
+    rebase,
+    /// Cherry-picking: the branch, then one of its commits.
+    cherry_branch,
+    cherry_commit,
+    /// Comparing: the branch, then one of the files it differs in.
+    compare,
+    compare_file,
+    stash,
+    delete_tag,
+};
 
 /// Lists the branches for `mode` (one of the branch ones). While
 /// checking out, each row also offers to merge, rename or delete it.
@@ -18,9 +34,11 @@ pub fn openBranchPicker(self: *App, mode: Mode) !void {
     const project = if (self.project) |*p| p else return;
     const out = try core.Git.readBranches(self.gpa, self.io, project.root().path) orelse return;
     defer self.gpa.free(out);
+    self.git_refs.clear();
     try self.git_refs.parseBranches(out);
-    // Merging needs another branch than the one checked out.
-    if (mode == .merge) for (self.git_refs.branches.items, 0..) |b, i| if (b.current) {
+    // Only checking out and starting a branch have a use for the one
+    // checked out; the rest need another one.
+    if (mode != .checkout and mode != .branch_from) for (self.git_refs.branches.items, 0..) |b, i| if (b.current) {
         _ = self.git_refs.branches.orderedRemove(i);
         break;
     };
@@ -32,6 +50,9 @@ pub fn openBranchPicker(self: *App, mode: Mode) !void {
     try self.picker.open(switch (mode) {
         .checkout => t.pick_branch,
         .branch_from => t.pick_branch_from,
+        .rebase => t.pick_rebase,
+        .cherry_branch => t.pick_cherry_branch,
+        .compare => t.pick_compare,
         else => t.pick_merge,
     }, actions, labels);
     for (self.git_refs.branches.items) |b| {
@@ -57,11 +78,52 @@ pub fn openStashPicker(self: *App) !void {
     const project = if (self.project) |*p| p else return;
     const out = try core.Git.readStashes(self.gpa, self.io, project.root().path) orelse return;
     defer self.gpa.free(out);
+    self.git_refs.clear();
     try self.git_refs.parseStashes(out);
     const t = i18n.tr().git;
     try self.picker.open(t.pick_stash, &.{ .apply, .drop }, &.{ t.action_apply, t.action_drop });
     for (self.git_refs.stashes.items) |s| try self.picker.add(.{ .label = s.message, .detail = s.ref });
     try finishOpening(self, .stash);
+}
+
+/// The commits `branch` has that the branch checked out doesn't, newest
+/// first: Enter copies one here.
+fn openCommitPicker(self: *App, root: []const u8, branch: []const u8) !void {
+    const out = try core.Git.readCommitsNotHere(self.gpa, self.io, root, branch) orelse return;
+    defer self.gpa.free(out);
+    self.git_refs.clear();
+    try self.git_refs.parseCommits(out);
+    try self.picker.open(i18n.tr().git.pick_cherry_commit, &.{}, &.{});
+    for (self.git_refs.commits.items) |c| {
+        var detail: [96]u8 = undefined;
+        const d = std.fmt.bufPrint(&detail, "{s}  {s}", .{ c.shortHash(), c.author }) catch c.shortHash();
+        try self.picker.add(.{ .label = c.subject, .detail = d });
+    }
+    try finishOpening(self, .cherry_commit);
+}
+
+/// The files the branch checked out and `branch` differ in: Enter shows
+/// how one differs.
+fn openComparePicker(self: *App, root: []const u8, branch: []const u8) !void {
+    const out = try core.Git.readChangedFiles(self.gpa, self.io, root, "HEAD", branch) orelse return;
+    defer self.gpa.free(out);
+    self.git_refs.clear();
+    try self.git_refs.parseFiles(out);
+    try self.picker.open(i18n.tr().git.pick_compare_file, &.{}, &.{});
+    for (self.git_refs.files.items) |f| try self.picker.add(.{ .label = f.path, .detail = &.{f.status} });
+    try finishOpening(self, .compare_file);
+}
+
+/// The tags, newest first: Enter deletes one (after asking).
+pub fn openTagPicker(self: *App) !void {
+    const project = if (self.project) |*p| p else return;
+    const out = try core.Git.readTags(self.gpa, self.io, project.root().path) orelse return;
+    defer self.gpa.free(out);
+    self.git_refs.clear();
+    try self.git_refs.parseTags(out);
+    try self.picker.open(i18n.tr().git.pick_tag_delete, &.{}, &.{});
+    for (self.git_refs.tags.items) |tag| try self.picker.add(.{ .label = tag.name, .detail = tag.subject });
+    try finishOpening(self, .delete_tag);
 }
 
 fn finishOpening(self: *App, mode: Mode) !void {
@@ -116,14 +178,29 @@ fn choose(self: *App, item: u32, action: ?Picker.Action) !void {
     const root = project.root().path;
     // Closed first: what follows may ask something in a dialog.
     self.picker.close();
-    if (self.picker_mode == .stash) {
-        const s = self.git_refs.stashes.items[item];
-        const a = action orelse return stashAction(self, root, s.ref, .pop);
-        return switch (a) {
-            .apply => stashAction(self, root, s.ref, .apply),
-            .drop => dropStash(self, root, s),
-            else => {},
-        };
+    switch (self.picker_mode) {
+        .stash => {
+            const s = self.git_refs.stashes.items[item];
+            const a = action orelse return stashAction(self, root, s.ref, .pop);
+            return switch (a) {
+                .apply => stashAction(self, root, s.ref, .apply),
+                .drop => dropStash(self, root, s),
+                else => {},
+            };
+        },
+        .cherry_commit => {
+            const hash = try self.gpa.dupe(u8, self.git_refs.commits.items[item].hash);
+            defer self.gpa.free(hash);
+            return git_commands.stoppable(self, root, self.git.cherryPick(self.io, root, hash));
+        },
+        .compare_file => {
+            const file = self.git_refs.files.items[item];
+            var label_buf: [160]u8 = undefined;
+            const label = std.fmt.bufPrint(&label_buf, "HEAD..{s}", .{self.picker_rev.items}) catch self.picker_rev.items;
+            return self.openRevDiff("HEAD", self.picker_rev.items, file, label);
+        },
+        .delete_tag => return deleteTag(self, root, self.git_refs.tags.items[item].name),
+        else => {},
     }
     const b = self.git_refs.branches.items[item];
     switch (self.picker_mode) {
@@ -140,8 +217,31 @@ fn choose(self: *App, item: u32, action: ?Picker.Action) !void {
             self.side_focus = .git_prompt;
         },
         .merge => try mergeBranch(self, root, b.name),
-        .stash => unreachable,
+        .rebase => {
+            const onto = try self.gpa.dupe(u8, b.name);
+            defer self.gpa.free(onto);
+            try git_commands.stoppable(self, root, self.git.rebase(self.io, root, onto));
+        },
+        // The branch is remembered: the next list is made from it.
+        .cherry_branch, .compare => {
+            self.picker_rev.clearRetainingCapacity();
+            try self.picker_rev.appendSlice(self.gpa, b.name);
+            if (self.picker_mode == .compare) {
+                try openComparePicker(self, root, self.picker_rev.items);
+            } else {
+                try openCommitPicker(self, root, self.picker_rev.items);
+            }
+        },
+        .stash, .cherry_commit, .compare_file, .delete_tag => unreachable,
     }
+}
+
+fn deleteTag(self: *App, root: []const u8, name: []const u8) !void {
+    const t = i18n.tr().git;
+    const question = try i18n.fillAlloc(self.gpa, t.delete_tag_question, .{name});
+    defer self.gpa.free(question);
+    if (!self.confirm(question, t.delete_tag_detail, t.action_delete)) return;
+    self.gitAction(self.git.deleteTag(self.io, root, name));
 }
 
 /// Moves onto a branch: a remote's gets a local one that follows it.
@@ -153,17 +253,11 @@ fn checkout(self: *App, root: []const u8, b: core.GitRefs.Branch) !void {
     try self.reloadUnchangedTabs();
 }
 
-/// Merges a branch into the one checked out. When it stops at a conflict
-/// that isn't an error to report: the conflicts show in the Git view.
+/// Merges a branch into the one checked out; it may stop at a conflict.
 fn mergeBranch(self: *App, root: []const u8, name: []const u8) !void {
-    self.git.merge(self.io, root, name) catch |err| {
-        try self.git.refresh(self.io, root);
-        if (!self.git.merging) self.gitAction(err);
-    };
-    self.gitChanged();
-    self.showView(.git);
-    try self.refreshProject();
-    try self.reloadUnchangedTabs();
+    const branch = try self.gpa.dupe(u8, name);
+    defer self.gpa.free(branch);
+    try git_commands.stoppable(self, root, self.git.merge(self.io, root, branch));
 }
 
 fn renameBranch(self: *App, root: []const u8, old: []const u8) !void {
