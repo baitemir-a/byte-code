@@ -99,6 +99,7 @@ pub const Strings = struct {
         new_folder: []const u8,
         rename: []const u8,
         delete: []const u8,
+        add_to_gitignore: []const u8,
     },
     /// The Search view (search in the project).
     search: struct {

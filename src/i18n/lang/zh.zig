@@ -157,6 +157,7 @@ pub const strings: Strings = .{
         .new_folder = "新建文件夹...",
         .rename = "重命名...",
         .delete = "删除",
+        .add_to_gitignore = "添加到 .gitignore",
     },
     .search = .{
         .placeholder = "搜索",

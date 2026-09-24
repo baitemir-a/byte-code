@@ -541,6 +541,31 @@ fn readOut(gpa: Allocator, io: Io, root: []const u8, args: []const []const u8) !
     return try gpa.dupe(u8, r.stdout);
 }
 
+/// Adds a line to the repository's .gitignore (made if there is none),
+/// so git stops listing what it matches. `rel` is '/' separated, from the
+/// repository's top; a folder gets a slash at the end.
+pub fn ignore(self: *Git, io: Io, rel: []const u8, is_dir: bool) !void {
+    const path = try std.fs.path.join(self.gpa, &.{ self.toplevel, ".gitignore" });
+    defer self.gpa.free(path);
+    const cwd = Io.Dir.cwd();
+    const old = cwd.readFileAlloc(io, path, self.gpa, .limited(4 * 1024 * 1024)) catch |err| switch (err) {
+        error.FileNotFound => try self.gpa.dupe(u8, ""),
+        else => |e| return e,
+    };
+    defer self.gpa.free(old);
+    // Anchored at the top, so only this path matches, not every file of
+    // that name.
+    const line = try std.fmt.allocPrint(self.gpa, "/{s}{s}\n", .{ rel, if (is_dir) "/" else "" });
+    defer self.gpa.free(line);
+    std.mem.replaceScalar(u8, line, '\\', '/'); // a Windows path
+    // Already there: nothing to add.
+    var lines = std.mem.splitScalar(u8, old, '\n');
+    while (lines.next()) |l| if (std.mem.eql(u8, std.mem.trimEnd(u8, l, "\r"), line[0 .. line.len - 1])) return;
+    const sep: []const u8 = if (old.len > 0 and old[old.len - 1] != '\n') "\n" else "";
+    const text = try std.mem.concat(self.gpa, u8, &.{ old, sep, line });
+    defer self.gpa.free(text);
+    try cwd.writeFile(io, .{ .sub_path = path, .data = text });
+}
 
 /// The branch's latest commits, as `GitLog.parseLog` reads them. Null
 /// when there are none yet. Caller frees.

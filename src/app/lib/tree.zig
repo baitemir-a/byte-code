@@ -35,17 +35,32 @@ pub fn openContextMenu(self: *App, hit: ?Sidebar.Hit, at: rl.Vector2) void {
     } else null;
     self.menu_folder = if (self.menu_node) |n| project.folderOf(n) else 0;
 
-    const actions: []const App.MenuAction = if (self.menu_node != null)
+    // Inside a repository, a file or folder can also be left to git to
+    // ignore.
+    const in_repo = if (self.menu_node) |n| repoPath(self, project.node(n).path) != null else false;
+    const actions: []const App.MenuAction = if (in_repo)
+        &.{ .new_file, .new_folder, .rename, .delete, .add_to_gitignore }
+    else if (self.menu_node != null)
         &.{ .new_file, .new_folder, .rename, .delete }
     else
         &.{ .new_file, .new_folder };
-    var labels: [4][]const u8 = undefined;
+    var labels: [5][]const u8 = undefined;
     for (actions, 0..) |a, i| {
         self.menu_actions[i] = a;
         labels[i] = a.label();
     }
     const window = App.windowSize();
     self.menu.open(labels[0..actions.len], at, window, self.view.font);
+}
+
+/// Where a path is inside the repository, '/' separated as .gitignore
+/// wants it; null when it isn't in one (or is its top folder).
+fn repoPath(self: *const App, path: []const u8) ?[]const u8 {
+    if (self.git.state != .ok) return null;
+    const top = std.mem.trimEnd(u8, self.git.toplevel, "/\\");
+    if (path.len <= top.len + 1 or !std.mem.startsWith(u8, path, top)) return null;
+    if (path[top.len] != '/' and path[top.len] != '\\') return null;
+    return path[top.len + 1 ..];
 }
 
 pub fn runMenuAction(self: *App, action: App.MenuAction) !void {
@@ -58,6 +73,15 @@ pub fn runMenuAction(self: *App, action: App.MenuAction) !void {
             self.find.focus = .editor;
         },
         .delete => if (self.menu_node) |n| try self.deleteEntry(n),
+        .add_to_gitignore => if (self.project) |*p| if (self.menu_node) |n| {
+            const node = p.node(n);
+            const rel = repoPath(self, node.path) orelse return;
+            self.git.ignore(self.io, rel, node.is_dir) catch |err| {
+                return self.reportError(i18n.tr().errors.save_file, ".gitignore", err);
+            };
+            self.gitChanged();
+            try self.refreshProject();
+        },
         // Ctrl+click's list of where a name is used.
         .go_to_ref => |i| if (i < self.refs.items.len) try self.openRef(self.refs.items[i]),
         .all_refs => self.showRefsInSearch(),

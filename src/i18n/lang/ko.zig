@@ -157,6 +157,7 @@ pub const strings: Strings = .{
         .new_folder = "새 폴더...",
         .rename = "이름 바꾸기...",
         .delete = "삭제",
+        .add_to_gitignore = ".gitignore에 추가",
     },
     .search = .{
         .placeholder = "검색",

@@ -157,6 +157,7 @@ pub const strings: Strings = .{
         .new_folder = "Neuer Ordner...",
         .rename = "Umbenennen...",
         .delete = "Löschen",
+        .add_to_gitignore = "Zu .gitignore hinzufügen",
     },
     .search = .{
         .placeholder = "Suchen",

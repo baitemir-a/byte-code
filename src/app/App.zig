@@ -74,6 +74,8 @@ pub const MenuAction = union(enum) {
     new_folder,
     rename,
     delete,
+    /// Stop git listing a file or folder.
+    add_to_gitignore,
     /// Ctrl+click: go to one of the places in `refs`.
     go_to_ref: u32,
     /// Ctrl+click: put every one of them in the Search view.
@@ -90,6 +92,7 @@ pub const MenuAction = union(enum) {
             .new_folder => t.new_folder,
             .rename => t.rename,
             .delete => t.delete,
+            .add_to_gitignore => t.add_to_gitignore,
             .go_to_ref, .all_refs => "",
             .set_language => |l| l.nativeName(),
         };

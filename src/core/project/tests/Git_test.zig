@@ -397,7 +397,7 @@ test "real repository: a command that hangs can be stopped" {
     try std.testing.expect(took.toMilliseconds() < 5000);
 }
 
-test "real repository: rebasing, cherry-picking, reverting, tags, comparing" {
+test "real repository: rebasing, cherry-picking, reverting, tags, comparing, ignoring" {
     const gpa = std.testing.allocator;
     const io = std.testing.io;
     var tmp = std.testing.tmpDir(.{});
@@ -484,4 +484,18 @@ test "real repository: rebasing, cherry-picking, reverting, tags, comparing" {
     try log.parseLog(log_out);
     try std.testing.expect(std.mem.indexOf(u8, log.commits.items[0].tags, "v1") != null);
     try g.deleteTag(io, root, "v1");
+
+    // Ignored: the file isn't listed any more, and adding it twice
+    // doesn't add the line twice.
+    try tmp.dir.writeFile(io, .{ .sub_path = "build.log", .data = "x\n" });
+    try g.refresh(io, root);
+    try std.testing.expectEqual(@as(usize, 1), g.entries.items.len);
+    try g.ignore(io, "build.log", false);
+    try g.ignore(io, "build.log", false);
+    const ignore = try tmp.dir.readFileAlloc(io, ".gitignore", gpa, .limited(64));
+    defer gpa.free(ignore);
+    try std.testing.expectEqualStrings("/build.log\n", ignore);
+    try g.refresh(io, root);
+    try std.testing.expectEqual(@as(usize, 1), g.entries.items.len); // only .gitignore itself
+    try std.testing.expectEqualStrings(".gitignore", g.entries.items[0].path);
 }
