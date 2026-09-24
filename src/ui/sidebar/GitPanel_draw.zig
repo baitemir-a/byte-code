@@ -37,7 +37,11 @@ pub fn draw(self: *const GitPanel, git: *const Git, font: Font, focused: bool, p
 
     var branch_buf: [192]u8 = undefined;
     const branch = i18n.fill(&branch_buf, t.on_branch, .{git.branch});
-    _ = font.drawFit(branch, r.x + GitPanel.pad, ty0, self.branchEnd(git, font), theme.popup_detail);
+    // The name picks another branch: it shows it can be clicked.
+    const mouse = rl.getMousePosition();
+    const on_branch = rl.checkCollisionPointRec(mouse, self.branchRect(git, font));
+    const branch_end = font.drawFit(branch, r.x + GitPanel.pad, ty0, self.branchEnd(git, font), theme.copy(if (on_branch) theme.foreground else theme.popup_detail));
+    if (on_branch) rl.drawRectangleRec(.{ .x = r.x + GitPanel.pad, .y = ty0 + theme.font_size + 1, .width = branch_end - r.x - GitPanel.pad, .height = 1 }, theme.foreground);
     self.eachBadge(git, font, Counter{ .font = font, .git = git }, Counter.draw);
 
     self.message.draw(self.field_rect, font, t.message_placeholder, focused, show_caret);
@@ -49,7 +53,6 @@ pub fn draw(self: *const GitPanel, git: *const Git, font: Font, focused: bool, p
     // staged.
     const busy = self.busy != null;
     const can_commit = !busy and conflicts == 0 and (staged > 0 or syncing or git.merging);
-    const mouse = rl.getMousePosition();
     const hov = can_commit and rl.checkCollisionPointRec(mouse, self.commit_rect);
     rl.drawRectangleRounded(self.commit_rect, 0.2, 8, if (can_commit) (if (hov) theme.accentDim(0.8) else theme.accent) else theme.popup_border);
     var label_buf: [96]u8 = undefined;

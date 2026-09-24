@@ -44,6 +44,7 @@ pub fn execute(self: *App, cmd: core.Command) !void {
     }
 
     if (self.quick_open.is_open) return self.quickOpenKey(cmd);
+    if (self.picker.is_open) return self.pickerKey(cmd);
     if (try self.sideFieldKey(cmd)) return;
 
     // Esc cancels a drag in the sidebar.

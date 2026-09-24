@@ -37,6 +37,8 @@ pub const Hit = union(enum) {
     command: Command,
     /// The box a command's question is typed in.
     prompt,
+    /// The branch's name: pick another one.
+    branch,
     /// A file a merge left half-done: mark it sorted out (stage it).
     resolve: u32,
     /// The history: fold it open or shut, open a commit to list its
@@ -212,8 +214,10 @@ pub const Command = enum {
     checkout,
     create_branch,
     create_branch_from,
+    merge_branch,
     stash,
     stash_pop,
+    stashes,
     amend,
     undo_commit,
     /// Only while a merge is waiting (see `commandsFor`).
@@ -231,8 +235,10 @@ pub const Command = enum {
             .checkout => t.checkout,
             .create_branch => t.create_branch,
             .create_branch_from => t.create_branch_from,
+            .merge_branch => t.merge_branch,
             .stash => t.stash,
             .stash_pop => t.stash_pop,
+            .stashes => t.stashes,
             .amend => t.amend,
             .undo_commit => t.undo_commit,
             .abort_merge => t.abort_merge,
@@ -426,6 +432,11 @@ pub fn listTop(self: *const GitPanel) f32 {
     return self.commit_rect.y + self.commit_rect.height + 10;
 }
 
+/// The branch's name on the top line, which picks another branch.
+pub fn branchRect(self: *const GitPanel, git: *const Git, font: Font) rl.Rectangle {
+    return .{ .x = self.rect.x + pad, .y = self.rect.y + pad - 4, .width = self.branchEnd(git, font) - self.rect.x - pad, .height = row_height };
+}
+
 pub fn layout(self: *GitPanel, rect: rl.Rectangle, font: Font, git: *const Git) void {
     self.rect = rect;
     const top = rect.y + pad + row_height; // below the branch line
@@ -460,8 +471,9 @@ pub fn canDiscardAll(git: *const Git) bool {
     return false;
 }
 
-pub fn hitTest(self: *const GitPanel, git: *const Git, p: rl.Vector2) ?Hit {
+pub fn hitTest(self: *const GitPanel, git: *const Git, font: Font, p: rl.Vector2) ?Hit {
     if (!rl.checkCollisionPointRec(p, self.rect) or git.state != .ok) return null;
+    if (rl.checkCollisionPointRec(p, self.branchRect(git, font))) return .branch;
     if (rl.checkCollisionPointRec(p, self.field_rect)) return .message;
     if (rl.checkCollisionPointRec(p, self.commit_rect)) return .commit;
     if (self.prompt != null and rl.checkCollisionPointRec(p, self.promptRect())) return .prompt;

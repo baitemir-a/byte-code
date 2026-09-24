@@ -6,6 +6,7 @@ const Pty = @import("../../platform/Pty.zig");
 const App = @import("../App.zig");
 const Sidebar = @import("../../ui/sidebar/Sidebar.zig");
 const View_conflicts = @import("../../ui/editor/View_conflicts.zig");
+const i18n = @import("../../i18n/i18n.zig");
 
 pub fn draw(self: *const App) void {
     // Under a dialog, nothing lights up where the pointer is.
@@ -24,7 +25,7 @@ fn drawFrame(self: *const App) void {
         .settings => self.settings_page.draw(self.view.font, &self.settings, self.settings_path),
         .help => self.help_page.draw(self.view.font, &self.keys, self.keys_path),
         .file, .diff => {
-            const editor_caret = caret and t.kind == .file and !self.find.hasFocus() and self.sidebar.input == null and !self.terminalFocused() and !self.quick_open.is_open and self.side_focus == .none;
+            const editor_caret = caret and t.kind == .file and !self.find.hasFocus() and self.sidebar.input == null and !self.terminalFocused() and !self.quick_open.is_open and !self.picker.is_open and self.side_focus == .none;
             const diff = self.changes();
             // A merge's conflicts: bands under the text, buttons over it.
             const conflicts = self.conflicts();
@@ -68,6 +69,7 @@ fn drawFrame(self: *const App) void {
         Sidebar.drawGitBadgeTooltip(self.view.font, &self.git);
     }
     self.quick_open.draw(&self.file_search, self.view.font, caret, self.project != null);
+    self.picker.draw(self.view.font, caret, i18n.tr().quick_open.no_matches);
     self.menu.draw(self.view.font);
     self.sidebar.drawDragLabel(self.view.font);
 }

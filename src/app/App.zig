@@ -44,6 +44,8 @@ const git_diff = @import("lib/git_diff.zig");
 const git_blame = @import("lib/git_blame.zig");
 const git_jobs = @import("lib/git_job.zig");
 const git_conflicts = @import("lib/git_conflicts.zig");
+const git_pickers = @import("lib/git_pickers.zig");
+const Picker = @import("../ui/Picker.zig");
 const symbol_nav = @import("lib/symbol_nav.zig");
 const editing = @import("lib/editing.zig");
 const clipboard = @import("lib/clipboard.zig");
@@ -78,10 +80,6 @@ pub const MenuAction = union(enum) {
     all_refs,
     /// The language menu in Settings.
     set_language: core.Settings.Language,
-    /// A branch from the Git view's menu: move onto it, or start a
-    /// branch from it.
-    git_checkout: u32,
-    git_branch_from: u32,
 
     /// The menu row for the actions whose wording never changes; the
     /// ctrl+click ones are labelled with the place they lead to.
@@ -92,7 +90,7 @@ pub const MenuAction = union(enum) {
             .new_folder => t.new_folder,
             .rename => t.rename,
             .delete => t.delete,
-            .go_to_ref, .all_refs, .git_checkout, .git_branch_from => "",
+            .go_to_ref, .all_refs => "",
             .set_language => |l| l.nativeName(),
         };
     }
@@ -193,8 +191,11 @@ modal: ?*const Modal = null,
 status: StatusBar = .{},
 /// Which sidebar text box has the keyboard, if any.
 side_focus: enum { none, search, search_replace, git_message, git_prompt } = .none,
-/// The branches a menu is offering, one per line.
-branch_list: std.ArrayList(u8) = .empty,
+/// The list picked from at the top of the editor (branches, stashes),
+/// what it is for, and the branches and stashes it shows.
+picker: Picker,
+picker_mode: git_pickers.Mode = .checkout,
+git_refs: core.GitRefs,
 /// Scroll the editor to its cursor on the next frame (e.g. after opening
 /// a search result).
 reveal_cursor: bool = false,
@@ -263,6 +264,12 @@ pub const updateConflicts = git_conflicts.updateConflicts;
 pub const conflicts = git_conflicts.conflicts;
 pub const conflictMouse = git_conflicts.conflictMouse;
 
+// git_pickers.zig
+pub const openBranchPicker = git_pickers.openBranchPicker;
+pub const openStashPicker = git_pickers.openStashPicker;
+pub const pickerKey = git_pickers.pickerKey;
+pub const pickerMouse = git_pickers.pickerMouse;
+
 // git_job.zig
 pub const startGitJob = git_jobs.startGitJob;
 pub const startClone = git_jobs.startClone;
@@ -277,7 +284,6 @@ pub const panelClick = panels.panelClick;
 pub const badgeTooltipClick = panels.badgeTooltipClick;
 pub const gitAction = panels.gitAction;
 pub const gitCommit = panels.gitCommit;
-pub const branchName = panels.branchName;
 pub const finishGitPrompt = panels.finishGitPrompt;
 pub const openClone = panels.openClone;
 pub const reloadUnchangedTabs = panels.reloadUnchangedTabs;
@@ -388,6 +394,8 @@ pub fn init(gpa: std.mem.Allocator, io: std.Io) !App {
         .search_panel = .init(gpa),
         .git_panel = .init(gpa),
         .git = .init(gpa),
+        .picker = .init(gpa),
+        .git_refs = .init(gpa),
     };
     app.sidebar.preferred_width = @floatFromInt(settings.sidebar_width);
     return app;
@@ -400,7 +408,8 @@ pub fn deinit(self: *App) void {
     self.gpa.free(self.projects_path);
     self.projects.deinit();
     self.scope_steps.deinit(self.gpa);
-    self.branch_list.deinit(self.gpa);
+    self.picker.deinit();
+    self.git_refs.deinit();
     self.refs.deinit(self.gpa);
     self.ref_name.deinit(self.gpa);
     self.view.deinit();
@@ -570,6 +579,7 @@ pub fn layout(self: *App, full_window: rl.Vector2) !void {
     self.view.wrap = self.settings.word_wrap;
     try self.view.layout(self.buf(), text_area);
     self.quick_open.layout(editor, self.view.font);
+    self.picker.layout(editor, self.view.font);
     switch (self.activeTab().kind) {
         .welcome => self.welcome.layout(editor, self.view.font, self.projects.entries.items),
         .settings => self.settings_page.layout(editor, self.view.font),

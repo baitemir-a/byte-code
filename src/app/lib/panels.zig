@@ -7,11 +7,11 @@ const dialogs = @import("../../platform/lib/dialogs.zig");
 const Tab = @import("../Tab.zig");
 const Sidebar = @import("../../ui/sidebar/Sidebar.zig");
 const GitPanel = @import("../../ui/sidebar/GitPanel.zig");
-const ContextMenu = @import("../../ui/sidebar/ContextMenu.zig");
 const App = @import("../App.zig");
 const clipboard = @import("clipboard.zig");
 const i18n = @import("../../i18n/i18n.zig");
 const git_commands = @import("git_commands.zig");
+const git_pickers = @import("git_pickers.zig");
 
 /// Shows a sidebar view (Explorer, Search, Git); Search puts the keyboard
 /// in its query box.
@@ -154,7 +154,7 @@ pub fn panelClick(self: *App, point: rl.Vector2) !void {
             }
         },
         .git => {
-            const hit = self.git_panel.hitTest(&self.git, point) orelse return;
+            const hit = self.git_panel.hitTest(&self.git, self.view.font, point) orelse return;
             // While a push or pull runs, the rest of git waits for it.
             if (self.gitBusy()) switch (hit) {
                 .message, .toggle_commands, .prompt, .open, .toggle_history, .commit_row, .commit_file => {},
@@ -171,13 +171,14 @@ pub fn panelClick(self: *App, point: rl.Vector2) !void {
                     self.git_panel.commands_open = !self.git_panel.commands_open;
                     self.git_panel.cancelPrompt();
                 },
-                .command => |c| try runGitCommand(self, c, point),
+                .command => |c| try runGitCommand(self, c),
                 .prompt => {
                     self.side_focus = .git_prompt;
                     const f = &self.git_panel.prompt_field;
                     f.buffer.moveTo(f.posAtX(self.git_panel.promptRect(), self.view.font, point.x), false);
                 },
                 .resolve => |i| try git_commands.markResolved(self, root, i),
+                .branch => try self.openBranchPicker(.checkout),
                 .toggle_history => try git_commands.toggleHistory(self, root),
                 .commit_row => |i| try git_commands.openCommit(self, root, i, false),
                 .commit_file => |i| try git_commands.openCommitFile(self, i),
@@ -208,7 +209,7 @@ pub fn panelClick(self: *App, point: rl.Vector2) !void {
 
 /// Runs one of the list's commands. The ones that need something typed
 /// or picked ask for it first; the rest go straight to git.
-fn runGitCommand(self: *App, command: GitPanel.Command, at: rl.Vector2) !void {
+fn runGitCommand(self: *App, command: GitPanel.Command) !void {
     const project = if (self.project) |*p| p else return;
     const root = project.root().path;
     self.side_focus = .none;
@@ -228,7 +229,9 @@ fn runGitCommand(self: *App, command: GitPanel.Command, at: rl.Vector2) !void {
         .amend => try git_commands.amendCommit(self, root),
         .undo_commit => try git_commands.undoCommit(self, root),
         .abort_merge => try git_commands.abortMerge(self, root),
-        .stash => self.gitAction(self.git.stash(self.io, root, "")),
+        .stash => try git_pickers.stashWithMessage(self, root),
+        .stashes => try self.openStashPicker(),
+        .merge_branch => try self.openBranchPicker(.merge),
         .stash_pop => self.gitAction(self.git.stashPop(self.io, root)),
         .clone => {
             try self.git_panel.ask(.clone, "");
@@ -238,45 +241,10 @@ fn runGitCommand(self: *App, command: GitPanel.Command, at: rl.Vector2) !void {
             try self.git_panel.ask(.create_branch, "");
             self.side_focus = .git_prompt;
         },
-        // These pick a branch first, from a menu at the pointer.
-        .checkout, .create_branch_from => try openBranchMenu(self, root, command == .create_branch_from, at),
+        // These pick a branch first, from a list at the top.
+        .checkout => try self.openBranchPicker(.checkout),
+        .create_branch_from => try self.openBranchPicker(.branch_from),
     }
-}
-
-/// The branches to pick from, as a menu. Only the first few fit, which
-/// are the ones worked on most recently.
-fn openBranchMenu(self: *App, root: []const u8, remote: bool, at: rl.Vector2) !void {
-    const list = try core.Git.branches(self.gpa, self.io, root, remote) orelse return;
-    defer self.gpa.free(list);
-    self.branch_list.clearRetainingCapacity();
-    try self.branch_list.appendSlice(self.gpa, list);
-
-    var labels: [ContextMenu.max_items][]const u8 = undefined;
-    var n: usize = 0;
-    var lines = std.mem.splitScalar(u8, self.branch_list.items, '\n');
-    while (lines.next()) |line| {
-        const name = std.mem.trim(u8, line, " \r");
-        if (name.len == 0) continue;
-        labels[n] = name;
-        self.menu_actions[n] = if (remote) .{ .git_branch_from = @intCast(n) } else .{ .git_checkout = @intCast(n) };
-        n += 1;
-        if (n == ContextMenu.max_items) break;
-    }
-    if (n == 0) return;
-    self.menu.open(labels[0..n], at, App.windowSize(), self.view.font);
-}
-
-/// The branch a menu row stands for.
-pub fn branchName(self: *const App, index: u32) ?[]const u8 {
-    var n: u32 = 0;
-    var lines = std.mem.splitScalar(u8, self.branch_list.items, '\n');
-    while (lines.next()) |line| {
-        const name = std.mem.trim(u8, line, " \r");
-        if (name.len == 0) continue;
-        if (n == index) return name;
-        n += 1;
-    }
-    return null;
 }
 
 /// Runs what the box was asked for, with what was typed in it.

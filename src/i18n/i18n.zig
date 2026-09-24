@@ -196,6 +196,36 @@ pub const Strings = struct {
         accept_both: []const u8,
         /// Above git's own question ("Password for ...").
         credentials_title: []const u8,
+        /// The commands that pick a branch or a stash from a list.
+        merge_branch: []const u8,
+        stashes: []const u8,
+        /// What the list's search box says, for each command.
+        pick_branch: []const u8,
+        pick_branch_from: []const u8,
+        pick_merge: []const u8,
+        pick_stash: []const u8,
+        /// The buttons on a row of the list.
+        action_merge: []const u8,
+        action_rename: []const u8,
+        action_delete: []const u8,
+        action_apply: []const u8,
+        action_drop: []const u8,
+        /// After a branch only the remote has.
+        remote: []const u8,
+        /// {1}: the branch.
+        rename_title: []const u8,
+        new_name: []const u8,
+        /// Before deleting a branch; {1}: its name.
+        delete_branch_question: []const u8,
+        delete_branch_detail: []const u8,
+        unmerged_question: []const u8,
+        unmerged_detail: []const u8,
+        /// Before dropping a stash; {1}: which ("stash@{0}").
+        drop_stash_question: []const u8,
+        drop_stash_detail: []const u8,
+        /// Asked when stashing.
+        stash_title: []const u8,
+        stash_message: []const u8,
     },
     /// The bar along the bottom: what git says about the line the cursor
     /// is on, and where the cursor is.

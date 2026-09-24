@@ -24,6 +24,9 @@ pub fn handleMouse(self: *App) !bool {
         return true;
     }
 
+    // The same for the lists of branches and stashes.
+    if (self.picker.is_open) return self.pickerMouse(point, pressed);
+
     // The sidebar's right edge: drag to resize.
     if (self.sidebar.resizing) {
         self.wanted_cursor = .resize_ew;

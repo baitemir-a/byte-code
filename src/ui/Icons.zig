@@ -29,6 +29,10 @@ pub const Icon = enum {
     circle_x,
     check,
     key_round,
+    git_merge,
+    pencil,
+    trash_2,
+    archive_restore,
 
     pub fn codepoint(self: Icon) u21 {
         return codepoints[@intFromEnum(self)];

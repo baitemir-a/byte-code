@@ -432,20 +432,6 @@ pub fn readStashes(gpa: Allocator, io: Io, root: []const u8) !?[]u8 {
     return try gpa.dupe(u8, r.stdout);
 }
 
-/// The branches, most recently worked on first, one per line. `remote`
-/// takes in the ones only the remote has (as "origin/name"), for picking
-/// what to start a branch from. Caller frees.
-pub fn branches(gpa: Allocator, io: Io, root: []const u8, remote: bool) !?[]u8 {
-    const args: []const []const u8 = if (remote)
-        &.{ "branch", "--all", "--format=%(refname:short)", "--sort=-committerdate" }
-    else
-        &.{ "branch", "--format=%(refname:short)", "--sort=-committerdate" };
-    const r = runGit(gpa, io, root, args) catch return null;
-    defer r.deinit(gpa);
-    if (!r.ok) return null;
-    return try gpa.dupe(u8, r.stdout);
-}
-
 /// The branch's latest commits, as `GitLog.parseLog` reads them. Null
 /// when there are none yet. Caller frees.
 pub fn readLog(gpa: Allocator, io: Io, root: []const u8) !?[]u8 {
