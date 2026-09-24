@@ -55,7 +55,14 @@ the system warns the first time you open them:
   is declared; click the declaration itself to list where it is used. It
   reads the shape of the code, not a language server, so it is a good guess
   rather than an answer
-- **Git** — branch, changed files, stage/unstage, discard, commit
+- **Git** — the branch with counters beside it: blue for changes waiting
+  to be staged, yellow for staged ones, green for commits to push, purple
+  for commits to pull (as of the last fetch) and red for a half-done
+  merge. The Git tab's icon carries the same count while another view is
+  open — one counter's color when only one kind is waiting, the accent
+  color and the total when several are; hovering it lists them, and a row
+  opens the view at that list. Then the changed files, stage/unstage,
+  discard, commit
 - **Discard changes** — the ↺ beside a file (or beside CHANGES, for all
   of them) puts git's copy back; a file git doesn't know yet goes to the
   trash instead. What is staged stays staged. It asks first, and the

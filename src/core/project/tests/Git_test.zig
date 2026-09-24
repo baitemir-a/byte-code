@@ -7,6 +7,8 @@ test "parses porcelain status" {
     defer g.deinit();
     try g.parse("## main...origin/main [ahead 1]\x00 M src/app.ts\x00A  new.ts\x00R  moved.ts\x00old.ts\x00?? notes.md\x00MM both.zig\x00");
     try std.testing.expectEqualStrings("main", g.branch);
+    try std.testing.expectEqual(@as(u32, 1), g.ahead);
+    try std.testing.expectEqual(@as(u32, 0), g.behind);
     try std.testing.expectEqual(@as(usize, 5), g.entries.items.len);
     const e = g.entries.items; // sorted by path
     try std.testing.expectEqualStrings("both.zig", e[0].path);
@@ -18,6 +20,16 @@ test "parses porcelain status" {
 
     try g.parse("## No commits yet on dev\x00");
     try std.testing.expectEqualStrings("dev", g.branch);
+    try std.testing.expectEqual(@as(u32, 0), g.ahead);
+
+    // What a push would send and a pull would bring, and a merge left
+    // half-done in two files.
+    try g.parse("## main...origin/main [ahead 2, behind 3]\x00UU both.zig\x00AA added.zig\x00 M plain.zig\x00");
+    try std.testing.expectEqual(@as(u32, 2), g.ahead);
+    try std.testing.expectEqual(@as(u32, 3), g.behind);
+    var conflicts: usize = 0;
+    for (g.entries.items) |entry| conflicts += @intFromBool(entry.isConflict());
+    try std.testing.expectEqual(@as(usize, 2), conflicts);
 }
 
 test "real repository: status, stage, commit" {
@@ -114,4 +126,64 @@ test "real repository: throwing changes away keeps what is staged" {
     for (g.entries.items) |e| {
         if (std.mem.eql(u8, e.path, "b.txt")) try std.testing.expect(e.isStaged() and !e.isUnstaged());
     }
+}
+
+test "real repository: branches, stashing, and a remote to push to" {
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const root = try tmp.dir.realPathFileAlloc(io, ".", gpa);
+    defer gpa.free(root);
+
+    var g = Git.init(gpa);
+    defer g.deinit();
+    try g.refresh(io, root);
+    if (g.state == .no_git) return error.SkipZigTest;
+
+    // A bare repository stands in for the remote; cloning it makes the
+    // working copy beside it, named after it without the ".git".
+    try tmp.dir.createDirPath(io, "origin.git");
+    const remote = try tmp.dir.realPathFileAlloc(io, "origin.git", gpa);
+    defer gpa.free(remote);
+    try g.expectOk(io, remote, &.{ "init", "--bare", "--quiet" });
+    try g.clone(io, root, remote);
+    const work = try std.fs.path.join(gpa, &.{ root, "origin" });
+    defer gpa.free(work);
+    for ([_][]const []const u8{
+        &.{ "config", "user.email", "test@example.com" },
+        &.{ "config", "user.name", "Test" },
+    }) |args| try g.expectOk(io, work, args);
+
+    var dir = try std.Io.Dir.cwd().openDir(io, work, .{});
+    defer dir.close(io);
+    try dir.writeFile(io, .{ .sub_path = "a.txt", .data = "one\n" });
+    try g.expectOk(io, work, &.{ "add", "a.txt" });
+    try g.commit(io, work, "first");
+
+    // Nothing is set up to push to yet: push says so and sets it up.
+    try g.push(io, work);
+    try g.fetch(io, work);
+    try g.refresh(io, work);
+    try std.testing.expectEqual(@as(u32, 0), g.ahead);
+
+    // A branch of its own, and back again.
+    try g.createBranch(io, work, "feature", null);
+    try g.refresh(io, work);
+    try std.testing.expectEqualStrings("feature", g.branch);
+    const list = (try Git.branches(gpa, io, work, false)).?;
+    defer gpa.free(list);
+    try std.testing.expect(std.mem.indexOf(u8, list, "feature") != null);
+    try g.checkout(io, work, "master");
+    try g.refresh(io, work);
+    try std.testing.expectEqualStrings("master", g.branch);
+
+    // Changes put aside and brought back.
+    try dir.writeFile(io, .{ .sub_path = "a.txt", .data = "changed\n" });
+    try g.stash(io, work);
+    try g.refresh(io, work);
+    try std.testing.expectEqual(@as(usize, 0), g.entries.items.len);
+    try g.stashPop(io, work);
+    try g.refresh(io, work);
+    try std.testing.expectEqual(@as(usize, 1), g.entries.items.len);
 }

@@ -9,6 +9,11 @@ const Icons = @import("../Icons.zig");
 const core = @import("core");
 const Sidebar = @import("Sidebar.zig");
 const i18n = @import("../../i18n/i18n.zig");
+const GitPanel = @import("GitPanel.zig");
+
+/// The round badge on the Git tab's icon.
+const badge_font: f32 = Font.small_size;
+const badge_size: f32 = badge_font + 4;
 
 const FileTree = core.FileTree;
 const row_height = theme.line_height;
@@ -19,17 +24,133 @@ pub fn drawScrollbar(self: *const Sidebar) void {
     rl.drawRectangleRounded(thumb, 1, 6, theme.copy(if (active) theme.scrollbar_thumb_hover else theme.scrollbar_thumb));
 }
 
-pub fn draw(self: *const Sidebar, tree: ?*const FileTree, current_path: ?[]const u8, font: Font, show_caret: bool) void {
+pub fn draw(self: *const Sidebar, tree: ?*const FileTree, current_path: ?[]const u8, font: Font, show_caret: bool, git: *const core.Git) void {
     if (self.rect.width == 0) return;
     const r = self.rect;
     rl.drawRectangleRec(r, theme.sidebar_background);
     rl.drawRectangleRec(.{ .x = r.width - 1, .y = 0, .width = 1, .height = r.height }, theme.sidebar_border);
     drawViewStrip(self, font);
+    drawGitBadge(font, git);
     if (self.view == .explorer) drawExplorer(self, tree.?, current_path, font, show_caret);
 
     // The resize edge lights up while hovered or dragged.
     if (self.resizing or self.onEdge(rl.getMousePosition())) {
         rl.drawRectangleRec(.{ .x = r.width - 3, .y = 0, .width = 2, .height = r.height }, theme.accent);
+    }
+}
+
+/// How many changes are waiting, on the Git tab's icon: it is the one
+/// thing worth seeing while another view is showing.
+fn drawGitBadge(font: Font, git: *const core.Git) void {
+    const badge = GitPanel.tabBadge(git) orelse return;
+    const tab = Sidebar.viewTabRect(.git);
+    var digits: [12]u8 = undefined;
+    const text = std.fmt.bufPrint(&digits, "{d}", .{@min(badge.count, 99)}) catch return;
+    const text_w = font.textWidthAt(text, badge_font);
+    const w = @max(badge_size, text_w + 6);
+    // Over the icon's top-right corner, and never off the top edge.
+    const box: rl.Rectangle = .{
+        .x = tab.x + tab.width / 2 + 2,
+        .y = @max(tab.y + 2, tab.y + tab.height / 2 - badge_size - 1),
+        .width = w,
+        .height = badge_size,
+    };
+    rl.drawRectangleRounded(box, 0.5, 8, theme.copy(badge.color));
+    const x = box.x + (box.width - text_w) / 2;
+    _ = font.drawFitSized(text, x, box.y + (badge_size - badge_font) / 2, box.x + box.width, badge_font, theme.background);
+}
+
+/// What the badge stands for, broken down: a row per counter that isn't
+/// zero, each in its own color. It shows while the pointer is over the
+/// Git tab or over the tooltip itself, so a row can be clicked.
+pub const BadgeTooltip = struct {
+    box: rl.Rectangle,
+    /// Room for the count of each row.
+    counts: f32,
+    rows: [GitPanel.badge_count]GitPanel.Badge,
+    len: usize,
+
+    const pad: f32 = 10;
+    const gap: f32 = 8;
+
+    pub fn list(self: *const BadgeTooltip) []const GitPanel.Badge {
+        return self.rows[0..self.len];
+    }
+
+    pub fn rowRect(self: *const BadgeTooltip, index: usize) rl.Rectangle {
+        return .{
+            .x = self.box.x,
+            .y = self.box.y + pad / 2 + @as(f32, @floatFromInt(index)) * theme.line_height,
+            .width = self.box.width,
+            .height = theme.line_height,
+        };
+    }
+
+    /// The counter under a point, for a click.
+    pub fn rowAt(self: *const BadgeTooltip, p: rl.Vector2) ?GitPanel.Badge {
+        for (self.list(), 0..) |badge, i| {
+            if (rl.checkCollisionPointRec(p, self.rowRect(i))) return badge;
+        }
+        return null;
+    }
+};
+
+/// The tooltip as it stands, or null when there is nothing to show or
+/// the pointer is elsewhere.
+pub fn gitBadgeTooltip(font: Font, git: *const core.Git, pointer: rl.Vector2) ?BadgeTooltip {
+    var tip: BadgeTooltip = .{ .box = std.mem.zeroes(rl.Rectangle), .counts = badge_size, .rows = undefined, .len = 0 };
+    const active = GitPanel.activeBadges(git, &tip.rows);
+    tip.len = active.len;
+    if (active.len == 0) return null;
+
+    // Wide enough for the longest label, and for the widest count.
+    var label_w: f32 = 0;
+    var digits: [12]u8 = undefined;
+    for (active) |badge| {
+        label_w = @max(label_w, font.textWidth(badge.label()));
+        const text = std.fmt.bufPrint(&digits, "{d}", .{GitPanel.badgeCount(git, badge)}) catch continue;
+        tip.counts = @max(tip.counts, font.textWidthAt(text, badge_font) + 6);
+    }
+    const pad = BadgeTooltip.pad;
+    const tab = Sidebar.viewTabRect(.git);
+    const window_width = @as(f32, @floatFromInt(rl.getScreenWidth())) / theme.zoom;
+    const width = pad * 2 + tip.counts + BadgeTooltip.gap + label_w;
+    tip.box = .{
+        .x = @min(tab.x, @max(4, window_width - width - 4)),
+        .y = tab.y + tab.height + 4,
+        .width = width,
+        .height = pad + @as(f32, @floatFromInt(active.len)) * theme.line_height,
+    };
+    // The pointer can travel from the tab into the tooltip to click a row.
+    const reach: rl.Rectangle = .{ .x = tip.box.x, .y = tab.y, .width = @max(tab.width, tip.box.width), .height = tip.box.y + tip.box.height - tab.y };
+    const over = rl.checkCollisionPointRec(pointer, tab) or rl.checkCollisionPointRec(pointer, reach);
+    return if (over) tip else null;
+}
+
+pub fn drawGitBadgeTooltip(font: Font, git: *const core.Git) void {
+    const mouse = rl.getMousePosition();
+    const tip = gitBadgeTooltip(font, git, mouse) orelse return;
+    const box = tip.box;
+    rl.drawRectangleRec(.{ .x = box.x + 2, .y = box.y + 3, .width = box.width, .height = box.height }, theme.popup_shadow);
+    rl.drawRectangleRec(box, theme.popup_background);
+    rl.drawRectangleLinesEx(box, 1, theme.popup_border);
+    var digits: [12]u8 = undefined;
+    for (tip.list(), 0..) |badge, i| {
+        const row = tip.rowRect(i);
+        // The row under the pointer lights up: clicking it goes there.
+        if (rl.checkCollisionPointRec(mouse, row)) rl.drawRectangleRec(row, theme.sidebar_hover);
+        const text = std.fmt.bufPrint(&digits, "{d}", .{GitPanel.badgeCount(git, badge)}) catch continue;
+        const pill: rl.Rectangle = .{
+            .x = row.x + BadgeTooltip.pad,
+            .y = row.y + (row.height - badge_size) / 2,
+            .width = tip.counts,
+            .height = badge_size,
+        };
+        rl.drawRectangleRounded(pill, 0.5, 8, theme.copy(badge.color()));
+        const text_x = pill.x + (pill.width - font.textWidthAt(text, badge_font)) / 2;
+        _ = font.drawFitSized(text, text_x, pill.y + (badge_size - badge_font) / 2, pill.x + pill.width, badge_font, theme.background);
+        const ty = row.y + (row.height - theme.font_size) / 2;
+        _ = font.drawFit(badge.label(), pill.x + pill.width + BadgeTooltip.gap, ty, box.x + box.width - BadgeTooltip.pad, theme.foreground);
     }
 }
 

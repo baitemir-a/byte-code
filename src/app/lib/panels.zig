@@ -6,6 +6,8 @@ const core = @import("core");
 const dialogs = @import("../../platform/lib/dialogs.zig");
 const Tab = @import("../Tab.zig");
 const Sidebar = @import("../../ui/sidebar/Sidebar.zig");
+const GitPanel = @import("../../ui/sidebar/GitPanel.zig");
+const ContextMenu = @import("../../ui/sidebar/ContextMenu.zig");
 const App = @import("../App.zig");
 const clipboard = @import("clipboard.zig");
 const i18n = @import("../../i18n/i18n.zig");
@@ -33,7 +35,9 @@ pub fn showView(self: *App, view: Sidebar.View) void {
 pub fn updateSidebarViews(self: *App) !void {
     const now = rl.getTime();
     if (self.search_panel.changed_at) |t| if (now - t > 0.3) try self.runSearch(.top);
-    if (self.sidebar.view == .git and self.sidebar.width() > 0) if (self.project) |*p| {
+    // The status is read for any view, not just Git's: the badge on its
+    // tab shows what is waiting while another view is open.
+    if (self.sidebar.width() > 0 or self.git_dirty) if (self.project) |*p| {
         if (self.git_dirty or now - self.git_read_at > 5) {
             try self.git.refresh(self.io, p.root().path);
             self.git_dirty = false;
@@ -50,11 +54,13 @@ pub fn sideFieldKey(self: *App, cmd: core.Command) !bool {
         .search => &self.search_panel.query,
         .search_replace => &self.search_panel.replacement,
         .git_message => &self.git_panel.message,
+        .git_prompt => &self.git_panel.prompt_field,
     };
     switch (cmd) {
         .newline => switch (self.side_focus) {
             .search => try self.runSearch(.top),
             .search_replace => try self.replaceInProject(),
+            .git_prompt => try finishGitPrompt(self),
             else => try self.gitCommit(),
         },
         // Tab moves between the search and replace boxes.
@@ -63,18 +69,34 @@ pub fn sideFieldKey(self: *App, cmd: core.Command) !bool {
             .search_replace => self.side_focus = .search,
             else => {},
         },
-        .clear_selection => self.side_focus = .none,
+        .clear_selection => {
+            self.side_focus = .none;
+            self.git_panel.cancelPrompt();
+        },
         .copy, .cut => try clipboard.copyOrCut(self.gpa, &field.buffer, cmd == .cut),
         .paste => if (clipboard.getClipboard()) |s| try field.paste(s),
-        .toggle_match_case, .toggle_whole_word => if (self.side_focus != .git_message) {
+        .toggle_match_case, .toggle_whole_word => if (self.side_focus == .search or self.side_focus == .search_replace) {
             self.search_panel.toggle(if (cmd == .toggle_match_case) .match_case else .whole_word);
         },
         .save, .save_as, .find, .find_replace, .find_next, .find_prev => return false,
         else => _ = try field.handle(cmd),
     }
-    if (self.side_focus != .git_message and self.search_panel.stale()) {
+    if ((self.side_focus == .search or self.side_focus == .search_replace) and self.search_panel.stale()) {
         self.search_panel.changed_at = rl.getTime();
     }
+    return true;
+}
+
+/// A click on a row of the Git tab's tooltip: the view opens at the list
+/// that counter stands for. Returns whether it hit one.
+pub fn badgeTooltipClick(self: *App, point: rl.Vector2, pressed: bool) bool {
+    if (self.sidebar.width() == 0) return false;
+    const tip = Sidebar.gitBadgeTooltip(self.view.font, &self.git, point) orelse return false;
+    const badge = tip.rowAt(point) orelse return rl.checkCollisionPointRec(point, tip.box);
+    self.wanted_cursor = .pointing_hand;
+    if (!pressed) return true;
+    self.showView(.git);
+    if (GitPanel.badgeSection(badge)) |section| self.git_panel.scrollToSection(&self.git, section);
     return true;
 }
 
@@ -133,7 +155,17 @@ pub fn panelClick(self: *App, point: rl.Vector2) !void {
                     const f = &self.git_panel.message;
                     f.buffer.moveTo(f.posAtX(self.git_panel.field_rect, self.view.font, point.x), false);
                 },
-                .commit => try self.gitCommit(),
+                .commit => if (GitPanel.syncing(&self.git)) self.gitAction(self.git.sync(self.io, root)) else try self.gitCommit(),
+                .toggle_commands => {
+                    self.git_panel.commands_open = !self.git_panel.commands_open;
+                    self.git_panel.cancelPrompt();
+                },
+                .command => |c| try runGitCommand(self, c, point),
+                .prompt => {
+                    self.side_focus = .git_prompt;
+                    const f = &self.git_panel.prompt_field;
+                    f.buffer.moveTo(f.posAtX(self.git_panel.promptRect(), self.view.font, point.x), false);
+                },
                 .stage_all => self.gitAction(self.git.stageAll(self.io, root)),
                 .unstage_all => self.gitAction(self.git.unstageAll(self.io, root)),
                 .stage => |i| self.gitAction(self.git.stage(self.io, root, self.git.entries.items[i].path)),
@@ -155,6 +187,110 @@ pub fn panelClick(self: *App, point: rl.Vector2) !void {
             }
         },
     }
+}
+
+/// Runs one of the list's commands. The ones that need something typed
+/// or picked ask for it first; the rest go straight to git.
+fn runGitCommand(self: *App, command: GitPanel.Command, at: rl.Vector2) !void {
+    const project = if (self.project) |*p| p else return;
+    const root = project.root().path;
+    self.side_focus = .none;
+    self.git_panel.cancelPrompt();
+    switch (command) {
+        .push => self.gitAction(self.git.push(self.io, root)),
+        .pull => self.gitAction(self.git.pull(self.io, root)),
+        .fetch => self.gitAction(self.git.fetch(self.io, root)),
+        .commit_push => {
+            try self.gitCommit();
+            if (self.git.last_error.items.len == 0) self.gitAction(self.git.push(self.io, root));
+        },
+        .commit_sync => {
+            try self.gitCommit();
+            if (self.git.last_error.items.len == 0) self.gitAction(self.git.sync(self.io, root));
+        },
+        .stash => self.gitAction(self.git.stash(self.io, root)),
+        .stash_pop => self.gitAction(self.git.stashPop(self.io, root)),
+        .clone => {
+            try self.git_panel.ask(.clone, "");
+            self.side_focus = .git_prompt;
+        },
+        .create_branch => {
+            try self.git_panel.ask(.create_branch, "");
+            self.side_focus = .git_prompt;
+        },
+        // These pick a branch first, from a menu at the pointer.
+        .checkout, .create_branch_from => try openBranchMenu(self, root, command == .create_branch_from, at),
+    }
+}
+
+/// The branches to pick from, as a menu. Only the first few fit, which
+/// are the ones worked on most recently.
+fn openBranchMenu(self: *App, root: []const u8, remote: bool, at: rl.Vector2) !void {
+    const list = try core.Git.branches(self.gpa, self.io, root, remote) orelse return;
+    defer self.gpa.free(list);
+    self.branch_list.clearRetainingCapacity();
+    try self.branch_list.appendSlice(self.gpa, list);
+
+    var labels: [ContextMenu.max_items][]const u8 = undefined;
+    var n: usize = 0;
+    var lines = std.mem.splitScalar(u8, self.branch_list.items, '\n');
+    while (lines.next()) |line| {
+        const name = std.mem.trim(u8, line, " \r");
+        if (name.len == 0) continue;
+        labels[n] = name;
+        self.menu_actions[n] = if (remote) .{ .git_branch_from = @intCast(n) } else .{ .git_checkout = @intCast(n) };
+        n += 1;
+        if (n == ContextMenu.max_items) break;
+    }
+    if (n == 0) return;
+    self.menu.open(labels[0..n], at, App.windowSize(), self.view.font);
+}
+
+/// The branch a menu row stands for.
+pub fn branchName(self: *const App, index: u32) ?[]const u8 {
+    var n: u32 = 0;
+    var lines = std.mem.splitScalar(u8, self.branch_list.items, '\n');
+    while (lines.next()) |line| {
+        const name = std.mem.trim(u8, line, " \r");
+        if (name.len == 0) continue;
+        if (n == index) return name;
+        n += 1;
+    }
+    return null;
+}
+
+/// Runs what the box was asked for, with what was typed in it.
+pub fn finishGitPrompt(self: *App) !void {
+    const project = if (self.project) |*p| p else return;
+    const root = project.root().path;
+    const prompt = self.git_panel.prompt orelse return;
+    const text = std.mem.trim(u8, self.git_panel.prompt_field.text(), " \t");
+    if (text.len == 0) return;
+    const base = self.git_panel.promptBase();
+    self.git_panel.cancelPrompt();
+    self.side_focus = .none;
+    switch (prompt) {
+        .create_branch => self.gitAction(self.git.createBranch(self.io, root, text, null)),
+        .create_branch_from => self.gitAction(self.git.createBranch(self.io, root, text, base)),
+        // The copy lands beside the project, and opens as the new one.
+        .clone => {
+            const parent = std.fs.path.dirname(root) orelse root;
+            self.gitAction(self.git.clone(self.io, parent, text));
+            if (self.git.last_error.items.len > 0) return;
+            const name = cloneFolder(text);
+            const path = try std.fs.path.join(self.gpa, &.{ parent, name });
+            defer self.gpa.free(path);
+            self.openFolder(path) catch |err| self.reportError(i18n.tr().errors.open_folder, path, err);
+        },
+    }
+}
+
+/// The folder `git clone` makes: the last part of the address, without
+/// its ".git".
+fn cloneFolder(url: []const u8) []const u8 {
+    var name = std.mem.trimEnd(u8, url, "/");
+    if (std.mem.lastIndexOfAny(u8, name, "/:")) |at| name = name[at + 1 ..];
+    return if (std.mem.endsWith(u8, name, ".git")) name[0 .. name.len - 4] else name;
 }
 
 /// One row's changes go back to git's copy; a file git doesn't know yet

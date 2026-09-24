@@ -1,6 +1,12 @@
 //! Git for the sidebar's Git view: the working tree's status (via
-//! `git status --porcelain`), staging, unstaging, throwing changes away
-//! and committing. Runs the `git` command-line tool in the project folder.
+//! `git status --porcelain`), staging, unstaging, throwing changes away,
+//! committing, and the commands the view's list offers (push, pull,
+//! branches, stashing). Runs the `git` command-line tool in the project
+//! folder.
+//!
+//! Everything here blocks until git is done. The ones that reach the
+//! network can take a while, and they can't answer a password prompt:
+//! git has to get its credentials from a helper or an SSH agent.
 const std = @import("std");
 const Io = std.Io;
 const Allocator = std.mem.Allocator;
@@ -22,6 +28,13 @@ pub const Entry = struct {
     pub fn isUnstaged(e: Entry) bool {
         return e.unstaged != ' ';
     }
+
+    /// A merge left both sides in the file: it is neither staged nor
+    /// simply changed until someone sorts it out.
+    pub fn isConflict(e: Entry) bool {
+        if (e.staged == 'U' or e.unstaged == 'U') return true;
+        return (e.staged == 'A' and e.unstaged == 'A') or (e.staged == 'D' and e.unstaged == 'D');
+    }
 };
 
 pub const State = enum {
@@ -40,6 +53,10 @@ branch: []const u8 = "",
 /// The repository's top folder (paths in `entries` are relative to it; it
 /// can be above the project folder).
 toplevel: []const u8 = "",
+/// Commits this branch has that its upstream doesn't, and the other way
+/// round: what a push would send, and what a pull would bring.
+ahead: u32 = 0,
+behind: u32 = 0,
 entries: std.ArrayList(Entry) = .empty,
 /// Git's error output from the last failed command.
 last_error: std.ArrayList(u8) = .empty,
@@ -88,6 +105,8 @@ fn clear(self: *Git) void {
     _ = self.arena.reset(.retain_capacity);
     self.branch = "";
     self.toplevel = "";
+    self.ahead = 0;
+    self.behind = 0;
 }
 
 /// Parses `git status --porcelain=v1 --branch -z` output.
@@ -103,6 +122,9 @@ pub fn parse(self: *Git, out: []const u8) !void {
             if (std.mem.startsWith(u8, b, "No commits yet on ")) b = b["No commits yet on ".len..];
             const end = std.mem.indexOf(u8, b, "...") orelse std.mem.indexOfScalar(u8, b, ' ') orelse b.len;
             self.branch = try alloc.dupe(u8, b[0..end]);
+            // "[ahead 2, behind 1]" at the end of the line.
+            if (std.mem.indexOf(u8, b, "ahead ")) |at| self.ahead = count(b[at + "ahead ".len ..]);
+            if (std.mem.indexOf(u8, b, "behind ")) |at| self.behind = count(b[at + "behind ".len ..]);
             continue;
         }
         if (item.len < 4) continue;
@@ -119,6 +141,13 @@ pub fn parse(self: *Git, out: []const u8) !void {
             return std.mem.lessThan(u8, a.path, b.path);
         }
     }.lessThan);
+}
+
+/// The number a string starts with, 0 if it doesn't start with one.
+fn count(s: []const u8) u32 {
+    var end: usize = 0;
+    while (end < s.len and std.ascii.isDigit(s[end])) end += 1;
+    return std.fmt.parseInt(u32, s[0..end], 10) catch 0;
 }
 
 /// Stages an entry's path (relative to the repository's top folder).
@@ -241,6 +270,74 @@ fn gitDir(self: *Git, io: Io, root: []const u8) ![]u8 {
     defer r.deinit(self.gpa);
     if (!r.ok) return error.GitFailed;
     return self.gpa.dupe(u8, std.mem.trimEnd(u8, r.stdout, "\r\n"));
+}
+
+// -------------------------------------------------------- the commands
+
+/// Sends this branch's commits. A branch without an upstream gets one,
+/// which is what git itself suggests in that case.
+pub fn push(self: *Git, io: Io, root: []const u8) !void {
+    self.expectOk(io, root, &.{"push"}) catch |err| {
+        if (std.mem.indexOf(u8, self.last_error.items, "--set-upstream") == null) return err;
+        try self.expectOk(io, root, &.{ "push", "--set-upstream", "origin", "HEAD" });
+    };
+}
+
+pub fn pull(self: *Git, io: Io, root: []const u8) !void {
+    try self.expectOk(io, root, &.{"pull"});
+}
+
+/// What the remote has, without touching the work tree: it is what the
+/// "to pull" counter is worked out from.
+pub fn fetch(self: *Git, io: Io, root: []const u8) !void {
+    try self.expectOk(io, root, &.{ "fetch", "--prune" });
+}
+
+/// Both ways round: take what the remote has, then send what it doesn't.
+pub fn sync(self: *Git, io: Io, root: []const u8) !void {
+    try self.pull(io, root);
+    try self.push(io, root);
+}
+
+/// Copies a repository into `parent`, as a folder named after it.
+pub fn clone(self: *Git, io: Io, parent: []const u8, url: []const u8) !void {
+    try self.expectOk(io, parent, &.{ "clone", "--", url });
+}
+
+pub fn checkout(self: *Git, io: Io, root: []const u8, branch: []const u8) !void {
+    try self.expectOk(io, root, &.{ "checkout", branch });
+}
+
+/// Starts a branch and moves onto it, from `base` when there is one.
+pub fn createBranch(self: *Git, io: Io, root: []const u8, name: []const u8, base: ?[]const u8) !void {
+    if (base) |from| {
+        try self.expectOk(io, root, &.{ "checkout", "-b", name, from });
+    } else {
+        try self.expectOk(io, root, &.{ "checkout", "-b", name });
+    }
+}
+
+/// Puts the changes aside; `pop` brings the last lot back.
+pub fn stash(self: *Git, io: Io, root: []const u8) !void {
+    try self.expectOk(io, root, &.{ "stash", "push" });
+}
+
+pub fn stashPop(self: *Git, io: Io, root: []const u8) !void {
+    try self.expectOk(io, root, &.{ "stash", "pop" });
+}
+
+/// The branches, most recently worked on first, one per line. `remote`
+/// takes in the ones only the remote has (as "origin/name"), for picking
+/// what to start a branch from. Caller frees.
+pub fn branches(gpa: Allocator, io: Io, root: []const u8, remote: bool) !?[]u8 {
+    const args: []const []const u8 = if (remote)
+        &.{ "branch", "--all", "--format=%(refname:short)", "--sort=-committerdate" }
+    else
+        &.{ "branch", "--format=%(refname:short)", "--sort=-committerdate" };
+    const r = runGit(gpa, io, root, args) catch return null;
+    defer r.deinit(gpa);
+    if (!r.ok) return null;
+    return try gpa.dupe(u8, r.stdout);
 }
 
 /// Commits what's staged. On failure (e.g. a hook refused, or no name and

@@ -85,6 +85,10 @@ pub fn handleMouse(self: *App) !bool {
         if (h.close or middle) _ = try self.closeTab(h.index) else try self.activate(h.index);
     };
 
+    // The Git tab's tooltip floats over the sidebar: it takes the mouse
+    // before the rows under it do.
+    if (!self.menu.is_open and self.badgeTooltipClick(point, pressed)) return pressed;
+
     // The sidebar: the wheel scrolls it; clicks toggle folders, open files
     // or press the header buttons; right-click offers New File / Folder.
     // The sidebar's scrollbar comes before its rows.

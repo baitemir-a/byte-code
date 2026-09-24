@@ -51,6 +51,8 @@ pub const Palette = struct {
     git_added: rl.Color,
     git_deleted: rl.Color,
     git_renamed: rl.Color,
+    /// The counter for commits the remote has and this copy doesn't.
+    git_pull: rl.Color,
 
     /// A file's changes in the editor: the marks beside the line numbers,
     /// and (in the Git view) the bands behind the lines themselves.
@@ -118,6 +120,7 @@ pub const dark: Palette = .{
     .git_added = rgb(115, 201, 145),
     .git_deleted = rgb(229, 115, 115),
     .git_renamed = rgb(100, 170, 240),
+    .git_pull = rgb(178, 132, 255),
 
     .diff_added = rgb(78, 181, 116),
     .diff_modified = rgb(70, 145, 230),
@@ -201,6 +204,7 @@ pub const light: Palette = .{
     .git_added = rgb(56, 132, 60),
     .git_deleted = rgb(173, 11, 11),
     .git_renamed = rgb(0, 100, 190),
+    .git_pull = rgb(124, 58, 212),
 
     .diff_added = rgb(56, 142, 60),
     .diff_modified = rgb(0, 110, 200),

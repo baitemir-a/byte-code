@@ -58,6 +58,15 @@ pub fn runMenuAction(self: *App, action: App.MenuAction) !void {
             self.find.focus = .editor;
         },
         .delete => if (self.menu_node) |n| try self.deleteEntry(n),
+        // A branch picked in the Git view's menu.
+        .git_checkout => |i| if (self.project) |*p| if (self.branchName(i)) |name| {
+            self.gitAction(self.git.checkout(self.io, p.root().path, name));
+            try self.refreshProject();
+        },
+        .git_branch_from => |i| if (self.branchName(i)) |name| {
+            try self.git_panel.ask(.create_branch_from, name);
+            self.side_focus = .git_prompt;
+        },
         // Ctrl+click's list of where a name is used.
         .go_to_ref => |i| if (i < self.refs.items.len) try self.openRef(self.refs.items[i]),
         .all_refs => self.showRefsInSearch(),

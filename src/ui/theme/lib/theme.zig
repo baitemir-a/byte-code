@@ -94,6 +94,7 @@ pub var git_modified: rl.Color = dark.git_modified;
 pub var git_added: rl.Color = dark.git_added;
 pub var git_deleted: rl.Color = dark.git_deleted;
 pub var git_renamed: rl.Color = dark.git_renamed;
+pub var git_pull: rl.Color = dark.git_pull;
 pub var diff_added: rl.Color = dark.diff_added;
 pub var diff_modified: rl.Color = dark.diff_modified;
 pub var diff_deleted: rl.Color = dark.diff_deleted;

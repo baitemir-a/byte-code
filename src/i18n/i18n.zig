@@ -122,6 +122,36 @@ pub const Strings = struct {
         no_changes: []const u8,
         staged_changes: []const u8,
         changes: []const u8,
+        /// The list of files a half-done merge left behind.
+        conflicts_section: []const u8,
+        /// The list of git commands, and what each of them does.
+        commands: []const u8,
+        push: []const u8,
+        pull: []const u8,
+        commit_push: []const u8,
+        commit_sync: []const u8,
+        fetch: []const u8,
+        clone: []const u8,
+        checkout: []const u8,
+        create_branch: []const u8,
+        create_branch_from: []const u8,
+        stash: []const u8,
+        stash_pop: []const u8,
+        /// The commit button when there is nothing to commit but the
+        /// branch and its remote have drifted apart. {1}: to pull,
+        /// {2}: to push.
+        sync_count: []const u8,
+        /// What the box asks for, for the commands that need it.
+        clone_url: []const u8,
+        branch_name: []const u8,
+        /// {1}: what the new branch starts from.
+        branch_from_name: []const u8,
+        /// What the counters beside the branch stand for.
+        badge_unstaged: []const u8,
+        badge_staged: []const u8,
+        badge_to_push: []const u8,
+        badge_to_pull: []const u8,
+        badge_conflicts: []const u8,
         /// What the tab showing a file's changes is called, after the file
         /// name: "App.zig (changes)" and "App.zig (staged)".
         changes_tab: []const u8,

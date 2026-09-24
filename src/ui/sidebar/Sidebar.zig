@@ -85,6 +85,8 @@ drag_label: ?[]const u8 = null,
 // Drawing, in Sidebar_draw.zig.
 pub const draw = Sidebar_draw.draw;
 pub const drawDragLabel = Sidebar_draw.drawDragLabel;
+pub const drawGitBadgeTooltip = Sidebar_draw.drawGitBadgeTooltip;
+pub const gitBadgeTooltip = Sidebar_draw.gitBadgeTooltip;
 
 pub fn init(gpa: std.mem.Allocator) Sidebar {
     return .{ .name = .init(gpa) };

@@ -74,6 +74,10 @@ pub const MenuAction = union(enum) {
     all_refs,
     /// The language menu in Settings.
     set_language: core.Settings.Language,
+    /// A branch from the Git view's menu: move onto it, or start a
+    /// branch from it.
+    git_checkout: u32,
+    git_branch_from: u32,
 
     /// The menu row for the actions whose wording never changes; the
     /// ctrl+click ones are labelled with the place they lead to.
@@ -84,7 +88,7 @@ pub const MenuAction = union(enum) {
             .new_folder => t.new_folder,
             .rename => t.rename,
             .delete => t.delete,
-            .go_to_ref, .all_refs => "",
+            .go_to_ref, .all_refs, .git_checkout, .git_branch_from => "",
             .set_language => |l| l.nativeName(),
         };
     }
@@ -177,7 +181,9 @@ blame_dirty: bool = true,
 /// The bar along the bottom of the window.
 status: StatusBar = .{},
 /// Which sidebar text box has the keyboard, if any.
-side_focus: enum { none, search, search_replace, git_message } = .none,
+side_focus: enum { none, search, search_replace, git_message, git_prompt } = .none,
+/// The branches a menu is offering, one per line.
+branch_list: std.ArrayList(u8) = .empty,
 /// Scroll the editor to its cursor on the next frame (e.g. after opening
 /// a search result).
 reveal_cursor: bool = false,
@@ -236,8 +242,11 @@ pub const showView = panels.showView;
 pub const updateSidebarViews = panels.updateSidebarViews;
 pub const sideFieldKey = panels.sideFieldKey;
 pub const panelClick = panels.panelClick;
+pub const badgeTooltipClick = panels.badgeTooltipClick;
 pub const gitAction = panels.gitAction;
 pub const gitCommit = panels.gitCommit;
+pub const branchName = panels.branchName;
+pub const finishGitPrompt = panels.finishGitPrompt;
 
 // project_search.zig
 pub const runSearch = project_search.runSearch;
@@ -356,6 +365,7 @@ pub fn deinit(self: *App) void {
     self.gpa.free(self.projects_path);
     self.projects.deinit();
     self.scope_steps.deinit(self.gpa);
+    self.branch_list.deinit(self.gpa);
     self.refs.deinit(self.gpa);
     self.ref_name.deinit(self.gpa);
     self.view.deinit();
