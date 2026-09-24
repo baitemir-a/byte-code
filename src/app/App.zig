@@ -179,6 +179,9 @@ git_dirty: bool = true,
 git_read_at: f64 = 0,
 /// A push, pull or fetch running in the background, if any.
 git_job: ?*git_jobs.Job = null,
+/// The editor's environment, which git commands that may ask for a
+/// password are run with (plus what sends the question here).
+environ: ?*const std.process.Environ.Map = null,
 /// The same for git's copy of the file being edited, which the change
 /// marks in the gutter are compared with, and for who last touched each
 /// of its lines (the bar at the bottom).
@@ -223,6 +226,7 @@ pub const confirm = modals.confirm;
 pub const confirmRemember = modals.confirmRemember;
 pub const askSaveChanges = modals.askSaveChanges;
 pub const showError = modals.showError;
+pub const askText = modals.askText;
 
 // shortcuts.zig
 pub const openHelp = shortcuts.openHelp;
@@ -261,6 +265,7 @@ pub const conflictMouse = git_conflicts.conflictMouse;
 
 // git_job.zig
 pub const startGitJob = git_jobs.startGitJob;
+pub const startClone = git_jobs.startClone;
 pub const pollGitJob = git_jobs.pollGitJob;
 pub const gitBusy = git_jobs.gitBusy;
 
@@ -274,6 +279,7 @@ pub const gitAction = panels.gitAction;
 pub const gitCommit = panels.gitCommit;
 pub const branchName = panels.branchName;
 pub const finishGitPrompt = panels.finishGitPrompt;
+pub const openClone = panels.openClone;
 pub const reloadUnchangedTabs = panels.reloadUnchangedTabs;
 
 // project_search.zig

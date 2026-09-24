@@ -225,6 +225,7 @@ pub const strings: Strings = .{
         .accept_current = "現在の変更を採用",
         .accept_incoming = "受信した変更を採用",
         .accept_both = "両方を採用",
+        .credentials_title = "Git が認証情報を求めています",
     },
     .status = .{
         .just_now = "たった今",

@@ -1,5 +1,6 @@
 //! A dialog of the editor's own, drawn over the window: a question or a
-//! message, a row of buttons, and sometimes a "don't ask again" box.
+//! message, a row of buttons, and sometimes a "don't ask again" box or a
+//! line to type an answer in (hidden, for a password).
 //! Enter picks the default button, Esc the cancel one; Tab and the arrow
 //! keys move between them.
 const std = @import("std");
@@ -10,7 +11,7 @@ const Icons = @import("Icons.zig");
 
 const Modal = @This();
 
-pub const Kind = enum { warning, failure };
+pub const Kind = enum { warning, failure, question };
 
 pub const Button = struct {
     label: []const u8,
@@ -31,6 +32,8 @@ const pad: f32 = 20;
 const button_height: f32 = theme.line_height + 6;
 const button_gap: f32 = 8;
 const box_size: f32 = 16;
+const field_height: f32 = theme.line_height + 8;
+const max_input = 1024;
 
 kind: Kind,
 title: []const u8,
@@ -43,6 +46,11 @@ cancel: usize,
 /// A box under the message, e.g. "Don't ask again".
 checkbox: ?[]const u8 = null,
 checked: bool = false,
+/// A line to type in, and whether what is typed is shown as dots.
+input: bool = false,
+secret: bool = false,
+typed: [max_input]u8 = undefined,
+typed_len: usize = 0,
 
 /// The button the keyboard is on, and whether the keyboard has been used
 /// (only then is it outlined).
@@ -56,6 +64,7 @@ window: rl.Vector2 = .{ .x = 0, .y = 0 },
 rect: rl.Rectangle = std.mem.zeroes(rl.Rectangle),
 button_rects: [max_buttons]rl.Rectangle = undefined,
 checkbox_rect: rl.Rectangle = std.mem.zeroes(rl.Rectangle),
+field_rect: rl.Rectangle = std.mem.zeroes(rl.Rectangle),
 title_lines: [max_lines][]const u8 = undefined,
 title_count: usize = 0,
 message_lines: [max_lines][]const u8 = undefined,
@@ -72,6 +81,7 @@ pub fn layout(self: *Modal, font: Font, window: rl.Vector2) void {
     var h = pad + lineCount(self.title_count) * theme.line_height;
     if (self.message_count > 0) h += 6 + lineCount(self.message_count) * theme.line_height;
     if (self.checkbox != null) h += 14 + theme.line_height;
+    if (self.input) h += 14 + field_height;
     h += 20 + button_height + pad;
     // A message too long for the window is cut off at its bottom.
     h = @min(h, window.y - 32);
@@ -87,10 +97,39 @@ pub fn layout(self: *Modal, font: Font, window: rl.Vector2) void {
         self.button_rects[i] = .{ .x = right, .y = bottom - button_height, .width = w, .height = button_height };
         right -= button_gap;
     }
+    var above = bottom - button_height;
     if (self.checkbox) |label| {
-        const y = bottom - button_height - 14 - theme.line_height;
-        self.checkbox_rect = .{ .x = self.rect.x + pad + icon_space, .y = y, .width = box_size + 8 + font.textWidth(label), .height = theme.line_height };
+        above -= 14 + theme.line_height;
+        self.checkbox_rect = .{ .x = self.rect.x + pad + icon_space, .y = above, .width = box_size + 8 + font.textWidth(label), .height = theme.line_height };
     }
+    if (self.input) {
+        above -= 14 + field_height;
+        const x = self.rect.x + pad + icon_space;
+        self.field_rect = .{ .x = x, .y = above, .width = self.rect.x + self.rect.width - pad - x, .height = field_height };
+    }
+}
+
+/// What was typed in the line.
+pub fn typedText(self: *const Modal) []const u8 {
+    return self.typed[0..self.typed_len];
+}
+
+/// Adds typed (or pasted) text to the line; the part that doesn't fit is
+/// dropped, and so are line breaks.
+pub fn typeText(self: *Modal, s: []const u8) void {
+    if (!self.input) return;
+    for (s) |c| {
+        if (c == '\n' or c == '\r') continue;
+        if (self.typed_len == self.typed.len) return;
+        self.typed[self.typed_len] = c;
+        self.typed_len += 1;
+    }
+}
+
+/// Forgets what was typed, so a password doesn't linger in memory.
+pub fn wipe(self: *Modal) void {
+    std.crypto.secureZero(u8, &self.typed);
+    self.typed_len = 0;
 }
 
 const icon_space: f32 = 30;
@@ -112,9 +151,17 @@ pub fn key(self: *Modal, k: rl.KeyboardKey, shift: bool) ?Answer {
     const n = self.buttons.len;
     switch (k) {
         .escape => return self.answer(self.cancel),
-        .enter, .kp_enter => return self.answer(if (self.keyboard) self.focus else self.default),
-        .space => if (self.keyboard) return self.answer(self.focus),
-        .tab, .left, .right => {
+        .enter, .kp_enter => return self.answer(if (self.keyboard and !self.input) self.focus else self.default),
+        .space => if (self.keyboard and !self.input) return self.answer(self.focus),
+        // The line has the keyboard: the last character goes.
+        .backspace => if (self.input and self.typed_len > 0) {
+            var end = self.typed_len - 1;
+            while (end > 0 and self.typed[end] & 0xC0 == 0x80) end -= 1;
+            self.typed_len = end;
+        },
+        // Between the buttons, unless the line has the keyboard (then
+        // Enter answers).
+        .left, .right, .tab => if (!self.input) {
             const back = k == .left or (k == .tab and shift);
             if (self.keyboard) self.focus = if (back) (self.focus + n - 1) % n else (self.focus + 1) % n;
             self.keyboard = true;
@@ -143,6 +190,7 @@ pub fn draw(self: *const Modal, font: Font) void {
     const icon: Icons.Icon, const icon_color = switch (self.kind) {
         .warning => .{ .triangle_alert, theme.diff_modified },
         .failure => .{ .circle_x, theme.diff_deleted },
+        .question => .{ .key_round, theme.accent },
     };
     font.drawIcon(icon, .{ .x = r.x + pad + 9, .y = y + theme.line_height / 2 }, .large, theme.copy(icon_color));
     for (self.title_lines[0..self.title_count]) |line| {
@@ -150,13 +198,14 @@ pub fn draw(self: *const Modal, font: Font) void {
         y += theme.line_height;
     }
     if (self.message_count > 0) y += 6;
-    const text_bottom = if (self.checkbox != null) self.checkbox_rect.y - 8 else self.button_rects[0].y - 12;
+    const text_bottom = if (self.input) self.field_rect.y - 8 else if (self.checkbox != null) self.checkbox_rect.y - 8 else self.button_rects[0].y - 12;
     for (self.message_lines[0..self.message_count]) |line| {
         if (y + theme.line_height > text_bottom) break;
         _ = font.drawText(line, x, y + (theme.line_height - theme.font_size) / 2, theme.font_size, theme.popup_detail);
         y += theme.line_height;
     }
 
+    if (self.input) drawField(self, font);
     const mouse = rl.getMousePosition();
     const hovered = self.hitTest(mouse);
     if (self.checkbox) |label| {
@@ -188,6 +237,36 @@ pub fn draw(self: *const Modal, font: Font) void {
         const tx = br.x + (br.width - font.textWidth(b.label)) / 2;
         _ = font.drawText(b.label, tx, br.y + (br.height - theme.font_size) / 2, theme.font_size, theme.copy(text_color));
     }
+}
+
+/// The line being typed in, with the caret at its end; a secret shows a
+/// dot for each character.
+fn drawField(self: *const Modal, font: Font) void {
+    const f = self.field_rect;
+    rl.drawRectangleRec(f, theme.background);
+    rl.drawRectangleLinesEx(f, 1, theme.accent);
+    const y = f.y + (f.height - theme.font_size) / 2;
+    const left = f.x + 8;
+    const right = f.x + f.width - 8;
+    var x = left;
+    if (self.secret) {
+        const dots = std.unicode.utf8CountCodepoints(self.typedText()) catch self.typed_len;
+        const step = font.cell_width;
+        const shown = @min(dots, @as(usize, @intFromFloat(@max(1, (right - left) / step))));
+        for (0..shown) |_| {
+            rl.drawCircleV(.{ .x = x + step / 2, .y = f.y + f.height / 2 }, 3, theme.foreground);
+            x += step;
+        }
+    } else {
+        // Long text: its end, where the caret is, stays in view.
+        var text = self.typedText();
+        while (text.len > 0 and font.textWidth(text) > right - left) {
+            text = text[std.unicode.utf8ByteSequenceLength(text[0]) catch 1 ..];
+        }
+        x = font.drawFit(text, left, y, right, theme.foreground);
+    }
+    // The caret blinks like the editor's.
+    if (@mod(rl.getTime(), 1.0) < 0.5) rl.drawRectangleRec(.{ .x = x, .y = f.y + 4, .width = theme.caret_width, .height = f.height - 8 }, theme.caret);
 }
 
 /// A color a little darker, for a button under the pointer.

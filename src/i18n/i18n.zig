@@ -194,6 +194,8 @@ pub const Strings = struct {
         accept_current: []const u8,
         accept_incoming: []const u8,
         accept_both: []const u8,
+        /// Above git's own question ("Password for ...").
+        credentials_title: []const u8,
     },
     /// The bar along the bottom: what git says about the line the cursor
     /// is on, and where the cursor is.

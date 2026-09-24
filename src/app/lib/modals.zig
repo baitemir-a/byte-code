@@ -17,10 +17,9 @@ pub const Confirmation = enum { cancel, ok, ok_always };
 
 /// Shows `modal` until a button is picked. Closing the window meanwhile
 /// counts as its cancel button.
-pub fn runModal(self: *App, modal: Modal) Modal.Answer {
-    var m = modal;
+pub fn runModal(self: *App, m: *Modal) Modal.Answer {
     m.focus = m.default;
-    self.modal = &m;
+    self.modal = m;
     defer self.modal = null;
     defer rl.setMouseCursor(self.cursor_shape);
     // What was typed before it opened isn't meant for it.
@@ -36,12 +35,28 @@ pub fn runModal(self: *App, modal: Modal) Modal.Answer {
         m.layout(self.view.font, App.windowSize());
 
         const shift = rl.isKeyDown(.left_shift) or rl.isKeyDown(.right_shift);
+        const primary = if (@import("builtin").os.tag == .macos)
+            rl.isKeyDown(.left_super) or rl.isKeyDown(.right_super)
+        else
+            rl.isKeyDown(.left_control) or rl.isKeyDown(.right_control);
         while (true) {
             const k = rl.getKeyPressed();
             if (k == .null) break;
+            if (primary and k == .v) {
+                m.typeText(rl.getClipboardText());
+                continue;
+            }
             if (m.key(k, shift)) |a| return a;
         }
-        while (rl.getCharPressed() != 0) {}
+        // Held down, Backspace keeps going.
+        if (rl.isKeyPressedRepeat(.backspace)) _ = m.key(.backspace, false);
+        while (true) {
+            const cp = rl.getCharPressed();
+            if (cp <= 0) break;
+            var enc: [4]u8 = undefined;
+            const n = std.unicode.utf8Encode(@intCast(cp), &enc) catch continue;
+            m.typeText(enc[0..n]);
+        }
 
         const p = rl.getMousePosition();
         const hit = m.hitTest(p);
@@ -74,20 +89,20 @@ pub fn drawModal(self: *const App) void {
 /// A warning with Cancel and an `ok_label` button. Returns true if the
 /// user chose `ok_label`.
 pub fn confirm(self: *App, message: []const u8, detail: []const u8, ok_label: []const u8) bool {
-    const a = runModal(self, .{
+    var m: Modal = .{
         .kind = .warning,
         .title = message,
         .message = detail,
         .buttons = &.{ .{ .label = i18n.tr().common.cancel }, .{ .label = ok_label, .style = .danger } },
         .default = 1,
         .cancel = 0,
-    });
-    return a.button == 1;
+    };
+    return runModal(self, &m).button == 1;
 }
 
 /// The same as `confirm`, with a "don't ask again" box.
 pub fn confirmRemember(self: *App, message: []const u8, detail: []const u8, ok_label: []const u8, always_label: []const u8) Confirmation {
-    const a = runModal(self, .{
+    var m: Modal = .{
         .kind = .warning,
         .title = message,
         .message = detail,
@@ -95,7 +110,8 @@ pub fn confirmRemember(self: *App, message: []const u8, detail: []const u8, ok_l
         .default = 1,
         .cancel = 0,
         .checkbox = always_label,
-    });
+    };
+    const a = runModal(self, &m);
     if (a.button != 1) return .cancel;
     return if (a.checked) .ok_always else .ok;
 }
@@ -105,7 +121,7 @@ pub fn askSaveChanges(self: *App, name: []const u8) !Choice {
     const t = i18n.tr();
     const question = try i18n.fillAlloc(self.gpa, t.dialogs.save_changes, .{name});
     defer self.gpa.free(question);
-    const a = runModal(self, .{
+    var m: Modal = .{
         .kind = .warning,
         .title = question,
         .buttons = &.{
@@ -115,8 +131,8 @@ pub fn askSaveChanges(self: *App, name: []const u8) !Choice {
         },
         .default = 2,
         .cancel = 1,
-    });
-    return switch (a.button) {
+    };
+    return switch (runModal(self, &m).button) {
         0 => .discard,
         2 => .save,
         else => .cancel,
@@ -125,12 +141,35 @@ pub fn askSaveChanges(self: *App, name: []const u8) !Choice {
 
 /// An error, with an OK button.
 pub fn showError(self: *App, title: []const u8, message: []const u8) void {
-    _ = runModal(self, .{
+    var m: Modal = .{
         .kind = .failure,
         .title = title,
         .message = message,
         .buttons = &.{.{ .label = i18n.tr().common.ok, .style = .primary }},
         .default = 0,
         .cancel = 0,
-    });
+    };
+    _ = runModal(self, &m);
+}
+
+/// Asks for a line of text, e.g. a password (`secret` hides it). Null
+/// when cancelled. Caller frees, zeroing it first when it is a secret.
+pub fn askText(self: *App, title: []const u8, message: []const u8, secret: bool) !?[]u8 {
+    const t = i18n.tr().common;
+    // The dialog is big (it holds what is typed): not on the stack twice.
+    const m = try self.gpa.create(Modal);
+    defer self.gpa.destroy(m);
+    m.* = .{
+        .kind = .question,
+        .title = title,
+        .message = message,
+        .buttons = &.{ .{ .label = t.cancel }, .{ .label = t.ok, .style = .primary } },
+        .default = 1,
+        .cancel = 0,
+        .input = true,
+        .secret = secret,
+    };
+    defer m.wipe();
+    if (runModal(self, m).button != 1) return null;
+    return try self.gpa.dupe(u8, m.typedText());
 }

@@ -225,6 +225,7 @@ pub const strings: Strings = .{
         .accept_current = "Aceptar actual",
         .accept_incoming = "Aceptar entrante",
         .accept_both = "Aceptar ambos",
+        .credentials_title = "Git pide credenciales",
     },
     .status = .{
         .just_now = "ahora mismo",

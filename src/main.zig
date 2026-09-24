@@ -4,9 +4,14 @@ const builtin = @import("builtin");
 const rl = @import("raylib");
 const App = @import("app/App.zig");
 const theme = @import("ui/theme/lib/theme.zig");
+const AskPass = @import("platform/AskPass.zig");
 
 pub fn main(init: std.process.Init) !void {
     const args = try init.minimal.args.toSlice(init.arena.allocator());
+    // Started by git to ask for a password: the editor that ran git asks.
+    if (init.environ_map.get(AskPass.env_var)) |dir| {
+        std.process.exit(AskPass.helper(init.gpa, init.io, dir, if (args.len > 1) args[1] else ""));
+    }
 
     // raylib logs every step of starting up; only show problems in releases.
     if (builtin.mode != .Debug) rl.setTraceLogLevel(.err);
@@ -30,6 +35,7 @@ pub fn main(init: std.process.Init) !void {
 
     var app = try App.init(init.gpa, init.io);
     defer app.deinit();
+    app.environ = init.environ_map;
     try app.start(if (args.len > 1) args[1] else null);
 
     // While the window is being resized, macOS and Windows keep the thread
@@ -83,6 +89,7 @@ extern "c" fn glfwSwapBuffers(window: *anyopaque) void;
 
 test {
     _ = @import("platform/Pty.zig");
+    _ = @import("platform/AskPass.zig");
     _ = @import("app/Terminal.zig");
     _ = @import("input/Keymap.zig");
     _ = @import("i18n/i18n.zig");

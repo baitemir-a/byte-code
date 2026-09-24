@@ -225,6 +225,7 @@ pub const strings: Strings = .{
         .accept_current = "Mevcut olanı kabul et",
         .accept_incoming = "Geleni kabul et",
         .accept_both = "İkisini de kabul et",
+        .credentials_title = "Git kimlik bilgisi istiyor",
     },
     .status = .{
         .just_now = "az önce",

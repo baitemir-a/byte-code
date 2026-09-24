@@ -225,6 +225,7 @@ pub const strings: Strings = .{
         .accept_current = "현재 변경 사항 수락",
         .accept_incoming = "수신 변경 사항 수락",
         .accept_both = "둘 다 수락",
+        .credentials_title = "Git이 자격 증명을 요청합니다",
     },
     .status = .{
         .just_now = "방금",

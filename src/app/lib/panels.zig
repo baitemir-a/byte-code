@@ -292,17 +292,17 @@ pub fn finishGitPrompt(self: *App) !void {
     switch (prompt) {
         .create_branch => self.gitAction(self.git.createBranch(self.io, root, text, null)),
         .create_branch_from => self.gitAction(self.git.createBranch(self.io, root, text, base)),
-        // The copy lands beside the project, and opens as the new one.
-        .clone => {
-            const parent = std.fs.path.dirname(root) orelse root;
-            self.gitAction(self.git.clone(self.io, parent, text));
-            if (self.git.last_error.items.len > 0) return;
-            const name = cloneFolder(text);
-            const path = try std.fs.path.join(self.gpa, &.{ parent, name });
-            defer self.gpa.free(path);
-            self.openFolder(path) catch |err| self.reportError(i18n.tr().errors.open_folder, path, err);
-        },
+        // The copy lands beside the project, and opens as the new one
+        // once it is there (see `openClone`).
+        .clone => self.startClone(std.fs.path.dirname(root) orelse root, text),
     }
+}
+
+/// A clone is done: the copy opens as the project.
+pub fn openClone(self: *App, parent: []const u8, url: []const u8) void {
+    const path = std.fs.path.join(self.gpa, &.{ parent, cloneFolder(url) }) catch return;
+    defer self.gpa.free(path);
+    self.openFolder(path) catch |err| self.reportError(i18n.tr().errors.open_folder, path, err);
 }
 
 /// The folder `git clone` makes: the last part of the address, without

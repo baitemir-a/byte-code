@@ -225,6 +225,7 @@ pub const strings: Strings = .{
         .accept_current = "采用当前更改",
         .accept_incoming = "采用传入更改",
         .accept_both = "保留两者",
+        .credentials_title = "Git 需要凭据",
     },
     .status = .{
         .just_now = "刚刚",
