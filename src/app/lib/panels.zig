@@ -366,7 +366,7 @@ fn deleteUntracked(self: *App, path: []const u8) void {
 /// third button goes ahead and turns the question off in Settings.
 fn askDiscard(self: *App, question: []const u8, detail: []const u8, ok_label: []const u8) !bool {
     if (!self.settings.confirm_discard) return true;
-    const answer = dialogs.confirmRemember(self.gpa, self.io, question, detail, ok_label, i18n.tr().git.discard_always) catch return false;
+    const answer = self.confirmRemember(question, detail, ok_label, i18n.tr().git.discard_always);
     if (answer == .ok_always) {
         const old = self.settings;
         self.settings.confirm_discard = false;
@@ -396,7 +396,7 @@ fn reloadDiscarded(self: *App) !void {
 /// After a git command: report git's own message if it failed, and
 /// re-read the status either way.
 pub fn gitAction(self: *App, result: anyerror!void) void {
-    result catch dialogs.showError(self.gpa, self.io, "Git", if (self.git.last_error.items.len > 0) self.git.last_error.items else i18n.tr().errors.git_failed);
+    result catch self.showError("Git", if (self.git.last_error.items.len > 0) self.git.last_error.items else i18n.tr().errors.git_failed);
     self.gitChanged();
 }
 
@@ -406,8 +406,8 @@ pub fn gitCommit(self: *App) !void {
     var staged = false;
     for (self.git.entries.items) |e| staged = staged or e.isStaged();
     const t = i18n.tr().errors;
-    if (!staged) return dialogs.showError(self.gpa, self.io, t.nothing_to_commit, t.nothing_to_commit_detail);
-    if (message.len == 0) return dialogs.showError(self.gpa, self.io, t.message_needed, t.message_needed_detail);
+    if (!staged) return self.showError(t.nothing_to_commit, t.nothing_to_commit_detail);
+    if (message.len == 0) return self.showError(t.message_needed, t.message_needed_detail);
     self.git.commit(self.io, project.root().path, message) catch {
         return self.gitAction(error.GitFailed);
     };

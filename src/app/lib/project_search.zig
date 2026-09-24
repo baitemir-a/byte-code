@@ -1,7 +1,6 @@
 //! Searching and replacing across the project (the Search view).
 const std = @import("std");
 const core = @import("core");
-const dialogs = @import("../../platform/lib/dialogs.zig");
 const Tab = @import("../Tab.zig");
 const App = @import("../App.zig");
 const i18n = @import("../../i18n/i18n.zig");
@@ -77,8 +76,7 @@ pub fn replaceInProject(self: *App) !void {
     const count = std.fmt.bufPrint(&count_buf, "{d}{s}", .{ results.matches.items.len, if (results.truncated) "+" else "" }) catch "";
     var question_buf: [256]u8 = undefined;
     const question = i18n.fill(&question_buf, t.replace_question, .{ count, results.files.items.len });
-    // Without a way to ask (no dialogs on this system), the click decides.
-    if (!(dialogs.confirm(self.gpa, self.io, question, t.replace_detail, i18n.tr().common.replace_all) catch true)) return;
+    if (!self.confirm(question, t.replace_detail, i18n.tr().common.replace_all)) return;
 
     var failed: ?struct { path: []u8, err: anyerror } = null;
     defer if (failed) |f| self.gpa.free(f.path);

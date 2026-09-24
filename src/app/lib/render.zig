@@ -7,6 +7,14 @@ const App = @import("../App.zig");
 const Sidebar = @import("../../ui/sidebar/Sidebar.zig");
 
 pub fn draw(self: *const App) void {
+    // Under a dialog, nothing lights up where the pointer is.
+    if (self.modal != null) rl.setMouseOffset(-1_000_000, -1_000_000);
+    drawFrame(self);
+    rl.setMouseOffset(0, 0);
+    self.drawModal();
+}
+
+fn drawFrame(self: *const App) void {
     rl.clearBackground(theme.background);
     const t = self.activeTab();
     const caret = self.caretVisible();

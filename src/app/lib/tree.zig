@@ -188,11 +188,11 @@ pub fn deleteEntry(self: *App, node: u32) !void {
     defer self.gpa.free(question);
     const detail = if (n.is_dir) text.delete_folder_detail else text.delete_file_detail;
 
-    if (!(dialogs.confirm(self.gpa, self.io, question, detail, text.move_to_trash) catch false)) return;
+    if (!self.confirm(question, detail, text.move_to_trash)) return;
     if (dialogs.moveToTrash(self.gpa, self.io, path)) {
         try self.refreshProject();
     } else |_| {
-        const permanent = dialogs.confirm(self.gpa, self.io, question, text.cant_trash_detail, text.delete_permanently) catch false;
+        const permanent = self.confirm(question, text.cant_trash_detail, text.delete_permanently);
         if (!permanent) return;
         project.deletePermanently(self.io, node) catch |err| return self.reportError(i18n.tr().errors.delete, path, err);
     }

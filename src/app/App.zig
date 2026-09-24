@@ -29,6 +29,8 @@ const StatusBar = @import("../ui/StatusBar.zig");
 const WelcomePage = @import("../ui/pages/WelcomePage.zig");
 const HelpPage = @import("../ui/pages/HelpPage.zig");
 const render = @import("lib/render.zig");
+const modals = @import("lib/modals.zig");
+const Modal = @import("../ui/Modal.zig");
 const settings_actions = @import("lib/settings_actions.zig");
 const go_to_file = @import("lib/go_to_file.zig");
 const panels = @import("lib/panels.zig");
@@ -181,6 +183,8 @@ git_job: ?*git_jobs.Job = null,
 /// of its lines (the bar at the bottom).
 diff_dirty: bool = true,
 blame_dirty: bool = true,
+/// The dialog being shown, while `runModal` waits for its answer.
+modal: ?*const Modal = null,
 /// The bar along the bottom of the window.
 status: StatusBar = .{},
 /// Which sidebar text box has the keyboard, if any.
@@ -210,6 +214,14 @@ title_len: usize = 0,
 
 // render.zig
 pub const draw = render.draw;
+
+// modals.zig
+pub const runModal = modals.runModal;
+pub const drawModal = modals.drawModal;
+pub const confirm = modals.confirm;
+pub const confirmRemember = modals.confirmRemember;
+pub const askSaveChanges = modals.askSaveChanges;
+pub const showError = modals.showError;
 
 // shortcuts.zig
 pub const openHelp = shortcuts.openHelp;

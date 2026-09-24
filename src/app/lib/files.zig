@@ -261,11 +261,7 @@ pub fn save(self: *App, choose_path: bool) !bool {
 /// Returns true when it's fine to throw them away.
 pub fn resolveUnsavedChanges(self: *App) !bool {
     if (!self.tab().isDirty()) return true;
-    const choice = dialogs.askSaveChanges(self.gpa, self.io, self.tab().name()) catch |err| switch (err) {
-        // No way to ask: keep the work rather than lose it silently.
-        error.DialogUnavailable => return false,
-        else => |e| return e,
-    };
+    const choice = try self.askSaveChanges(self.tab().name());
     return switch (choice) {
         .save => try self.save(false),
         .discard => true,
@@ -288,5 +284,5 @@ pub fn reportError(self: *App, title: []const u8, path: []const u8, err: anyerro
     };
     const message = std.fmt.allocPrint(self.gpa, "{s}\n\n{s}", .{ path, reason }) catch return;
     defer self.gpa.free(message);
-    dialogs.showError(self.gpa, self.io, title, message);
+    self.showError(title, message);
 }
