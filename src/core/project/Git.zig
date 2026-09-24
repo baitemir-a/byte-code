@@ -10,6 +10,7 @@
 const std = @import("std");
 const Io = std.Io;
 const Allocator = std.mem.Allocator;
+const GitLog = @import("GitLog.zig");
 
 const Git = @This();
 
@@ -57,16 +58,26 @@ toplevel: []const u8 = "",
 /// round: what a push would send, and what a pull would bring.
 ahead: u32 = 0,
 behind: u32 = 0,
+/// Whether the branch has a remote one it pushes to and pulls from.
+has_upstream: bool = false,
+/// A merge is waiting to be committed (or called off).
+merging: bool = false,
 entries: std.ArrayList(Entry) = .empty,
+/// The branch's commits, read while the Git view shows them.
+history: GitLog,
 /// Git's error output from the last failed command.
 last_error: std.ArrayList(u8) = .empty,
+/// The environment the commands run with, when not the editor's own: the
+/// one that sends git's password questions to the editor (see AskPass).
+environ: ?*const std.process.Environ.Map = null,
 
 pub fn init(gpa: Allocator) Git {
-    return .{ .gpa = gpa, .arena = .init(gpa) };
+    return .{ .gpa = gpa, .arena = .init(gpa), .history = .init(gpa) };
 }
 
 pub fn deinit(self: *Git) void {
     self.last_error.deinit(self.gpa);
+    self.history.deinit();
     self.entries.deinit(self.gpa);
     self.arena.deinit();
 }
@@ -96,6 +107,9 @@ pub fn refresh(self: *Git, io: Io, root: []const u8) !void {
         return;
     }
     try self.parse(r.stdout);
+    const merge = try runGit(self.gpa, io, root, &.{ "rev-parse", "-q", "--verify", "MERGE_HEAD" });
+    defer merge.deinit(self.gpa);
+    self.merging = merge.ok;
     self.toplevel = try self.arena.allocator().dupe(u8, std.mem.trimEnd(u8, top.stdout, "\r\n"));
     self.state = .ok;
 }
@@ -107,6 +121,8 @@ fn clear(self: *Git) void {
     self.toplevel = "";
     self.ahead = 0;
     self.behind = 0;
+    self.has_upstream = false;
+    self.merging = false;
 }
 
 /// Parses `git status --porcelain=v1 --branch -z` output.
@@ -122,6 +138,7 @@ pub fn parse(self: *Git, out: []const u8) !void {
             if (std.mem.startsWith(u8, b, "No commits yet on ")) b = b["No commits yet on ".len..];
             const end = std.mem.indexOf(u8, b, "...") orelse std.mem.indexOfScalar(u8, b, ' ') orelse b.len;
             self.branch = try alloc.dupe(u8, b[0..end]);
+            self.has_upstream = std.mem.indexOf(u8, b, "...") != null;
             // "[ahead 2, behind 1]" at the end of the line.
             if (std.mem.indexOf(u8, b, "ahead ")) |at| self.ahead = count(b[at + "ahead ".len ..]);
             if (std.mem.indexOf(u8, b, "behind ")) |at| self.behind = count(b[at + "behind ".len ..]);
@@ -213,6 +230,12 @@ pub fn showIndex(gpa: Allocator, io: Io, root: []const u8, rel: []const u8) !?[]
 /// with. Caller frees.
 pub fn showHead(gpa: Allocator, io: Io, root: []const u8, rel: []const u8) !?[]u8 {
     return show(gpa, io, root, "HEAD", rel);
+}
+
+/// The file as commit `rev` has it (e.g. "abc123" or "abc123^"). Null
+/// when it isn't there: added by that commit, or deleted before it.
+pub fn showAt(gpa: Allocator, io: Io, root: []const u8, rev: []const u8, rel: []const u8) !?[]u8 {
+    return show(gpa, io, root, rev, rel);
 }
 
 fn show(gpa: Allocator, io: Io, root: []const u8, rev: []const u8, rel: []const u8) !?[]u8 {
@@ -340,6 +363,63 @@ pub fn branches(gpa: Allocator, io: Io, root: []const u8, remote: bool) !?[]u8 {
     return try gpa.dupe(u8, r.stdout);
 }
 
+/// The branch's latest commits, as `GitLog.parseLog` reads them. Null
+/// when there are none yet. Caller frees.
+pub fn readLog(gpa: Allocator, io: Io, root: []const u8) !?[]u8 {
+    const r = runGit(gpa, io, root, &GitLog.log_args) catch return null;
+    defer r.deinit(gpa);
+    if (!r.ok) return null;
+    return try gpa.dupe(u8, r.stdout);
+}
+
+/// The files a commit changed, as `GitLog.parseFiles` reads them.
+/// Caller frees.
+pub fn commitFiles(gpa: Allocator, io: Io, root: []const u8, hash: []const u8) !?[]u8 {
+    const r = runGit(gpa, io, root, &GitLog.filesArgs(hash)) catch return null;
+    defer r.deinit(gpa);
+    if (!r.ok) return null;
+    return try gpa.dupe(u8, r.stdout);
+}
+
+/// Folds what's staged into the last commit. With no message, the
+/// commit keeps the one it has.
+pub fn amend(self: *Git, io: Io, root: []const u8, message: []const u8) !void {
+    if (message.len == 0) return self.expectOk(io, root, &.{ "commit", "--quiet", "--amend", "--no-edit" });
+    try self.expectOk(io, root, &.{ "commit", "--quiet", "--amend", "-m", message });
+}
+
+/// Takes the last commit back: its changes stay, staged, and its message
+/// is returned (caller frees) so it can be used again.
+pub fn undoCommit(self: *Git, io: Io, root: []const u8) ![]u8 {
+    const msg = try runGit(self.gpa, io, root, &.{ "log", "-1", "--format=%B" });
+    defer msg.deinit(self.gpa);
+    if (!msg.ok) {
+        try self.setError(msg);
+        return error.GitFailed;
+    }
+    const parent = try runGit(self.gpa, io, root, &.{ "rev-parse", "-q", "--verify", "HEAD~1" });
+    defer parent.deinit(self.gpa);
+    // The first commit has nothing to go back to: the branch is emptied.
+    if (parent.ok) {
+        try self.expectOk(io, root, &.{ "reset", "--quiet", "--soft", "HEAD~1" });
+    } else {
+        try self.expectOk(io, root, &.{ "update-ref", "-d", "HEAD" });
+    }
+    return self.gpa.dupe(u8, std.mem.trim(u8, msg.stdout, " \r\n"));
+}
+
+/// Calls the merge off: everything goes back to how it was before it.
+pub fn abortMerge(self: *Git, io: Io, root: []const u8) !void {
+    try self.expectOk(io, root, &.{ "merge", "--abort" });
+}
+
+/// Finishes a merge whose conflicts are sorted out, with git's own
+/// message unless another is given.
+pub fn commitMerge(self: *Git, io: Io, root: []const u8, message: []const u8) !void {
+    if (message.len == 0) return self.expectOk(io, root, &.{ "commit", "--quiet", "--no-edit" });
+    try self.expectOk(io, root, &.{ "commit", "--quiet", "-m", message });
+}
+
 /// Commits what's staged. On failure (e.g. a hook refused, or no name and
 /// email configured) `last_error` holds git's message.
 pub fn commit(self: *Git, io: Io, root: []const u8, message: []const u8) !void {
@@ -347,12 +427,16 @@ pub fn commit(self: *Git, io: Io, root: []const u8, message: []const u8) !void {
 }
 
 pub fn expectOk(self: *Git, io: Io, root: []const u8, args: []const []const u8) !void {
-    const r = try runGit(self.gpa, io, root, args);
+    const r = try runGitIn(self.gpa, io, root, args, self.environ);
     defer r.deinit(self.gpa);
     if (r.ok) return;
+    try self.setError(r);
+    return error.GitFailed;
+}
+
+fn setError(self: *Git, r: Result) !void {
     self.last_error.clearRetainingCapacity();
     try self.last_error.appendSlice(self.gpa, std.mem.trim(u8, if (r.stderr.len > 0) r.stderr else r.stdout, " \n"));
-    return error.GitFailed;
 }
 
 const Result = struct {
@@ -367,11 +451,15 @@ const Result = struct {
 };
 
 fn runGit(gpa: Allocator, io: Io, root: []const u8, args: []const []const u8) !Result {
+    return runGitIn(gpa, io, root, args, null);
+}
+
+fn runGitIn(gpa: Allocator, io: Io, root: []const u8, args: []const []const u8, environ: ?*const std.process.Environ.Map) !Result {
     var argv: std.ArrayList([]const u8) = .empty;
     defer argv.deinit(gpa);
     try argv.appendSlice(gpa, &.{ "git", "-C", root });
     try argv.appendSlice(gpa, args);
-    const r = std.process.run(gpa, io, .{ .argv = argv.items }) catch |err| switch (err) {
+    const r = std.process.run(gpa, io, .{ .argv = argv.items, .environ_map = environ }) catch |err| switch (err) {
         error.FileNotFound => return error.GitNotFound,
         else => |e| return e,
     };

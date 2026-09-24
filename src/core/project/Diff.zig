@@ -21,6 +21,8 @@ pub const Against = enum {
     /// What's staged against the last commit: the changes a commit would
     /// carry.
     head,
+    /// A commit against its parent: what it changed (see `setCommit`).
+    commit,
 };
 
 /// A line of the combined text (see `buildCombined`).
@@ -67,6 +69,9 @@ repo: ?[]u8 = null,
 rel: ?[]u8 = null,
 /// Which copies `base` and `new` are.
 against: Against = .index,
+/// For `.commit`: which one.
+commit_hash: [64]u8 = undefined,
+commit_len: u8 = 0,
 /// The older copy (git's) and its lines. Empty for a file git doesn't
 /// know yet, whose every line is then an addition.
 base: std.ArrayList(u8) = .empty,
@@ -132,6 +137,17 @@ pub fn clear(self: *Diff) void {
     self.tracked = false;
     self.crlf = false;
     self.version = null;
+    self.commit_len = 0;
+}
+
+/// Names the commit a `.commit` diff shows (after `setFile`).
+pub fn setCommit(self: *Diff, hash: []const u8) void {
+    self.commit_len = @intCast(@min(hash.len, self.commit_hash.len));
+    @memcpy(self.commit_hash[0..self.commit_len], hash[0..self.commit_len]);
+}
+
+pub fn commit(self: *const Diff) []const u8 {
+    return self.commit_hash[0..self.commit_len];
 }
 
 /// Whether the diff is for `path` (so its base can be kept).

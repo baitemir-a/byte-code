@@ -1,6 +1,7 @@
 //! Tests for Git.zig.
 const std = @import("std");
 const Git = @import("../Git.zig");
+const GitLog = @import("../GitLog.zig");
 
 test "parses porcelain status" {
     var g = Git.init(std.testing.allocator);
@@ -189,4 +190,84 @@ test "real repository: branches, stashing, and a remote to push to" {
     try g.stashPop(io, work);
     try g.refresh(io, work);
     try std.testing.expectEqual(@as(usize, 1), g.entries.items.len);
+}
+
+test "real repository: history, amending, undoing, and a merge" {
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const root = try tmp.dir.realPathFileAlloc(io, ".", gpa);
+    defer gpa.free(root);
+
+    var g = Git.init(gpa);
+    defer g.deinit();
+    try g.refresh(io, root);
+    if (g.state == .no_git) return error.SkipZigTest;
+    for ([_][]const []const u8{
+        &.{"init"},
+        &.{ "config", "user.email", "test@example.com" },
+        &.{ "config", "user.name", "Test" },
+    }) |args| try g.expectOk(io, root, args);
+
+    // Undoing the very first commit empties the branch.
+    try tmp.dir.writeFile(io, .{ .sub_path = "a.txt", .data = "one\n" });
+    try g.stage(io, root, "a.txt");
+    try g.commit(io, root, "first");
+    const first_message = try g.undoCommit(io, root);
+    defer gpa.free(first_message);
+    try std.testing.expectEqualStrings("first", first_message);
+    try std.testing.expectEqual(@as(?[]u8, null), try Git.readLog(gpa, io, root));
+    try g.commit(io, root, "first");
+
+    // Amending: a new message, then more changes under the same one.
+    try g.amend(io, root, "the first");
+    try tmp.dir.writeFile(io, .{ .sub_path = "b.txt", .data = "two\n" });
+    try g.stage(io, root, "b.txt");
+    try g.amend(io, root, "");
+
+    var log = GitLog.init(gpa);
+    defer log.deinit();
+    const out = (try Git.readLog(gpa, io, root)).?;
+    defer gpa.free(out);
+    try log.parseLog(out);
+    try std.testing.expectEqual(@as(usize, 1), log.commits.items.len);
+    try std.testing.expectEqualStrings("the first", log.commits.items[0].subject);
+    const files = (try Git.commitFiles(gpa, io, root, log.commits.items[0].hash)).?;
+    defer gpa.free(files);
+    try log.parseFiles(0, files);
+    try std.testing.expectEqual(@as(usize, 2), log.files.items.len);
+    const old = (try Git.showAt(gpa, io, root, log.commits.items[0].hash, "b.txt")).?;
+    defer gpa.free(old);
+    try std.testing.expectEqualStrings("two\n", old);
+
+    // Undoing a later commit keeps its changes, staged.
+    try tmp.dir.writeFile(io, .{ .sub_path = "a.txt", .data = "one more\n" });
+    try g.stage(io, root, "a.txt");
+    try g.commit(io, root, "second");
+    const message = try g.undoCommit(io, root);
+    defer gpa.free(message);
+    try std.testing.expectEqualStrings("second", message);
+    try g.refresh(io, root);
+    try std.testing.expectEqual(@as(usize, 1), g.entries.items.len);
+    try std.testing.expect(g.entries.items[0].isStaged());
+    try g.commit(io, root, "second");
+
+    // Both branches change the same line: the merge stops half-done, and
+    // can be called off.
+    const main = try gpa.dupe(u8, g.branch);
+    defer gpa.free(main);
+    try g.createBranch(io, root, "other", "HEAD~1");
+    try tmp.dir.writeFile(io, .{ .sub_path = "a.txt", .data = "theirs\n" });
+    try g.stage(io, root, "a.txt");
+    try g.commit(io, root, "theirs");
+    try g.checkout(io, root, main);
+    try std.testing.expectError(error.GitFailed, g.expectOk(io, root, &.{ "merge", "other" }));
+    try g.refresh(io, root);
+    try std.testing.expect(g.merging);
+    try std.testing.expect(g.entries.items[0].isConflict());
+    try g.abortMerge(io, root);
+    try g.refresh(io, root);
+    try std.testing.expect(!g.merging);
+    try std.testing.expectEqual(@as(usize, 0), g.entries.items.len);
 }
