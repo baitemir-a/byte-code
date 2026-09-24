@@ -43,7 +43,8 @@ pub fn draw(self: *const GitPanel, git: *const Git, font: Font, focused: bool, p
     const staged = GitPanel.count(git, .staged);
     const syncing = GitPanel.syncing(git);
     // git refuses a commit while a merge is half-done, and says so.
-    const can_commit = staged > 0 or syncing;
+    const busy = self.busy != null;
+    const can_commit = (staged > 0 or syncing) and !busy;
     const mouse = rl.getMousePosition();
     const hov = can_commit and rl.checkCollisionPointRec(mouse, self.commit_rect);
     rl.drawRectangleRounded(self.commit_rect, 0.2, 8, if (can_commit) (if (hov) theme.accentDim(0.8) else theme.accent) else theme.popup_border);
@@ -55,7 +56,12 @@ pub fn draw(self: *const GitPanel, git: *const Git, font: Font, focused: bool, p
     else
         t.nothing_staged;
     const lw = font.textWidth(label);
-    _ = font.drawFit(label, self.commit_rect.x + (self.commit_rect.width - lw) / 2, self.commit_rect.y + (self.commit_rect.height - theme.font_size) / 2, self.commit_rect.x + self.commit_rect.width, if (can_commit) theme.background else theme.popup_detail);
+    const lx = self.commit_rect.x + (self.commit_rect.width - lw) / 2;
+    _ = font.drawFit(label, lx, self.commit_rect.y + (self.commit_rect.height - theme.font_size) / 2, self.commit_rect.x + self.commit_rect.width, if (can_commit) theme.background else theme.popup_detail);
+    // The button itself started what is running: it spins beside its label.
+    if (self.busy) |b| if (b.from == null) {
+        drawSpinner(.{ .x = lx - 12, .y = self.commit_rect.y + self.commit_rect.height / 2 }, theme.popup_detail);
+    };
 
     const top = self.listTop();
     theme.clip(.{ .x = r.x, .y = top, .width = r.width, .height = r.y + r.height - top });
@@ -72,10 +78,18 @@ pub fn draw(self: *const GitPanel, git: *const Git, font: Font, focused: bool, p
             .commands_header => {
                 const icon: Icons.Icon = if (self.commands_open) .chevron_down else .chevron_right;
                 font.drawIcon(icon, .{ .x = r.x + GitPanel.pad + 6, .y = y + row_height / 2 }, .small, theme.sidebar_arrow);
-                _ = font.drawFit(t.commands, r.x + GitPanel.pad + 18, ty, r.x + r.width - GitPanel.pad, theme.sidebar_header);
+                _ = font.drawFit(t.commands, r.x + GitPanel.pad + 18, ty, r.x + r.width - GitPanel.pad - 16, theme.sidebar_header);
+                // Folded away, the running command spins here instead.
+                if (self.busy) |b| if (b.from != null and !self.commands_open) {
+                    drawSpinner(spinnerAt(r, y), theme.sidebar_header);
+                };
             },
             .command => |c| {
-                _ = font.drawFit(c.label(), r.x + GitPanel.pad + 18, ty, r.x + r.width - GitPanel.pad, theme.foreground);
+                const running = if (self.busy) |b| b.from == c else false;
+                // The others wait until it is done.
+                const color = if (busy and !running) theme.popup_detail else theme.foreground;
+                _ = font.drawFit(c.label(), r.x + GitPanel.pad + 18, ty, r.x + r.width - GitPanel.pad - 16, color);
+                if (running) drawSpinner(spinnerAt(r, y), theme.accent);
             },
             .header => |s| {
                 var hbuf: [128]u8 = undefined;
@@ -129,6 +143,17 @@ fn drawPrompt(self: *const GitPanel, font: Font, focused: bool, show_caret: bool
     var buf: [128]u8 = undefined;
     rl.drawRectangleRec(.{ .x = box.x - GitPanel.pad, .y = box.y - 4, .width = box.width + 2 * GitPanel.pad, .height = box.height + 8 }, theme.sidebar_background);
     self.prompt_field.draw(box, font, prompt.placeholder(&buf, self.promptBase()), focused, show_caret);
+}
+
+/// Where a row's spinner goes: at its right end.
+fn spinnerAt(r: rl.Rectangle, y: f32) rl.Vector2 {
+    return .{ .x = r.x + r.width - GitPanel.pad - 8, .y = y + row_height / 2 };
+}
+
+/// Something is running: an arc going round, a turn a second.
+fn drawSpinner(center: rl.Vector2, color: rl.Color) void {
+    const start: f32 = @floatCast(@mod(rl.getTime() * 360, 360));
+    rl.drawRing(center, 4, 6, start, start + 270, 24, color);
 }
 
 /// A counter beside the branch: how many changes of its kind there are,

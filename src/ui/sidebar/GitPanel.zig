@@ -278,6 +278,9 @@ field_rect: rl.Rectangle = std.mem.zeroes(rl.Rectangle),
 commit_rect: rl.Rectangle = std.mem.zeroes(rl.Rectangle),
 scroll: f32 = 0,
 max_scroll: f32 = 0,
+/// A push, pull or fetch is running; `from` is the command row that
+/// started it (null for the commit button), which shows the spinner.
+busy: ?struct { from: ?Command } = null,
 
 // Drawing, in GitPanel_draw.zig.
 pub const draw = GitPanel_draw.draw;

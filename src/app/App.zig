@@ -40,6 +40,7 @@ const tree = @import("lib/tree.zig");
 const mouse_input = @import("lib/mouse_input.zig");
 const git_diff = @import("lib/git_diff.zig");
 const git_blame = @import("lib/git_blame.zig");
+const git_jobs = @import("lib/git_job.zig");
 const symbol_nav = @import("lib/symbol_nav.zig");
 const editing = @import("lib/editing.zig");
 const clipboard = @import("lib/clipboard.zig");
@@ -173,6 +174,8 @@ git: core.Git,
 /// re-read every few seconds while the Git view shows.
 git_dirty: bool = true,
 git_read_at: f64 = 0,
+/// A push, pull or fetch running in the background, if any.
+git_job: ?*git_jobs.Job = null,
 /// The same for git's copy of the file being edited, which the change
 /// marks in the gutter are compared with, and for who last touched each
 /// of its lines (the bar at the bottom).
@@ -236,6 +239,11 @@ pub const openDiffTab = git_diff.openDiffTab;
 pub const updateBlame = git_blame.updateBlame;
 pub const blameAt = git_blame.blameAt;
 pub const cursorPosition = git_blame.cursorPosition;
+
+// git_job.zig
+pub const startGitJob = git_jobs.startGitJob;
+pub const pollGitJob = git_jobs.pollGitJob;
+pub const gitBusy = git_jobs.gitBusy;
 
 // panels.zig
 pub const showView = panels.showView;
@@ -360,6 +368,7 @@ pub fn init(gpa: std.mem.Allocator, io: std.Io) !App {
 }
 
 pub fn deinit(self: *App) void {
+    git_jobs.finishGitJob(self);
     self.gpa.free(self.settings_path);
     self.gpa.free(self.keys_path);
     self.gpa.free(self.projects_path);

@@ -34,9 +34,13 @@ pub fn showView(self: *App, view: Sidebar.View) void {
 /// Runs a search once typing pauses; re-reads git status when needed.
 pub fn updateSidebarViews(self: *App) !void {
     const now = rl.getTime();
+    self.pollGitJob();
     if (self.search_panel.changed_at) |t| if (now - t > 0.3) try self.runSearch(.top);
     // The status is read for any view, not just Git's: the badge on its
     // tab shows what is waiting while another view is open.
+    // Not while a push or pull runs: git status can hold the index lock
+    // it needs.
+    if (self.gitBusy()) return;
     if (self.sidebar.width() > 0 or self.git_dirty) if (self.project) |*p| {
         if (self.git_dirty or now - self.git_read_at > 5) {
             try self.git.refresh(self.io, p.root().path);
@@ -149,13 +153,18 @@ pub fn panelClick(self: *App, point: rl.Vector2) !void {
         },
         .git => {
             const hit = self.git_panel.hitTest(&self.git, point) orelse return;
+            // While a push or pull runs, the rest of git waits for it.
+            if (self.gitBusy()) switch (hit) {
+                .message, .toggle_commands, .prompt, .open => {},
+                else => return,
+            };
             switch (hit) {
                 .message => {
                     self.side_focus = .git_message;
                     const f = &self.git_panel.message;
                     f.buffer.moveTo(f.posAtX(self.git_panel.field_rect, self.view.font, point.x), false);
                 },
-                .commit => if (GitPanel.syncing(&self.git)) self.gitAction(self.git.sync(self.io, root)) else try self.gitCommit(),
+                .commit => if (GitPanel.syncing(&self.git)) self.startGitJob(.sync, null) else try self.gitCommit(),
                 .toggle_commands => {
                     self.git_panel.commands_open = !self.git_panel.commands_open;
                     self.git_panel.cancelPrompt();
@@ -197,16 +206,16 @@ fn runGitCommand(self: *App, command: GitPanel.Command, at: rl.Vector2) !void {
     self.side_focus = .none;
     self.git_panel.cancelPrompt();
     switch (command) {
-        .push => self.gitAction(self.git.push(self.io, root)),
-        .pull => self.gitAction(self.git.pull(self.io, root)),
-        .fetch => self.gitAction(self.git.fetch(self.io, root)),
+        .push => self.startGitJob(.push, command),
+        .pull => self.startGitJob(.pull, command),
+        .fetch => self.startGitJob(.fetch, command),
         .commit_push => {
             try self.gitCommit();
-            if (self.git.last_error.items.len == 0) self.gitAction(self.git.push(self.io, root));
+            if (self.git.last_error.items.len == 0) self.startGitJob(.push, command);
         },
         .commit_sync => {
             try self.gitCommit();
-            if (self.git.last_error.items.len == 0) self.gitAction(self.git.sync(self.io, root));
+            if (self.git.last_error.items.len == 0) self.startGitJob(.sync, command);
         },
         .stash => self.gitAction(self.git.stash(self.io, root)),
         .stash_pop => self.gitAction(self.git.stashPop(self.io, root)),
