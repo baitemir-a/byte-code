@@ -167,16 +167,19 @@ test "real repository: branches, stashing, and a remote to push to" {
     try g.refresh(io, work);
     try std.testing.expectEqual(@as(u32, 0), g.ahead);
 
-    // A branch of its own, and back again.
+    // A branch of its own, and back again (to whatever git named the
+    // first one: "master" or "main", depending on its settings).
+    const first = try gpa.dupe(u8, g.branch);
+    defer gpa.free(first);
     try g.createBranch(io, work, "feature", null);
     try g.refresh(io, work);
     try std.testing.expectEqualStrings("feature", g.branch);
     const list = (try Git.branches(gpa, io, work, false)).?;
     defer gpa.free(list);
     try std.testing.expect(std.mem.indexOf(u8, list, "feature") != null);
-    try g.checkout(io, work, "master");
+    try g.checkout(io, work, first);
     try g.refresh(io, work);
-    try std.testing.expectEqualStrings("master", g.branch);
+    try std.testing.expectEqualStrings(first, g.branch);
 
     // Changes put aside and brought back.
     try dir.writeFile(io, .{ .sub_path = "a.txt", .data = "changed\n" });
