@@ -53,6 +53,8 @@ pub const strings: Strings = .{
         .confirm_discard_hint = "Git ビューで変更を破棄する前に確認します",
         .pull_rebase = "リベースでプル",
         .pull_rebase_hint = "マージせずに自分のコミットを取得分の上に載せる",
+        .inline_blame = "現在の行の変更者",
+        .inline_blame_hint = "カーソル行を最後に変更した人を行末に表示",
         .shortcuts = "キーボード ショートカット",
         .shortcuts_hint = "すべてのキーの組み合わせと変更方法",
     },

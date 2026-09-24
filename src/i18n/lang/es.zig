@@ -53,6 +53,8 @@ pub const strings: Strings = .{
         .confirm_discard_hint = "Una pregunta antes de descartar cambios en la vista de Git",
         .pull_rebase = "Pull con rebase",
         .pull_rebase_hint = "Poner tus commits encima de lo traído en vez de fusionar",
+        .inline_blame = "Autor en la línea actual",
+        .inline_blame_hint = "Quién cambió por última vez la línea del cursor, al final de ella",
         .shortcuts = "Métodos abreviados de teclado",
         .shortcuts_hint = "Todas las combinaciones y cómo cambiarlas",
     },

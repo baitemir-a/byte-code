@@ -6,6 +6,7 @@ const Pty = @import("../../platform/Pty.zig");
 const App = @import("../App.zig");
 const Sidebar = @import("../../ui/sidebar/Sidebar.zig");
 const View_conflicts = @import("../../ui/editor/View_conflicts.zig");
+const View_blame = @import("../../ui/editor/View_blame.zig");
 const i18n = @import("../../i18n/i18n.zig");
 
 pub fn draw(self: *const App) void {
@@ -32,6 +33,8 @@ fn drawFrame(self: *const App) void {
             View_conflicts.drawBands(self.view, conflicts);
             self.view.draw(&t.buffer, &t.highlighter, self.find.highlights(&t.buffer), editor_caret, diff);
             View_conflicts.drawButtons(self.view, &t.buffer, conflicts);
+            var blame_buf: [256]u8 = undefined;
+            if (self.inlineBlame(&blame_buf)) |text| View_blame.draw(self.view, &t.buffer, text);
             if (self.settings.minimap) self.minimap.draw(&self.view, &t.buffer, &t.highlighter, diff);
         },
     }

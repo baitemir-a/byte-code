@@ -53,6 +53,8 @@ pub const strings: Strings = .{
         .confirm_discard_hint = "Git görünümündeki değişiklikler atılmadan önce sorulur",
         .pull_rebase = "Rebase ile pull",
         .pull_rebase_hint = "Birleştirmek yerine commit'lerinizi çekilenlerin üstüne koy",
+        .inline_blame = "Geçerli satırda yazar",
+        .inline_blame_hint = "İmleçteki satırı en son kimin değiştirdiği, satır sonunda",
         .shortcuts = "Klavye kısayolları",
         .shortcuts_hint = "Tüm kombinasyonlar ve nasıl değiştirilir",
     },

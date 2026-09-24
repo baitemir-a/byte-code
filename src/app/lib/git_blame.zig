@@ -110,6 +110,21 @@ pub fn blameAt(self: *const App, age_buf: []u8, exact_buf: []u8) ?StatusBar.Blam
     };
 }
 
+/// What goes at the end of the cursor's line: who changed it last, when,
+/// and why. Nothing while typing (it would jump about), over a
+/// selection, or with Settings' inline blame off. Written into `buf`.
+pub fn inlineBlame(self: *const App, buf: []u8) ?[]const u8 {
+    if (!self.settings.inline_blame) return null;
+    const t = self.activeTab();
+    if (t.kind != .file or t.buffer.selection() != null) return null;
+    if (rl.getTime() - t.changed_at < 0.8) return null;
+    var age_buf: [64]u8 = undefined;
+    var exact_buf: [32]u8 = undefined;
+    const b = self.blameAt(&age_buf, &exact_buf) orelse return null;
+    if (b.age.len == 0) return b.author; // not committed yet
+    return std.fmt.bufPrint(buf, "{s}, {s} • {s}", .{ b.author, b.age, b.summary }) catch null;
+}
+
 /// "Ln 12, Col 3" at the right end of the bar.
 pub fn cursorPosition(self: *const App, buf: []u8) []const u8 {
     const t = self.activeTab();

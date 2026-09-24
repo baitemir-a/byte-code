@@ -59,6 +59,7 @@ pub fn runSettingsAction(self: *App, action: SettingsPage.Action) !void {
         .toggle_minimap => self.settings.minimap = !self.settings.minimap,
         .toggle_confirm_discard => self.settings.confirm_discard = !self.settings.confirm_discard,
         .toggle_pull_rebase => self.settings.pull_rebase = !self.settings.pull_rebase,
+        .toggle_inline_blame => self.settings.inline_blame = !self.settings.inline_blame,
         .toggle_word_wrap => self.settings.word_wrap = !self.settings.word_wrap,
         .toggle_new_window => self.settings.open_folder_in_new_window = !self.settings.open_folder_in_new_window,
         .open_help, .choose_language => unreachable,

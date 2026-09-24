@@ -264,6 +264,7 @@ pub const openRevDiff = git_diff.openRevDiff;
 // git_blame.zig
 pub const updateBlame = git_blame.updateBlame;
 pub const blameAt = git_blame.blameAt;
+pub const inlineBlame = git_blame.inlineBlame;
 pub const cursorPosition = git_blame.cursorPosition;
 
 // git_conflicts.zig

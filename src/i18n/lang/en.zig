@@ -53,6 +53,8 @@ pub const strings: Strings = .{
         .confirm_discard_hint = "A question before changes in the Git view are thrown away",
         .pull_rebase = "Pull with rebase",
         .pull_rebase_hint = "Put your commits on top of what's pulled instead of merging",
+        .inline_blame = "Blame on the current line",
+        .inline_blame_hint = "Who last changed the line the cursor is on, at its end",
         .shortcuts = "Keyboard shortcuts",
         .shortcuts_hint = "Every combination, and how to change it",
     },

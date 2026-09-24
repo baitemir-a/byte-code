@@ -53,6 +53,8 @@ pub const strings: Strings = .{
         .confirm_discard_hint = "在 Git 视图中放弃更改前先询问",
         .pull_rebase = "以变基方式拉取",
         .pull_rebase_hint = "把你的提交放到拉取内容之上，而不是合并",
+        .inline_blame = "当前行的作者",
+        .inline_blame_hint = "在光标所在行末显示最后修改它的人",
         .shortcuts = "键盘快捷方式",
         .shortcuts_hint = "所有组合键及其修改方法",
     },

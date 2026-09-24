@@ -53,6 +53,8 @@ pub const strings: Strings = .{
         .confirm_discard_hint = "Git 보기에서 변경을 되돌리기 전에 묻습니다",
         .pull_rebase = "리베이스로 풀",
         .pull_rebase_hint = "병합 대신 가져온 커밋 위에 내 커밋을 올립니다",
+        .inline_blame = "현재 줄의 작성자",
+        .inline_blame_hint = "커서가 있는 줄을 마지막으로 바꾼 사람을 줄 끝에 표시",
         .shortcuts = "바로 가기 키",
         .shortcuts_hint = "모든 키 조합과 변경 방법",
     },

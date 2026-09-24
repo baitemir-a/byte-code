@@ -68,6 +68,8 @@ pub const Strings = struct {
         confirm_discard_hint: []const u8,
         pull_rebase: []const u8,
         pull_rebase_hint: []const u8,
+        inline_blame: []const u8,
+        inline_blame_hint: []const u8,
         shortcuts: []const u8,
         shortcuts_hint: []const u8,
     },
