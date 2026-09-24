@@ -36,7 +36,8 @@ pub fn updateDiff(self: *App) !void {
         },
         // The diff tab has no buffer of its own to watch: it is rebuilt
         // from the file and from git every so often.
-        .diff => if (self.diff_dirty or now - t.diff_at > reread_seconds) {
+        // A commit's changes stay what they are.
+        .diff => if (t.diff.against != .commit and (self.diff_dirty or now - t.diff_at > reread_seconds)) {
             t.diff_at = now;
             self.diff_dirty = false;
             try showChanges(self, t);
@@ -70,6 +71,45 @@ pub fn openDiffTab(self: *App, path: []const u8, against: Against) !void {
         return;
     };
     try showChanges(self, t);
+}
+
+/// Opens (or brings up) the tab showing what a commit changed in one of
+/// its files: the file as its parent had it against the commit's copy.
+pub fn openCommitDiff(self: *App, hash: []const u8, file: core.GitLog.File) !void {
+    const repo = self.git.toplevel;
+    const path = try std.fs.path.join(self.gpa, &.{ repo, file.path });
+    defer self.gpa.free(path);
+    for (self.tabs.items, 0..) |*t, i| {
+        if (t.kind == .diff and t.diff.against == .commit and t.diff.isFor(path) and std.mem.eql(u8, t.diff.commit(), hash)) {
+            return self.activate(i);
+        }
+    }
+    const parent = try std.fmt.allocPrint(self.gpa, "{s}^", .{hash});
+    defer self.gpa.free(parent);
+    const old = try core.Git.showAt(self.gpa, self.io, repo, parent, file.old_path);
+    defer if (old) |s| self.gpa.free(s);
+    const new = try core.Git.showAt(self.gpa, self.io, repo, hash, file.path);
+    defer if (new) |s| self.gpa.free(s);
+    // A file git keeps as something other than text can't be shown.
+    const before = old orelse "";
+    const after = new orelse "";
+    if (!std.unicode.utf8ValidateSlice(before) or !std.unicode.utf8ValidateSlice(after)) return;
+
+    var tab: Tab = .initDiff(self.gpa);
+    tab.highlighter.language = .fromPath(path);
+    tab.label = try std.fmt.allocPrint(self.gpa, "{s} ({s})", .{ std.fs.path.basename(path), hash[0..@min(7, hash.len)] });
+    const at = @min(self.active + 1, self.tabs.items.len);
+    try self.tabs.insert(self.gpa, at, tab);
+    try self.activate(at);
+    self.view.scroll = .{ .x = 0, .y = 0 };
+    const t = self.tab();
+    try t.diff.setFile(path, repo, file.path, .commit);
+    t.diff.setCommit(hash);
+    try t.diff.setBase(before, true);
+    try t.diff.compute(after, t.buffer.version);
+    try t.diff.buildCombined();
+    try t.buffer.load(t.diff.combined.items);
+    t.document.saved_version = t.buffer.version; // never dirty
 }
 
 /// Fills a diff tab: compares the two copies and puts them in its buffer,

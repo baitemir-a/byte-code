@@ -43,6 +43,7 @@ const mouse_input = @import("lib/mouse_input.zig");
 const git_diff = @import("lib/git_diff.zig");
 const git_blame = @import("lib/git_blame.zig");
 const git_jobs = @import("lib/git_job.zig");
+const git_conflicts = @import("lib/git_conflicts.zig");
 const symbol_nav = @import("lib/symbol_nav.zig");
 const editing = @import("lib/editing.zig");
 const clipboard = @import("lib/clipboard.zig");
@@ -246,11 +247,17 @@ pub const updateDiff = git_diff.updateDiff;
 pub const changes = git_diff.changes;
 pub const hunkClick = git_diff.hunkClick;
 pub const openDiffTab = git_diff.openDiffTab;
+pub const openCommitDiff = git_diff.openCommitDiff;
 
 // git_blame.zig
 pub const updateBlame = git_blame.updateBlame;
 pub const blameAt = git_blame.blameAt;
 pub const cursorPosition = git_blame.cursorPosition;
+
+// git_conflicts.zig
+pub const updateConflicts = git_conflicts.updateConflicts;
+pub const conflicts = git_conflicts.conflicts;
+pub const conflictMouse = git_conflicts.conflictMouse;
 
 // git_job.zig
 pub const startGitJob = git_jobs.startGitJob;
@@ -267,6 +274,7 @@ pub const gitAction = panels.gitAction;
 pub const gitCommit = panels.gitCommit;
 pub const branchName = panels.branchName;
 pub const finishGitPrompt = panels.finishGitPrompt;
+pub const reloadUnchangedTabs = panels.reloadUnchangedTabs;
 
 // project_search.zig
 pub const runSearch = project_search.runSearch;
@@ -501,6 +509,7 @@ pub fn update(self: *App) !void {
     try self.updateSidebarViews();
     try self.updateDiff();
     try self.updateBlame();
+    try self.updateConflicts();
 
     try self.updateTitle();
 }

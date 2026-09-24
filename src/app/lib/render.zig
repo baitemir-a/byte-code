@@ -5,6 +5,7 @@ const theme = @import("../../ui/theme/lib/theme.zig");
 const Pty = @import("../../platform/Pty.zig");
 const App = @import("../App.zig");
 const Sidebar = @import("../../ui/sidebar/Sidebar.zig");
+const View_conflicts = @import("../../ui/editor/View_conflicts.zig");
 
 pub fn draw(self: *const App) void {
     // Under a dialog, nothing lights up where the pointer is.
@@ -25,7 +26,11 @@ fn drawFrame(self: *const App) void {
         .file, .diff => {
             const editor_caret = caret and t.kind == .file and !self.find.hasFocus() and self.sidebar.input == null and !self.terminalFocused() and !self.quick_open.is_open and self.side_focus == .none;
             const diff = self.changes();
+            // A merge's conflicts: bands under the text, buttons over it.
+            const conflicts = self.conflicts();
+            View_conflicts.drawBands(self.view, conflicts);
             self.view.draw(&t.buffer, &t.highlighter, self.find.highlights(&t.buffer), editor_caret, diff);
+            View_conflicts.drawButtons(self.view, &t.buffer, conflicts);
             if (self.settings.minimap) self.minimap.draw(&self.view, &t.buffer, &t.highlighter, diff);
         },
     }
@@ -42,7 +47,7 @@ fn drawFrame(self: *const App) void {
             .search_replace => 2,
             else => 0,
         }, caret, self.project != null),
-        .git => self.git_panel.draw(&self.git, self.view.font, self.side_focus == .git_message, self.side_focus == .git_prompt, caret, self.project != null),
+        .git => self.git_panel.draw(&self.git, self.view.font, self.side_focus == .git_message, self.side_focus == .git_prompt, caret, self.project != null, nowSeconds(self.io)),
     };
     if (t.kind == .file or t.kind == .diff) {
         if (t.kind == .file) self.popup.draw(&self.completion, &self.view);
@@ -65,4 +70,10 @@ fn drawFrame(self: *const App) void {
     self.quick_open.draw(&self.file_search, self.view.font, caret, self.project != null);
     self.menu.draw(self.view.font);
     self.sidebar.drawDragLabel(self.view.font);
+}
+
+/// The wall clock, in seconds since the epoch.
+fn nowSeconds(io: std.Io) i64 {
+    const ts = std.Io.Timestamp.now(io, .real);
+    return @intCast(@divFloor(ts.nanoseconds, std.time.ns_per_s));
 }

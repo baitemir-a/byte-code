@@ -14,7 +14,8 @@ const i18n = @import("../../i18n/i18n.zig");
 const Git = core.Git;
 const row_height = theme.line_height;
 
-pub fn draw(self: *const GitPanel, git: *const Git, font: Font, focused: bool, prompt_focused: bool, show_caret: bool, has_project: bool) void {
+/// `now` (seconds since the epoch) is what the history's ages count from.
+pub fn draw(self: *const GitPanel, git: *const Git, font: Font, focused: bool, prompt_focused: bool, show_caret: bool, has_project: bool, now: i64) void {
     const r = self.rect;
     theme.clip(r);
     defer rl.endScissorMode();
@@ -42,14 +43,19 @@ pub fn draw(self: *const GitPanel, git: *const Git, font: Font, focused: bool, p
     self.message.draw(self.field_rect, font, t.message_placeholder, focused, show_caret);
     const staged = GitPanel.count(git, .staged);
     const syncing = GitPanel.syncing(git);
-    // git refuses a commit while a merge is half-done, and says so.
+    const conflicts = GitPanel.count(git, .conflicts);
+    // git refuses a commit while a merge is half-done, and says so; once
+    // it is sorted out, the merge can be committed even with nothing
+    // staged.
     const busy = self.busy != null;
-    const can_commit = (staged > 0 or syncing) and !busy;
+    const can_commit = !busy and conflicts == 0 and (staged > 0 or syncing or git.merging);
     const mouse = rl.getMousePosition();
     const hov = can_commit and rl.checkCollisionPointRec(mouse, self.commit_rect);
     rl.drawRectangleRounded(self.commit_rect, 0.2, 8, if (can_commit) (if (hov) theme.accentDim(0.8) else theme.accent) else theme.popup_border);
     var label_buf: [96]u8 = undefined;
-    const label = if (syncing)
+    const label = if (git.merging)
+        t.commit_merge
+    else if (syncing)
         i18n.fill(&label_buf, t.sync_count, .{ git.behind, git.ahead })
     else if (staged > 0)
         i18n.fill(&label_buf, t.commit_count, .{staged})
@@ -110,6 +116,20 @@ pub fn draw(self: *const GitPanel, git: *const Git, font: Font, focused: bool, p
                     if (discard_all) drawAction(font, self.actionRect(y, 1), .undo_2, mouse);
                 }
             },
+            .history_header => {
+                const icon: Icons.Icon = if (self.history_open) .chevron_down else .chevron_right;
+                font.drawIcon(icon, .{ .x = r.x + GitPanel.pad + 6, .y = y + row_height / 2 }, .small, theme.sidebar_arrow);
+                _ = font.drawFit(t.history, r.x + GitPanel.pad + 18, ty, r.x + r.width - GitPanel.pad, theme.sidebar_header);
+            },
+            .commit => |i| drawCommit(self, git, font, i, y, now),
+            .commit_file => |i| {
+                const f = git.history.files.items[i];
+                drawFile(font, f.path, f.status, r.x + GitPanel.pad + 30, ty, y, r.x + r.width - GitPanel.pad, false);
+            },
+            .no_changes, .no_commits => {
+                const text = if (row == .no_changes) t.no_changes else t.no_commits;
+                _ = font.drawFit(text, r.x + GitPanel.pad + 18, ty, r.x + r.width - GitPanel.pad, theme.popup_detail);
+            },
             .entry => |e| {
                 const entry = git.entries.items[e.index];
                 const letter = if (e.section == .staged) entry.staged else entry.unstaged;
@@ -123,17 +143,53 @@ pub fn draw(self: *const GitPanel, git: *const Git, font: Font, focused: bool, p
                 if (base > 0) _ = font.drawFit(entry.path[0 .. base - 1], x + font.cell_width, ty, text_end, theme.popup_detail);
                 font.drawCodepoint(if (letter == '?') 'U' else letter, status_x, ty, theme.copy(if (conflict) theme.diff_deleted else statusColor(letter)));
                 if (row_hovered) {
-                    drawAction(font, self.actionRect(y, 0), if (e.section == .changes) .plus else .minus, mouse);
+                    drawAction(font, self.actionRect(y, 0), if (e.section == .staged) .minus else .plus, mouse);
                     if (buttons > 1) drawAction(font, self.actionRect(y, 1), .undo_2, mouse);
                 }
             },
         }
     }
-    // Nothing in the lists: say so where they would start.
-    if (git.entries.items.len == 0) {
-        const y = top + @as(f32, @floatFromInt(n)) * row_height - self.scroll;
-        _ = font.drawFit(t.no_changes, r.x + GitPanel.pad, y + (row_height - theme.font_size) / 2, r.x + r.width - GitPanel.pad, theme.popup_detail);
-    }
+}
+
+/// A commit in the history: its first line, and how long ago it was made.
+/// The open one points down at its files.
+fn drawCommit(self: *const GitPanel, git: *const Git, font: Font, index: u32, y: f32, now: i64) void {
+    const r = self.rect;
+    const c = git.history.commits.items[index];
+    const ty = y + (row_height - theme.font_size) / 2;
+    const open = git.history.open == index;
+    font.drawIcon(if (open) .chevron_down else .chevron_right, .{ .x = r.x + GitPanel.pad + 18, .y = y + row_height / 2 }, .small, theme.sidebar_arrow);
+    var age_buf: [48]u8 = undefined;
+    const age = ageText(&age_buf, now, c.time);
+    const age_x = r.x + r.width - GitPanel.pad - font.textWidth(age);
+    _ = font.drawFit(age, age_x, ty, r.x + r.width - GitPanel.pad, theme.popup_detail);
+    _ = font.drawFit(c.subject, r.x + GitPanel.pad + 30, ty, age_x - 8, theme.foreground);
+}
+
+/// "3 d ago", in the words the bar at the bottom uses.
+fn ageText(buf: []u8, now: i64, time: i64) []const u8 {
+    const s = i18n.tr().status;
+    const ago = core.Blame.age(now, time);
+    const unit = switch (ago.unit) {
+        .just_now => return s.just_now,
+        .minutes => s.minutes,
+        .hours => s.hours,
+        .days => s.days,
+        .months => s.months,
+        .years => s.years,
+    };
+    return i18n.fill(buf, unit, .{ago.count});
+}
+
+/// A file row: its icon and name, the folder it is in, and its status
+/// letter at the right end, before `right`.
+fn drawFile(font: Font, path: []const u8, letter: u8, x0: f32, ty: f32, y: f32, right: f32, conflict: bool) void {
+    const base = if (std.mem.lastIndexOfScalar(u8, path, '/')) |i| i + 1 else 0;
+    const status_x = right - font.cell_width;
+    file_icon.draw(path[base..], .{ .x = x0 + file_icon.radius, .y = y + row_height / 2 });
+    const x = font.drawFit(path[base..], x0 + file_icon.radius * 2 + 8, ty, status_x - 8, theme.foreground);
+    if (base > 0) _ = font.drawFit(path[0 .. base - 1], x + font.cell_width, ty, status_x - 8, theme.popup_detail);
+    font.drawCodepoint(if (letter == '?') 'U' else letter, status_x, ty, theme.copy(if (conflict) theme.diff_deleted else statusColor(letter)));
 }
 
 /// What a command is waiting to be told, in a box over the list.

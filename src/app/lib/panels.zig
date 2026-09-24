@@ -11,6 +11,7 @@ const ContextMenu = @import("../../ui/sidebar/ContextMenu.zig");
 const App = @import("../App.zig");
 const clipboard = @import("clipboard.zig");
 const i18n = @import("../../i18n/i18n.zig");
+const git_commands = @import("git_commands.zig");
 
 /// Shows a sidebar view (Explorer, Search, Git); Search puts the keyboard
 /// in its query box.
@@ -44,6 +45,7 @@ pub fn updateSidebarViews(self: *App) !void {
     if (self.sidebar.width() > 0 or self.git_dirty) if (self.project) |*p| {
         if (self.git_dirty or now - self.git_read_at > 5) {
             try self.git.refresh(self.io, p.root().path);
+            if (self.git_panel.history_open) try git_commands.readHistory(self, p.root().path);
             self.git_dirty = false;
             self.git_read_at = now;
         }
@@ -155,7 +157,7 @@ pub fn panelClick(self: *App, point: rl.Vector2) !void {
             const hit = self.git_panel.hitTest(&self.git, point) orelse return;
             // While a push or pull runs, the rest of git waits for it.
             if (self.gitBusy()) switch (hit) {
-                .message, .toggle_commands, .prompt, .open => {},
+                .message, .toggle_commands, .prompt, .open, .toggle_history, .commit_row, .commit_file => {},
                 else => return,
             };
             switch (hit) {
@@ -175,6 +177,10 @@ pub fn panelClick(self: *App, point: rl.Vector2) !void {
                     const f = &self.git_panel.prompt_field;
                     f.buffer.moveTo(f.posAtX(self.git_panel.promptRect(), self.view.font, point.x), false);
                 },
+                .resolve => |i| try git_commands.markResolved(self, root, i),
+                .toggle_history => try git_commands.toggleHistory(self, root),
+                .commit_row => |i| try git_commands.openCommit(self, root, i, false),
+                .commit_file => |i| try git_commands.openCommitFile(self, i),
                 .stage_all => self.gitAction(self.git.stageAll(self.io, root)),
                 .unstage_all => self.gitAction(self.git.unstageAll(self.io, root)),
                 .stage => |i| self.gitAction(self.git.stage(self.io, root, self.git.entries.items[i].path)),
@@ -189,6 +195,8 @@ pub fn panelClick(self: *App, point: rl.Vector2) !void {
                     const e = self.git.entries.items[o.index];
                     const path = try std.fs.path.join(self.gpa, &.{ self.git.toplevel, e.path });
                     defer self.gpa.free(path);
+                    // A conflict is sorted out in the file itself.
+                    if (e.isConflict()) return self.openFile(path) catch |err| self.reportError(i18n.tr().errors.open_file, path, err);
                     self.openDiffTab(path, if (o.staged) .head else .index) catch |err| {
                         self.reportError(i18n.tr().errors.open_file, path, err);
                     };
@@ -217,6 +225,9 @@ fn runGitCommand(self: *App, command: GitPanel.Command, at: rl.Vector2) !void {
             try self.gitCommit();
             if (self.git.last_error.items.len == 0) self.startGitJob(.sync, command);
         },
+        .amend => try git_commands.amendCommit(self, root),
+        .undo_commit => try git_commands.undoCommit(self, root),
+        .abort_merge => try git_commands.abortMerge(self, root),
         .stash => self.gitAction(self.git.stash(self.io, root)),
         .stash_pop => self.gitAction(self.git.stashPop(self.io, root)),
         .clone => {
@@ -323,7 +334,7 @@ fn discardEntry(self: *App, root: []const u8, index: u32) !void {
         self.gitAction(self.git.discard(self.io, root, e.path));
     }
     self.gitChanged();
-    try reloadDiscarded(self);
+    try self.reloadUnchangedTabs();
 }
 
 /// The whole list: tracked files go back to git's copy, and the files it
@@ -349,7 +360,7 @@ fn discardEverything(self: *App, root: []const u8) !void {
         try self.refreshProject();
     }
     self.gitChanged();
-    try reloadDiscarded(self);
+    try self.reloadUnchangedTabs();
 }
 
 /// To the trash, where it can still be fished out; if the system has no
@@ -375,10 +386,10 @@ fn askDiscard(self: *App, question: []const u8, detail: []const u8, ok_label: []
     return answer != .cancel;
 }
 
-/// Files whose changes were thrown away are on disk as git has them: the
-/// tabs showing them are read again. One with unsaved changes is left
-/// alone — it would lose them.
-fn reloadDiscarded(self: *App) !void {
+/// After git put files back (throwing changes away, calling a merge off),
+/// they are on disk as git has them: the tabs showing them are read
+/// again. One with unsaved changes is left alone — it would lose them.
+pub fn reloadUnchangedTabs(self: *App) !void {
     for (self.tabs.items) |*t| {
         if (t.kind != .file or t.isDirty()) continue;
         const path = t.document.path orelse continue;
@@ -403,6 +414,13 @@ pub fn gitAction(self: *App, result: anyerror!void) void {
 pub fn gitCommit(self: *App) !void {
     const project = if (self.project) |*p| p else return;
     const message = std.mem.trim(u8, self.git_panel.message.text(), " \t");
+    // A merge whose conflicts are sorted out is committed as it is, under
+    // git's own message unless another was typed.
+    if (self.git.merging) {
+        self.git.commitMerge(self.io, project.root().path, message) catch |err| return self.gitAction(err);
+        try self.git_panel.message.setText("");
+        return self.gitChanged();
+    }
     var staged = false;
     for (self.git.entries.items) |e| staged = staged or e.isStaged();
     const t = i18n.tr().errors;

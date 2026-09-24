@@ -172,6 +172,28 @@ pub const Strings = struct {
         discard: []const u8,
         /// The button that goes ahead and stops asking.
         discard_always: []const u8,
+        /// The list of the branch's commits.
+        history: []const u8,
+        no_commits: []const u8,
+        amend: []const u8,
+        undo_commit: []const u8,
+        abort_merge: []const u8,
+        commit_merge: []const u8,
+        /// Before rewriting a commit the remote already has.
+        amend_pushed_question: []const u8,
+        undo_pushed_question: []const u8,
+        pushed_detail: []const u8,
+        /// Before calling a half-done merge off.
+        abort_merge_question: []const u8,
+        abort_merge_detail: []const u8,
+        /// Marking a file resolved while it still has markers. {1}: its name.
+        still_conflicted_question: []const u8,
+        still_conflicted_detail: []const u8,
+        mark_resolved: []const u8,
+        /// The buttons over a conflict in the editor.
+        accept_current: []const u8,
+        accept_incoming: []const u8,
+        accept_both: []const u8,
     },
     /// The bar along the bottom: what git says about the line the cursor
     /// is on, and where the cursor is.

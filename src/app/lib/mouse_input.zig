@@ -155,6 +155,7 @@ pub fn handleMouse(self: *App) !bool {
 
     // The buttons beside a change in the Git view, in the gutter.
     if (pressed and !captured and try self.hunkClick(point)) return true;
+    if (!captured and try self.conflictMouse(point, pressed)) return true;
 
     // Ctrl+click (Cmd+click on macOS) on a name: go to where it is
     // declared, or list where it is used. Option is left to the extra

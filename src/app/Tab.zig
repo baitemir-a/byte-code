@@ -22,6 +22,10 @@ diff_at: f64 = 0,
 /// wait to ask git about it started (0 while there is nothing to ask).
 blame: core.Blame,
 blame_at: f64 = 0,
+/// The conflicts a merge left in the file, and the buffer version they
+/// were found in.
+conflicts: std.ArrayList(core.Conflicts.Region) = .empty,
+conflicts_version: ?u64 = null,
 /// The name a diff tab shows, e.g. "App.zig (changes)". Owned.
 label: ?[]u8 = null,
 /// The view's scroll position, kept while another tab is showing.
@@ -69,6 +73,7 @@ pub fn initHelp(gpa: std.mem.Allocator) Tab {
 
 pub fn deinit(self: *Tab, gpa: std.mem.Allocator) void {
     if (self.label) |l| gpa.free(l);
+    self.conflicts.deinit(gpa);
     self.blame.deinit();
     self.diff.deinit();
     self.highlighter.deinit(gpa);

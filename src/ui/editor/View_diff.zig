@@ -45,7 +45,12 @@ pub fn kindColor(kind: Diff.Kind) rl.Color {
 /// The changes the buttons can make: a file's own changes can be undone
 /// or staged; the staged ones can only be taken back out.
 fn actions(ch: Changes) []const Action {
-    return if (ch.diff.against == .head) &.{.unstage} else &.{ .revert, .stage };
+    return switch (ch.diff.against) {
+        .index => &.{ .revert, .stage },
+        .head => &.{.unstage},
+        // History is only looked at.
+        .commit => &.{},
+    };
 }
 
 /// The color a line's change is marked with, wherever it is shown: in
@@ -177,6 +182,7 @@ pub fn drawOverlay(view: View, ch: Changes) void {
     const hunk = hunkAt(view, ch, mouse) orelse return;
     const top = buttonsTop(view, ch, hunk);
     const list = actions(ch);
+    if (list.len == 0) return;
     const first = buttonRect(view, top, 0, list.len);
     rl.drawRectangleRec(.{ .x = first.x - gap, .y = top, .width = view.gutterRight() - first.x + gap, .height = theme.line_height }, theme.background);
     for (list, 0..) |a, i| {

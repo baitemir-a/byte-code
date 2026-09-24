@@ -37,6 +37,13 @@ pub const Hit = union(enum) {
     command: Command,
     /// The box a command's question is typed in.
     prompt,
+    /// A file a merge left half-done: mark it sorted out (stage it).
+    resolve: u32,
+    /// The history: fold it open or shut, open a commit to list its
+    /// files, or show what one of them changed.
+    toggle_history,
+    commit_row: u32,
+    commit_file: u32,
 };
 
 /// The counters beside the branch: how much there is of each kind.
@@ -207,6 +214,10 @@ pub const Command = enum {
     create_branch_from,
     stash,
     stash_pop,
+    amend,
+    undo_commit,
+    /// Only while a merge is waiting (see `commandsFor`).
+    abort_merge,
 
     pub fn label(self: Command) []const u8 {
         const t = i18n.tr().git;
@@ -222,9 +233,30 @@ pub const Command = enum {
             .create_branch_from => t.create_branch_from,
             .stash => t.stash,
             .stash_pop => t.stash_pop,
+            .amend => t.amend,
+            .undo_commit => t.undo_commit,
+            .abort_merge => t.abort_merge,
         };
     }
 };
+
+/// The commands on offer: calling a merge off comes first while one is
+/// waiting, and isn't there otherwise.
+pub fn commandsFor(git: *const Git) []const Command {
+    const all = comptime std.enums.values(Command);
+    const usual = comptime blk: {
+        var list: [all.len - 1]Command = undefined;
+        var n = 0;
+        for (all) |c| if (c != .abort_merge) {
+            list[n] = c;
+            n += 1;
+        };
+        const final = list;
+        break :blk &final;
+    };
+    const merging = comptime [_]Command{.abort_merge} ++ usual.*;
+    return if (git.merging) &merging else usual;
+}
 
 /// What the box above the list is asking for, when a command needs
 /// something typed before it can run.
@@ -250,6 +282,14 @@ const Row = union(enum) {
     command: Command,
     header: Section,
     entry: struct { index: u32, section: Section },
+    /// The history under the files: its header, the commits, and the
+    /// files of the one that is open.
+    history_header,
+    commit: u32,
+    commit_file: u32,
+    /// Said in place of an empty list.
+    no_changes,
+    no_commits,
 };
 /// The lists the files are split into. A file a merge left half-done is
 /// in neither of the others: it has to be sorted out first.
@@ -266,8 +306,9 @@ fn inSection(e: Git.Entry, section: Section) bool {
 }
 
 message: TextField,
-/// The commands are folded away until asked for.
+/// The commands are folded away until asked for, and so is the history.
 commands_open: bool = false,
+history_open: bool = false,
 /// What a command is waiting to be told, and the box it is typed in.
 prompt: ?Prompt = null,
 prompt_field: TextField,
@@ -317,9 +358,10 @@ pub fn promptRect(self: *const GitPanel) rl.Rectangle {
 }
 
 /// Whether the button commits or syncs: with nothing staged, but commits
-/// to send or take in, it offers to sync instead.
+/// to send or take in, it offers to sync instead. While a merge waits it
+/// finishes the merge.
 pub fn syncing(git: *const Git) bool {
-    return count(git, .staged) == 0 and (git.ahead > 0 or git.behind > 0);
+    return !git.merging and count(git, .staged) == 0 and (git.ahead > 0 or git.behind > 0);
 }
 
 /// How many files each list holds.
@@ -335,7 +377,7 @@ pub fn rowAtIndex(self: *const GitPanel, git: *const Git, n: usize) ?Row {
     if (n == 0) return .commands_header;
     var i = n - 1;
     if (self.commands_open) {
-        const commands = std.enums.values(Command);
+        const commands = commandsFor(git);
         if (i < commands.len) return .{ .command = commands[i] };
         i -= commands.len;
     }
@@ -349,15 +391,34 @@ pub fn rowAtIndex(self: *const GitPanel, git: *const Git, n: usize) ?Row {
             i -= 1;
         }
     }
+    if (git.entries.items.len == 0) {
+        if (i == 0) return .no_changes;
+        i -= 1;
+    }
+    if (i == 0) return .history_header;
+    i -= 1;
+    if (!self.history_open) return null;
+    const log = &git.history;
+    if (log.commits.items.len == 0) return if (i == 0) .no_commits else null;
+    for (0..log.commits.items.len) |c| {
+        if (i == 0) return .{ .commit = @intCast(c) };
+        i -= 1;
+        if (log.open == null or log.open.? != c) continue;
+        if (i < log.files.items.len) return .{ .commit_file = @intCast(i) };
+        i -= log.files.items.len;
+    }
     return null;
 }
 
 fn rowCount(self: *const GitPanel, git: *const Git) usize {
-    var n: usize = 1 + if (self.commands_open) std.enums.values(Command).len else 0;
+    var n: usize = 1 + if (self.commands_open) commandsFor(git).len else 0;
     for (std.enums.values(Section)) |section| {
         const c = count(git, section);
         n += c + @intFromBool(c > 0);
     }
+    n += @intFromBool(git.entries.items.len == 0); // "No changes"
+    n += 1; // the history's header
+    if (self.history_open) n += @max(1, git.history.commits.items.len) + git.history.files.items.len;
     return n;
 }
 
@@ -413,6 +474,10 @@ pub fn hitTest(self: *const GitPanel, git: *const Git, p: rl.Vector2) ?Hit {
     return switch (row) {
         .commands_header => Hit.toggle_commands,
         .command => |c| Hit{ .command = c },
+        .history_header => Hit.toggle_history,
+        .no_changes, .no_commits => null,
+        .commit => |c| Hit{ .commit_row = c },
+        .commit_file => |f| Hit{ .commit_file = f },
         .header => |s| switch (s) {
             // A half-done merge is sorted out file by file.
             .conflicts => null,
@@ -424,9 +489,11 @@ pub fn hitTest(self: *const GitPanel, git: *const Git, p: rl.Vector2) ?Hit {
             else
                 null,
         },
-        .entry => |e| if (on_action)
-            (if (e.section == .staged) Hit{ .unstage = e.index } else Hit{ .stage = e.index })
-        else if (on_discard and e.section == .changes and canDiscard(git.entries.items[e.index]))
+        .entry => |e| if (on_action) switch (e.section) {
+            .staged => Hit{ .unstage = e.index },
+            .changes => Hit{ .stage = e.index },
+            .conflicts => Hit{ .resolve = e.index },
+        } else if (on_discard and e.section == .changes and canDiscard(git.entries.items[e.index]))
             Hit{ .discard = e.index }
         else
             .{ .open = .{ .index = e.index, .staged = e.section == .staged } },
