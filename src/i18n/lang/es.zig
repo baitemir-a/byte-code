@@ -15,6 +15,9 @@ pub const strings: Strings = .{
         .welcome = "Bienvenida",
         .settings = "Configuración",
         .help = "Ayuda",
+        .split_right = "Dividir a la derecha",
+        .split_down = "Dividir abajo",
+        .move_to_other = "Mover al otro panel",
     },
     .welcome = .{
         .subtitle = "Un editor de código ligero",

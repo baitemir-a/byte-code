@@ -11,7 +11,7 @@ pub fn openHelp(self: *App) !void {
     for (self.tabs.items, 0..) |t, i| {
         if (t.kind == .help) return self.activate(i);
     }
-    try self.tabs.insert(self.gpa, self.active + 1, .initHelp(self.gpa));
+    try self.insertTab(self.active + 1, .initHelp(self.gpa));
     try self.activate(self.active + 1);
 }
 

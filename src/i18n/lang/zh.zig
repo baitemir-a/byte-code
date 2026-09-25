@@ -15,6 +15,9 @@ pub const strings: Strings = .{
         .welcome = "欢迎",
         .settings = "设置",
         .help = "帮助",
+        .split_right = "向右拆分",
+        .split_down = "向下拆分",
+        .move_to_other = "移动到另一侧",
     },
     .welcome = .{
         .subtitle = "轻量级代码编辑器",

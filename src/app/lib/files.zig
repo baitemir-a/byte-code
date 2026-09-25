@@ -41,7 +41,7 @@ pub fn openFile(self: *App, given_path: []const u8) !void {
     errdefer new.deinit(self.gpa);
     try new.load(self.gpa, self.io, path);
     const at = if (self.tabs.items.len == 0) 0 else self.active + 1;
-    try self.tabs.insert(self.gpa, at, new);
+    try self.insertTab(at, new);
     if (self.tabs.items.len == 1) {
         self.active = 0;
         self.view.scroll = .{ .x = 0, .y = 0 };

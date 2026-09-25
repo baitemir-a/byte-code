@@ -50,6 +50,22 @@ pub fn handleMouse(self: *App) !bool {
         }
     }
 
+    // The line between the two editor panes: drag it to share the room
+    // between them differently.
+    const split_cursor: rl.MouseCursor = if ((self.split orelse .right) == .right) .resize_ew else .resize_ns;
+    if (self.split_resizing) {
+        self.wanted_cursor = split_cursor;
+        if (rl.isMouseButtonDown(.left)) self.resizeSplit(point) else self.split_resizing = false;
+        return true;
+    }
+    if (self.split != null and !self.menu.is_open and rl.checkCollisionPointRec(point, self.dividerRect())) {
+        self.wanted_cursor = split_cursor;
+        if (pressed) {
+            self.split_resizing = true;
+            return true;
+        }
+    }
+
     // The terminal panel (unless a menu is open on top of it). A drag
     // that started in the text keeps the mouse even over the panel, so
     // the selection scrolls on instead of stopping at it.
@@ -80,12 +96,27 @@ pub fn handleMouse(self: *App) !bool {
         self.reveal_cursor = true;
     }
 
-    // Tabs: click to switch, × or middle click to close.
-    const over_tabs = self.tab_bar.contains(point);
+    // A press in the other pane gives it the keyboard first, so that
+    // everything below acts on the pane being pointed at.
+    if ((pressed or right_pressed) and !on_popup and !on_find and !self.menu.is_open) {
+        if (self.paneAt(point)) |p| self.focusPane(p);
+    }
+
+    // Tabs: click to switch, × or middle click to close, right-click for
+    // the split menu, drag to move the tab to the other pane.
+    const over_tabs = self.tab_bar.contains(point) or (self.split != null and self.other_bar.contains(point));
     const middle = rl.isMouseButtonPressed(.middle);
-    const on_tabs = over_tabs and (pressed or middle);
+    const on_tabs = over_tabs and (pressed or middle or right_pressed);
     if (on_tabs) if (self.tab_bar.hit(point)) |h| {
-        if (h.close or middle) _ = try self.closeTab(h.index) else try self.activate(h.index);
+        const index = self.paneStart(self.pane) + h.index;
+        if (right_pressed) {
+            self.openTabMenu(index, point);
+        } else if (h.close or middle) {
+            _ = try self.closeTab(index);
+        } else {
+            try self.activate(index);
+            self.startTabPress(index, point);
+        }
     };
 
     // The Git tab's tooltip floats over the sidebar: it takes the mouse
@@ -103,6 +134,10 @@ pub fn handleMouse(self: *App) !bool {
         .search => self.search_panel.scrollBy(rl.getMouseWheelMove()),
         .git => self.git_panel.scrollBy(rl.getMouseWheelMove()),
     };
+    // The wheel scrolls whichever pane it is over, keyboard or not.
+    const on_other_pane = !over_sidebar and !over_tabs and self.split != null and
+        (if (self.paneAt(point)) |p| p != self.pane else false);
+    if (on_other_pane) self.other_view.scrollBy(rl.getMouseWheelMoveV());
     // The Help tab's list is longer than the window, and Settings can be
     // too: the wheel scrolls them.
     if (!over_sidebar and !over_tabs) switch (self.activeTab().kind) {
@@ -143,7 +178,9 @@ pub fn handleMouse(self: *App) !bool {
     // Clicking anywhere but the name box gives up on the new entry.
     if ((pressed or right_pressed) and !keep_name_box) self.sidebar.cancelInput();
     try self.updateTreePress(point);
-    const dragging = self.tree_press != null and self.tree_press.?.dragging;
+    try self.updateTabPress(point);
+    const dragging = (self.tree_press != null and self.tree_press.?.dragging) or
+        (self.tab_press != null and self.tab_press.?.dragging);
 
     // A drag in the sidebar owns the mouse (and re-lays-out every frame).
     const captured = on_popup or on_find or on_tabs or on_sidebar or dragging;
@@ -174,7 +211,7 @@ pub fn handleMouse(self: *App) !bool {
     // The minimap: click or drag to scroll.
     if (self.settings.minimap and !captured and self.minimap.handleMouse(&self.view, self.buf(), point, pressed)) return true;
 
-    const moved = self.mouse.update(&self.view, self.buf(), captured, !over_sidebar and !over_tabs);
+    const moved = self.mouse.update(&self.view, self.buf(), captured, !over_sidebar and !over_tabs and !on_other_pane);
     if (moved) {
         self.completion.close();
         self.find.focus = .editor;

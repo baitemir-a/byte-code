@@ -15,6 +15,9 @@ pub const strings: Strings = .{
         .welcome = "Кош келиңиз",
         .settings = "Жөндөөлөр",
         .help = "Жардам",
+        .split_right = "Оңго бөлүү",
+        .split_down = "Ылдый бөлүү",
+        .move_to_other = "Башка панелге өткөрүү",
     },
     .welcome = .{
         .subtitle = "Жеңил код редактору",

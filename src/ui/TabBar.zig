@@ -47,8 +47,10 @@ pub fn layout(self: *TabBar, gpa: std.mem.Allocator, tabs: []const Tab, active: 
         x += w;
     }
 
+    // A pane always has a tab, but never lay out a bar without one.
+    if (self.tab_rects.items.len == 0) return;
     // Scroll just enough to keep the active tab in view.
-    const a = self.tab_rects.items[active];
+    const a = self.tab_rects.items[@min(active, self.tab_rects.items.len - 1)];
     if (a.x < self.scroll) self.scroll = a.x;
     if (a.x + a.width > self.scroll + area.width) self.scroll = a.x + a.width - area.width;
     self.scroll = std.math.clamp(self.scroll, 0, @max(0, x - area.width));
@@ -76,7 +78,9 @@ fn closeRect(r: rl.Rectangle) rl.Rectangle {
     return .{ .x = r.x + r.width - pad / 2 - close_size, .y = r.y + (r.height - close_size) / 2, .width = close_size, .height = close_size };
 }
 
-pub fn draw(self: *const TabBar, tabs: []const Tab, active: usize, font: Font) void {
+/// `focused` is whether this bar's pane has the keyboard: the other one's
+/// active tab is marked more faintly.
+pub fn draw(self: *const TabBar, tabs: []const Tab, active: usize, font: Font, focused: bool) void {
     const area = self.rect;
     rl.drawRectangleRec(area, theme.tab_bar_background);
     theme.clip(area);
@@ -90,7 +94,7 @@ pub fn draw(self: *const TabBar, tabs: []const Tab, active: usize, font: Font) v
         const hovered = self.hovered == i;
         if (is_active) {
             rl.drawRectangleRec(r, theme.background);
-            rl.drawRectangleRec(.{ .x = r.x, .y = r.y, .width = r.width, .height = 2 }, theme.accent);
+            rl.drawRectangleRec(.{ .x = r.x, .y = r.y, .width = r.width, .height = 2 }, theme.copy(if (focused) theme.accent else theme.accentDim(0.5)));
         } else if (hovered) {
             rl.drawRectangleRec(r, theme.tab_hover);
         }

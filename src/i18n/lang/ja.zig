@@ -15,6 +15,9 @@ pub const strings: Strings = .{
         .welcome = "ようこそ",
         .settings = "設定",
         .help = "ヘルプ",
+        .split_right = "右に分割",
+        .split_down = "下に分割",
+        .move_to_other = "別のペインに移動",
     },
     .welcome = .{
         .subtitle = "軽量なコードエディター",

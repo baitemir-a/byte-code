@@ -22,11 +22,15 @@ pub const Strings = struct {
         /// Above the path of settings.json / keybindings.json.
         saved_to: []const u8,
     },
-    /// Names of the tabs that aren't files.
+    /// Names of the tabs that aren't files, and the right-click menu on a
+    /// tab, which splits the editor in two.
     tabs: struct {
         welcome: []const u8,
         settings: []const u8,
         help: []const u8,
+        split_right: []const u8,
+        split_down: []const u8,
+        move_to_other: []const u8,
     },
     welcome: struct {
         subtitle: []const u8,

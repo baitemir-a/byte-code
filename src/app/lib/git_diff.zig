@@ -61,7 +61,7 @@ pub fn openDiffTab(self: *App, path: []const u8, against: Against) !void {
     tab.highlighter.language = .fromPath(path);
     tab.setLabel(self.gpa, path, against) catch {};
     const at = @min(self.active + 1, self.tabs.items.len);
-    try self.tabs.insert(self.gpa, at, tab);
+    try self.insertTab(at, tab);
     try self.activate(at);
     self.view.scroll = .{ .x = 0, .y = 0 };
     const t = self.tab();
@@ -109,7 +109,7 @@ pub fn openRevDiff(self: *App, old_rev: []const u8, new_rev: []const u8, file: c
     tab.highlighter.language = .fromPath(path);
     tab.label = try std.fmt.allocPrint(self.gpa, "{s} ({s})", .{ std.fs.path.basename(path), label });
     const at = @min(self.active + 1, self.tabs.items.len);
-    try self.tabs.insert(self.gpa, at, tab);
+    try self.insertTab(at, tab);
     try self.activate(at);
     self.view.scroll = .{ .x = 0, .y = 0 };
     const t = self.tab();
@@ -214,7 +214,12 @@ fn relativePath(gpa: std.mem.Allocator, repo: []const u8, path: []const u8) !?[]
 /// What the editor shows of the changes: marks beside the line numbers
 /// while editing, both copies at once in the diff tab.
 pub fn changes(self: *const App) ?View.Changes {
-    const t = self.activeTab();
+    return changesOf(self.activeTab());
+}
+
+/// The marks a tab's text shows: git's changes beside a file's lines, or
+/// both copies of it in a diff tab.
+pub fn changesOf(t: *const Tab) ?View.Changes {
     return switch (t.kind) {
         .file => if (t.diff.hunks.items.len == 0) null else .{ .diff = &t.diff, .combined = false },
         .diff => if (t.diff.combined_lines.items.len == 0) null else .{ .diff = &t.diff, .combined = true },

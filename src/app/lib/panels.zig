@@ -382,10 +382,12 @@ pub fn reloadUnchangedTabs(self: *App) !void {
         std.Io.Dir.cwd().access(self.io, path, .{}) catch continue;
         const copy = try self.gpa.dupe(u8, path);
         defer self.gpa.free(copy);
-        const scroll = if (t == self.tab()) self.view.scroll else t.scroll;
+        const in_other = self.split != null and t == self.otherTab();
+        const scroll = if (t == self.tab()) self.view.scroll else if (in_other) self.other_view.scroll else t.scroll;
         t.load(self.gpa, self.io, copy) catch continue; // deleted, or unreadable
         t.scroll = scroll;
         if (t == self.tab()) self.view.scroll = scroll;
+        if (in_other) self.other_view.scroll = scroll;
     }
 }
 

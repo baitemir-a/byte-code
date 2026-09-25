@@ -15,6 +15,9 @@ pub const strings: Strings = .{
         .welcome = "시작",
         .settings = "설정",
         .help = "도움말",
+        .split_right = "오른쪽으로 분할",
+        .split_down = "아래로 분할",
+        .move_to_other = "다른 창으로 이동",
     },
     .welcome = .{
         .subtitle = "가벼운 코드 편집기",

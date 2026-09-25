@@ -31,6 +31,11 @@ the system warns the first time you open them:
 - **Editing** — multiple tabs, undo/redo, selection with keyboard and mouse,
   word-wise movement, auto-closing brackets and quotes, auto-indent, tab
   stops, UTF-8 (Latin, Cyrillic, Greek…)
+- **Split the editor in two** — right-click a tab for "Split Right" or
+  "Split Down", or drag a tab to the right or bottom edge of the text to
+  make a second pane (and from one pane onto the other to move it there).
+  Drag the line between the panes to share the room; the pane you click in
+  gets the keyboard, and closing its last tab puts the editor back together
 - **Syntax highlighting** — JavaScript/TypeScript (including JSX and TSX
   markup), JSON, HTML, XML, CSS/SCSS/Sass/Less, Markdown (with highlighted
   code blocks), Python, Go, Rust, Zig, TOML, YAML, `.env`, `.gitignore`,

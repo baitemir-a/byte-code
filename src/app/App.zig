@@ -51,6 +51,7 @@ const symbol_nav = @import("lib/symbol_nav.zig");
 const editing = @import("lib/editing.zig");
 const clipboard = @import("lib/clipboard.zig");
 const dispatch = @import("lib/dispatch.zig");
+const split_panes = @import("lib/split.zig");
 const shortcuts = @import("lib/shortcuts.zig");
 
 pub const app_name = "byte code";
@@ -83,6 +84,10 @@ pub const MenuAction = union(enum) {
     all_refs,
     /// The language menu in Settings.
     set_language: core.Settings.Language,
+    /// The right-click menu on a tab: the editor in two panes.
+    split_right,
+    split_down,
+    move_to_other_pane,
 
     /// The menu row for the actions whose wording never changes; the
     /// ctrl+click ones are labelled with the place they lead to.
@@ -96,6 +101,9 @@ pub const MenuAction = union(enum) {
             .add_to_gitignore => t.add_to_gitignore,
             .go_to_ref, .all_refs => "",
             .set_language => |l| l.nativeName(),
+            .split_right => i18n.tr().tabs.split_right,
+            .split_down => i18n.tr().tabs.split_down,
+            .move_to_other_pane => i18n.tr().tabs.move_to_other,
         };
     }
 };
@@ -125,6 +133,8 @@ menu: ContextMenu = .{},
 menu_actions: [ContextMenu.max_items]MenuAction = undefined,
 menu_node: ?u32 = null,
 menu_folder: u32 = 0,
+/// The tab the right-click menu was opened on, for its split actions.
+menu_tab: ?usize = null,
 /// Ctrl+click: the name looked up and where it is used, listed by the
 /// menu and left alone until the next lookup.
 refs: std.ArrayList(Ref) = .empty,
@@ -135,6 +145,25 @@ ref_name: std.ArrayList(u8) = .empty,
 /// point at another file.
 tree_press: ?TreePress = null,
 tab_bar: TabBar = .{},
+/// The editor in two panes (see lib/split.zig): which way the second one
+/// goes and where its tabs start, how the room is shared between them, and
+/// which of them has the keyboard. The pane that has it uses `view`,
+/// `tab_bar`, `minimap` and `active`; the other one's are kept here and
+/// swapped in when it is clicked.
+split: ?split_panes.Dir = null,
+split_at: usize = 0,
+split_ratio: f32 = 0.5,
+pane: u1 = 0,
+other_active: usize = 0,
+other_view: View,
+other_bar: TabBar = .{},
+other_minimap: Minimap = .{},
+/// Where each pane draws, its own tab bar included; set by `layout`.
+pane_rects: [2]rl.Rectangle = .{ std.mem.zeroes(rl.Rectangle), std.mem.zeroes(rl.Rectangle) },
+/// The divider between the panes is being dragged.
+split_resizing: bool = false,
+/// A tab held down, which dragging moves to the other pane.
+tab_press: ?split_panes.TabPress = null,
 welcome: WelcomePage = .{},
 /// Window focus last frame: regaining it re-reads the project folder.
 was_focused: bool = true,
@@ -317,6 +346,7 @@ pub const handleTerminalKeys = terminal_io.handleTerminalKeys;
 pub const handleTerminalMouse = terminal_io.handleTerminalMouse;
 
 // tab_actions.zig
+pub const insertTab = tab_actions.insertTab;
 pub const activate = tab_actions.activate;
 pub const cycleTabs = tab_actions.cycleTabs;
 pub const newFile = tab_actions.newFile;
@@ -362,6 +392,25 @@ pub const revealCurrentFile = tree.revealCurrentFile;
 // mouse_input.zig
 pub const handleMouse = mouse_input.handleMouse;
 
+// split.zig
+pub const paneOf = split_panes.paneOf;
+pub const paneStart = split_panes.paneStart;
+pub const paneEnd = split_panes.paneEnd;
+pub const paneTabs = split_panes.paneTabs;
+pub const paneCount = split_panes.paneCount;
+pub const paneAt = split_panes.paneAt;
+pub const focusPane = split_panes.focusPane;
+pub const splitTab = split_panes.splitTab;
+pub const moveTab = split_panes.moveTab;
+pub const collapseSplit = split_panes.collapse;
+pub const openTabMenu = split_panes.openTabMenu;
+pub const runTabMenuAction = split_panes.runTabMenuAction;
+pub const startTabPress = split_panes.startTabPress;
+pub const updateTabPress = split_panes.updateTabPress;
+pub const dividerRect = split_panes.dividerRect;
+pub const resizeSplit = split_panes.resizeSplit;
+pub const otherTab = split_panes.otherTab;
+
 // symbol_nav.zig
 pub const symbolClick = symbol_nav.symbolClick;
 pub const openRef = symbol_nav.openRef;
@@ -394,6 +443,7 @@ pub fn init(gpa: std.mem.Allocator, io: std.Io) !App {
         .gpa = gpa,
         .io = io,
         .view = View.init(gpa, Font.load()),
+        .other_view = undefined,
         .completion = .init(gpa),
         .find = .init(gpa),
         .sidebar = .init(gpa),
@@ -411,6 +461,8 @@ pub fn init(gpa: std.mem.Allocator, io: std.Io) !App {
         .picker = .init(gpa),
         .git_refs = .init(gpa),
     };
+    // The second pane's view shares the font that was just loaded.
+    app.other_view = View.init(gpa, app.view.font);
     app.sidebar.preferred_width = @floatFromInt(settings.sidebar_width);
     return app;
 }
@@ -428,6 +480,7 @@ pub fn deinit(self: *App) void {
     self.refs.deinit(self.gpa);
     self.ref_name.deinit(self.gpa);
     self.view.deinit();
+    self.other_view.deinit();
     self.quick_open.deinit();
     self.file_search.deinit();
     self.search_panel.deinit();
@@ -437,6 +490,7 @@ pub fn deinit(self: *App) void {
     self.tabs.deinit(self.gpa);
     self.commands.deinit(self.gpa);
     self.tab_bar.deinit(self.gpa);
+    self.other_bar.deinit(self.gpa);
     if (self.project) |*p| p.deinit();
     if (self.tree_press) |t| self.gpa.free(t.path);
     if (self.terminal) |*t| t.deinit();
@@ -536,6 +590,15 @@ pub fn update(self: *App) !void {
         self.popup.layout(&self.completion, &self.view, self.buf());
         self.find.layout(&self.view);
     }
+    // The pane without the keyboard: its text stays coloured and its
+    // scroll inside the file, even while it is only being looked at.
+    if (self.split != null) {
+        const t = self.otherTab();
+        if (t.kind == .file or t.kind == .diff) {
+            self.other_view.clampScroll(&t.buffer);
+            try t.highlighter.update(self.gpa, &t.buffer);
+        }
+    }
     self.autosave();
     try self.updateSidebarViews();
     try self.updateDiff();
@@ -565,7 +628,8 @@ pub fn windowSize() rl.Vector2 {
     };
 }
 
-/// Sidebar on the left; tab bar on top of the rest; the editor below it.
+/// Sidebar on the left; the editor column beside it, in one pane or two,
+/// each with its tab bar on top; the terminal panel along their bottom.
 pub fn layout(self: *App, full_window: rl.Vector2) !void {
     // The bar at the bottom takes its height off everything else.
     self.status.layout(full_window);
@@ -579,30 +643,54 @@ pub fn layout(self: *App, full_window: rl.Vector2) !void {
     }
     self.menu.update();
     const left = self.sidebar.width();
-    const bar: rl.Rectangle = .{ .x = left, .y = 0, .width = window.x - left, .height = TabBar.height };
-    try self.tab_bar.layout(self.gpa, self.tabs.items, self.active, bar, self.view.font);
-    // The terminal panel takes the bottom of the editor column.
-    const column: rl.Rectangle = .{ .x = left, .y = bar.height, .width = bar.width, .height = window.y - bar.height };
+    const full: rl.Rectangle = .{ .x = left, .y = 0, .width = window.x - left, .height = window.y };
+    // The terminal panel takes the bottom of the column, under both panes.
+    const column: rl.Rectangle = .{ .x = left, .y = TabBar.height, .width = full.width, .height = window.y - TabBar.height };
     self.terminal_panel.layout(column, self.view.font);
     if (self.terminal) |*t| try t.resize(self.terminal_panel.cols, self.terminal_panel.rows);
-    var editor = column;
-    editor.height -= self.terminal_panel.takenHeight(column);
-    // The minimap takes the editor's right edge.
-    var text_area = editor;
-    if (self.settings.minimap and self.isEditing()) {
-        self.minimap.layout(editor);
-        text_area.width -= Minimap.width;
+    var panes = full;
+    panes.height -= self.terminal_panel.takenHeight(column);
+    self.pane_rects = split_panes.paneRects(self, panes);
+
+    const editor = try layoutPane(self, self.pane, &self.view, &self.tab_bar, &self.minimap, self.active);
+    if (self.split != null) {
+        const p: u1 = if (self.pane == 0) 1 else 0;
+        _ = try layoutPane(self, p, &self.other_view, &self.other_bar, &self.other_minimap, self.other_active);
     }
-    self.view.wrap = self.settings.word_wrap;
-    try self.view.layout(self.buf(), text_area);
+    // The lists that drop down over the editor belong to the pane with
+    // the keyboard.
     self.quick_open.layout(editor, self.view.font);
     self.picker.layout(editor, self.view.font);
-    switch (self.activeTab().kind) {
-        .welcome => self.welcome.layout(editor, self.view.font, self.projects.entries.items),
-        .settings => self.settings_page.layout(editor, self.view.font),
-        .help => self.help_page.layout(editor, self.view.font),
+}
+
+/// One pane: its tab bar along the top, then the text (with the minimap
+/// at its right edge) or the page its tab shows. Returns the area below
+/// the tab bar.
+fn layoutPane(self: *App, pane: u1, view: *View, bar: *TabBar, map: *Minimap, active: usize) !rl.Rectangle {
+    const area = self.pane_rects[pane];
+    const bar_rect: rl.Rectangle = .{ .x = area.x, .y = area.y, .width = area.width, .height = TabBar.height };
+    try bar.layout(self.gpa, self.paneTabs(pane), active - self.paneStart(pane), bar_rect, view.font);
+    const editor: rl.Rectangle = .{
+        .x = area.x,
+        .y = area.y + TabBar.height,
+        .width = area.width,
+        .height = @max(0, area.height - TabBar.height),
+    };
+    const t = &self.tabs.items[active];
+    var text_area = editor;
+    if (self.settings.minimap and (t.kind == .file or t.kind == .diff)) {
+        map.layout(editor);
+        text_area.width -= Minimap.width;
+    }
+    view.wrap = self.settings.word_wrap;
+    try view.layout(&t.buffer, text_area);
+    switch (t.kind) {
+        .welcome => self.welcome.layout(editor, view.font, self.projects.entries.items),
+        .settings => self.settings_page.layout(editor, view.font),
+        .help => self.help_page.layout(editor, view.font),
         .file, .diff => {},
     }
+    return editor;
 }
 
 // ------------------------------------------------------------ display
@@ -614,6 +702,7 @@ pub fn matchFontToDisplay(self: *App) void {
     if (@abs(scale * self.view.font.pixel - 1) < 0.01) return;
     self.view.font.unload();
     self.view.font = Font.load();
+    self.other_view.font = self.view.font;
 }
 
 /// Mouse positions in UI units. The pointer comes in the window system's
