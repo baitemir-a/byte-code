@@ -66,6 +66,12 @@ pub fn draw(self: *const SettingsPage, font: Font, settings: *const Settings, se
     label(font, t.minimap, t.minimap_hint, x, self.rowY(rows.minimap), self.minimap_toggle.x);
     drawToggle(self.minimap_toggle, settings.minimap, anim.hash("settings_toggle", rows.minimap));
 
+    // The icon each file shows: one for all, one per type, or none.
+    label(font, t.file_icons, t.file_icons_hint, x, self.rowY(rows.file_icons), self.file_icons_button.x);
+    drawButton(font, self.file_icons_button, SettingsPage.fileIconsLabel(settings.file_icon_mode), true);
+    const ib = self.file_icons_button;
+    font.drawIcon(.chevron_down, .{ .x = ib.x + ib.width - 14, .y = ib.y + ib.height / 2 }, .small, theme.popup_detail);
+
     // Word wrap
     var wrap_buf: [128]u8 = undefined;
     label(font, t.word_wrap, i18n.fill(&wrap_buf, t.word_wrap_hint, .{SettingsPage.opt ++ "+Z"}), x, self.rowY(rows.word_wrap), self.wrap_toggle.x);

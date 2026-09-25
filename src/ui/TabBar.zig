@@ -8,11 +8,10 @@ const anim = @import("anim.zig");
 const Tab = @import("../app/Tab.zig");
 const file_icon = @import("widgets/lib/file_icon.zig");
 
-/// Room for the file-type icon in front of a file tab's name.
-const icon_space: f32 = file_icon.size + 8;
-
+/// Room for the icon in front of a file tab's name (none when icons are
+/// turned off in Settings).
 fn iconSpace(t: *const Tab) f32 {
-    return if (t.kind == .file or t.kind == .diff) icon_space else 0;
+    return if (t.kind == .file or t.kind == .diff) file_icon.space() else 0;
 }
 
 const TabBar = @This();

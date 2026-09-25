@@ -11,6 +11,10 @@ pub const default_accent = [3]u8{ 24, 163, 255 };
 
 pub const Theme = enum { dark, light };
 
+/// The icon in front of a file's name: the same plain page for every
+/// file, the icon for its type, or none at all.
+pub const FileIcons = enum { default, icons, none };
+
 /// The language of the app's own text (menus, pages, messages). Stored
 /// by its ISO 639-1 code; listed in this order in Settings.
 pub const Language = enum {
@@ -65,6 +69,10 @@ autosave_delay_ms: u32 = 1000,
 /// UI zoom, in percent.
 zoom: u16 = 100,
 minimap: bool = true,
+/// What a file shows in front of its name in the tree, the tabs and the
+/// lists. A field of its own, so an older settings.json (which had a
+/// switch here) falls back to the default instead of failing to parse.
+file_icon_mode: FileIcons = .icons,
 /// Long lines continue on the next row instead of scrolling sideways.
 word_wrap: bool = false,
 /// Opening a folder while one is open starts a new window for it

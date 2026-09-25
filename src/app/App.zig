@@ -83,8 +83,9 @@ pub const MenuAction = union(enum) {
     go_to_ref: u32,
     /// Ctrl+click: put every one of them in the Search view.
     all_refs,
-    /// The language menu in Settings.
+    /// The language and file-icon menus in Settings.
     set_language: core.Settings.Language,
+    set_file_icons: core.Settings.FileIcons,
     /// The right-click menu on a tab: the editor in two panes.
     split_right,
     split_down,
@@ -102,6 +103,7 @@ pub const MenuAction = union(enum) {
             .add_to_gitignore => t.add_to_gitignore,
             .go_to_ref, .all_refs => "",
             .set_language => |l| l.nativeName(),
+            .set_file_icons => |m| SettingsPage.fileIconsLabel(m),
             .split_right => i18n.tr().tabs.split_right,
             .split_down => i18n.tr().tabs.split_down,
             .move_to_other_pane => i18n.tr().tabs.move_to_other,
@@ -281,6 +283,7 @@ pub const openSettings = settings_actions.openSettings;
 pub const runSettingsAction = settings_actions.runSettingsAction;
 pub const autosave = settings_actions.autosave;
 pub const setLanguage = settings_actions.setLanguage;
+pub const setFileIcons = settings_actions.setFileIcons;
 
 // go_to_file.zig
 pub const openQuickOpen = go_to_file.openQuickOpen;

@@ -10,6 +10,17 @@ const theme = @import("../../theme/lib/theme.zig");
 /// Width and height of an icon, in UI units (the pack draws on 16x16).
 pub const size: f32 = 16;
 
+/// What a file shows in front of its name (Settings): the same plain
+/// page for every file, the icon for its type, or nothing at all.
+pub const Mode = enum { same, by_type, none };
+pub var mode: Mode = .by_type;
+
+/// Room a row leaves in front of a name: the icon and the gap after it,
+/// or nothing when icons are off.
+pub fn space() f32 {
+    return if (mode == .none) 0 else size + 8;
+}
+
 /// The pack's icons that are used, by file name without `.svg`.
 const Icon = enum {
     file,
@@ -443,6 +454,7 @@ const by_extension = std.StaticStringMap(Icon).initComptime(.{
 });
 
 fn iconFor(name: []const u8) Icon {
+    if (mode != .by_type) return .file;
     var buf: [128]u8 = undefined;
     if (name.len > buf.len) return by_extension.get(lower(&buf, std.fs.path.extension(name))) orelse .file;
     const n = lower(&buf, name);
@@ -485,6 +497,7 @@ fn texture(icon: Icon, px: i32, dark: bool) ?rl.Texture2D {
 /// Draws the icon for file `name` centered at `center`, on whole screen
 /// pixels.
 pub fn draw(name: []const u8, center: rl.Vector2) void {
+    if (mode == .none) return;
     // Screen pixels per UI unit: display density times zoom.
     const scale = @max(1, rl.getWindowScaleDPI().x) * theme.zoom;
     const px: i32 = @intFromFloat(@round(size * scale));

@@ -61,7 +61,7 @@ pub fn draw(self: *const SearchPanel, font: Font, focus: u2, show_caret: bool, h
             const count = std.fmt.bufPrint(&count_buf, "{d}", .{f.count}) catch "";
             const count_x = r.x + r.width - SearchPanel.pad - font.textWidth(count);
             const ty = y + (row_height - theme.font_size) / 2;
-            var x = font.drawFit(f.path[base..], r.x + SearchPanel.pad + file_icon.size + 8, ty, count_x - 8, theme.foreground);
+            var x = font.drawFit(f.path[base..], r.x + SearchPanel.pad + file_icon.space(), ty, count_x - 8, theme.foreground);
             if (base > 0) _ = font.drawFit(f.path[0 .. base - 1], x + font.cell_width, ty, count_x - 8, theme.popup_detail);
             x = count_x;
             _ = font.drawFit(count, x, ty, r.x + r.width, theme.popup_detail);

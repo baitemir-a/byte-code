@@ -63,6 +63,13 @@ pub const Strings = struct {
         zoom: []const u8,
         minimap: []const u8,
         minimap_hint: []const u8,
+        file_icons: []const u8,
+        file_icons_hint: []const u8,
+        /// The three the menu offers: one page for every file, the icon
+        /// for each file's type, or no icon at all.
+        file_icons_default: []const u8,
+        file_icons_all: []const u8,
+        file_icons_none: []const u8,
         word_wrap: []const u8,
         /// {1}: its shortcut.
         word_wrap_hint: []const u8,

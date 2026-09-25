@@ -30,6 +30,8 @@ pub const Action = union(enum) {
     zoom_out,
     zoom_reset,
     toggle_minimap,
+    /// Opens the menu of icon modes under its button.
+    choose_file_icons: rl.Rectangle,
     toggle_word_wrap,
     toggle_new_window,
     toggle_confirm_discard,
@@ -77,6 +79,7 @@ zoom_minus: rl.Rectangle = undefined,
 zoom_plus: rl.Rectangle = undefined,
 zoom_reset: rl.Rectangle = undefined,
 minimap_toggle: rl.Rectangle = undefined,
+file_icons_button: rl.Rectangle = undefined,
 wrap_toggle: rl.Rectangle = undefined,
 new_window_toggle: rl.Rectangle = undefined,
 confirm_discard_toggle: rl.Rectangle = undefined,
@@ -122,9 +125,13 @@ pub fn layout(self: *SettingsPage, area: rl.Rectangle, font: Font) void {
     self.zoom_reset = .{ .x = right - reset_w, .y = self.rowY(5), .width = reset_w, .height = button };
     self.zoom_plus = .{ .x = right - reset_w - 12 - button, .y = self.rowY(5), .width = button, .height = button };
     self.zoom_minus = .{ .x = self.zoom_plus.x - 90 - button, .y = self.rowY(5), .width = button, .height = button };
-    self.minimap_toggle = .{ .x = right - 46, .y = self.rowY(6) + 3, .width = 46, .height = 22 };
-    self.wrap_toggle = .{ .x = right - 46, .y = self.rowY(7) + 3, .width = 46, .height = 22 };
-    self.new_window_toggle = .{ .x = right - 46, .y = self.rowY(8) + 3, .width = 46, .height = 22 };
+    self.minimap_toggle = .{ .x = right - 46, .y = self.rowY(rows.minimap) + 3, .width = 46, .height = 22 };
+    var icons_w: f32 = 0;
+    for (std.enums.values(Settings.FileIcons)) |v| icons_w = @max(icons_w, font.textWidth(fileIconsLabel(v)));
+    icons_w += 40;
+    self.file_icons_button = .{ .x = right - icons_w, .y = self.rowY(rows.file_icons), .width = icons_w, .height = button };
+    self.wrap_toggle = .{ .x = right - 46, .y = self.rowY(rows.word_wrap) + 3, .width = 46, .height = 22 };
+    self.new_window_toggle = .{ .x = right - 46, .y = self.rowY(rows.new_window) + 3, .width = 46, .height = 22 };
     self.confirm_discard_toggle = .{ .x = right - 46, .y = self.rowY(rows.confirm_discard) + 3, .width = 46, .height = 22 };
     self.pull_rebase_toggle = .{ .x = right - 46, .y = self.rowY(rows.pull_rebase) + 3, .width = 46, .height = 22 };
     self.inline_blame_toggle = .{ .x = right - 46, .y = self.rowY(rows.inline_blame) + 3, .width = 46, .height = 22 };
@@ -142,15 +149,16 @@ pub const rows = struct {
     pub const delay = 4;
     pub const zoom = 5;
     pub const minimap = 6;
-    pub const word_wrap = 7;
-    pub const new_window = 8;
-    pub const confirm_discard = 9;
-    pub const pull_rebase = 10;
-    pub const inline_blame = 11;
-    pub const smooth = 12;
-    pub const shortcuts = 13;
+    pub const file_icons = 7;
+    pub const word_wrap = 8;
+    pub const new_window = 9;
+    pub const confirm_discard = 10;
+    pub const pull_rebase = 11;
+    pub const inline_blame = 12;
+    pub const smooth = 13;
+    pub const shortcuts = 14;
     /// "Saved to:" and the path.
-    pub const path = 14;
+    pub const path = 15;
 };
 
 pub fn rowY(self: *const SettingsPage, row: usize) f32 {
@@ -194,6 +202,7 @@ pub fn actionAt(self: *const SettingsPage, p: rl.Vector2, settings: *const Setti
     if (hit(p, self.zoom_plus)) return .zoom_in;
     if (hit(p, self.zoom_reset)) return .zoom_reset;
     if (hit(p, self.minimap_toggle)) return .toggle_minimap;
+    if (hit(p, self.file_icons_button)) return .{ .choose_file_icons = self.file_icons_button };
     if (hit(p, self.wrap_toggle)) return .toggle_word_wrap;
     if (hit(p, self.new_window_toggle)) return .toggle_new_window;
     if (hit(p, self.confirm_discard_toggle)) return .toggle_confirm_discard;
@@ -202,6 +211,16 @@ pub fn actionAt(self: *const SettingsPage, p: rl.Vector2, settings: *const Setti
     if (hit(p, self.smooth_toggle)) return .toggle_smooth;
     if (hit(p, self.shortcuts_button)) return .open_help;
     return null;
+}
+
+/// What the icon modes are called in the menu and on the button.
+pub fn fileIconsLabel(mode: Settings.FileIcons) []const u8 {
+    const t = i18n.tr().settings;
+    return switch (mode) {
+        .default => t.file_icons_default,
+        .icons => t.file_icons_all,
+        .none => t.file_icons_none,
+    };
 }
 
 pub fn hit(p: rl.Vector2, r: rl.Rectangle) bool {

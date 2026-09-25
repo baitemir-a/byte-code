@@ -4,6 +4,7 @@ const rl = @import("raylib");
 const core = @import("core");
 const theme = @import("../../ui/theme/lib/theme.zig");
 const anim = @import("../../ui/anim.zig");
+const file_icon = @import("../../ui/widgets/lib/file_icon.zig");
 const Font = @import("../../ui/Font.zig");
 const SettingsPage = @import("../../ui/pages/SettingsPage.zig");
 const App = @import("../App.zig");
@@ -19,6 +20,11 @@ pub fn applyToTheme(s: core.Settings) void {
     theme.accent = .{ .r = s.accent[0], .g = s.accent[1], .b = s.accent[2], .a = 255 };
     theme.zoom = @as(f32, @floatFromInt(s.zoom)) / 100;
     anim.enabled = s.smooth_animations;
+    file_icon.mode = switch (s.file_icon_mode) {
+        .default => .same,
+        .icons => .by_type,
+        .none => .none,
+    };
     i18n.setLanguage(s.language);
 }
 
@@ -49,6 +55,7 @@ pub fn runSettingsAction(self: *App, action: SettingsPage.Action) !void {
     // Not a setting: it opens a tab.
     if (action == .open_help) return self.openHelp();
     if (action == .choose_language) return openLanguageMenu(self, action.choose_language);
+    if (action == .choose_file_icons) return openFileIconsMenu(self, action.choose_file_icons);
     const old = self.settings;
     switch (action) {
         .theme => |t| self.settings.theme = t,
@@ -65,7 +72,7 @@ pub fn runSettingsAction(self: *App, action: SettingsPage.Action) !void {
         .toggle_smooth => self.settings.smooth_animations = !self.settings.smooth_animations,
         .toggle_word_wrap => self.settings.word_wrap = !self.settings.word_wrap,
         .toggle_new_window => self.settings.open_folder_in_new_window = !self.settings.open_folder_in_new_window,
-        .open_help, .choose_language => unreachable,
+        .open_help, .choose_language, .choose_file_icons => unreachable,
     }
     try self.settingsChanged(old);
 }
@@ -80,6 +87,24 @@ fn openLanguageMenu(self: *App, button: rl.Rectangle) void {
     }
     self.menu_node = null;
     self.menu.open(labels[0..languages.len], .{ .x = button.x, .y = button.y + button.height + 2 }, App.windowSize(), self.view.font);
+}
+
+/// The icon modes, in a menu under `button`.
+fn openFileIconsMenu(self: *App, button: rl.Rectangle) void {
+    var labels: [ContextMenu.max_items][]const u8 = undefined;
+    const modes = std.enums.values(core.Settings.FileIcons);
+    for (modes, 0..) |mode, i| {
+        labels[i] = SettingsPage.fileIconsLabel(mode);
+        self.menu_actions[i] = .{ .set_file_icons = mode };
+    }
+    self.menu_node = null;
+    self.menu.open(labels[0..modes.len], .{ .x = button.x, .y = button.y + button.height + 2 }, App.windowSize(), self.view.font);
+}
+
+pub fn setFileIcons(self: *App, mode: core.Settings.FileIcons) !void {
+    const old = self.settings;
+    self.settings.file_icon_mode = mode;
+    try self.settingsChanged(old);
 }
 
 pub fn setLanguage(self: *App, lang: core.Settings.Language) !void {
