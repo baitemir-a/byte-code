@@ -8,6 +8,10 @@ const WelcomePage = @import("WelcomePage.zig");
 const i18n = @import("../../i18n/i18n.zig");
 
 pub fn draw(self: *const WelcomePage, font: Font, projects: []const core.Projects.Entry) void {
+    theme.clip(self.area);
+    defer drawScrollbar(self);
+    defer rl.endScissorMode();
+
     const x = self.origin.x;
     var y = self.origin.y;
 
@@ -46,6 +50,21 @@ pub fn draw(self: *const WelcomePage, font: Font, projects: []const core.Project
     }
 
     drawText(font, t.drop_hint, x, self.hint_y, theme.font_size, theme.popup_detail);
+}
+
+/// A thin bar on the right edge showing how far down the page we are.
+fn drawScrollbar(self: *const WelcomePage) void {
+    if (self.max_scroll <= 0) return;
+    const h = self.area.height;
+    const visible = h / (h + self.max_scroll);
+    const thumb_h = @max(40, h * visible);
+    const t = self.scroll / self.max_scroll;
+    rl.drawRectangleRounded(.{
+        .x = self.area.x + self.area.width - 8,
+        .y = self.area.y + t * (h - thumb_h),
+        .width = 4,
+        .height = thumb_h,
+    }, 1, 6, theme.scrollbar_thumb);
 }
 
 fn drawHeading(font: Font, s: []const u8, x: f32, y: f32) void {

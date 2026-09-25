@@ -153,6 +153,7 @@ pub fn handleMouse(self: *App) !bool {
     if (!over_sidebar and !over_tabs) switch (self.activeTab().kind) {
         .help => self.help_page.scrollBy(rl.getMouseWheelMove()),
         .settings => self.settings_page.scrollBy(rl.getMouseWheelMove()),
+        .welcome => self.welcome.scrollBy(rl.getMouseWheelMove()),
         else => {},
     };
     // Clicking outside the sidebar takes the keyboard from its text boxes.

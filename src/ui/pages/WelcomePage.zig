@@ -64,50 +64,82 @@ hovered_star: ?usize = null,
 origin: rl.Vector2 = .{ .x = 0, .y = 0 },
 projects_top: f32 = 0,
 hint_y: f32 = 0,
+/// Where the page draws; set by `layout`.
+area: rl.Rectangle = std.mem.zeroes(rl.Rectangle),
+/// A window too short for the lists scrolls instead of dropping rows.
+scroll: f32 = 0,
+max_scroll: f32 = 0,
 
 // Drawing, in WelcomePage_draw.zig.
 pub const draw = WelcomePage_draw.draw;
 
 pub fn layout(self: *WelcomePage, area: rl.Rectangle, font: Font, projects: []const core.Projects.Entry) void {
+    self.area = area;
     const w = content_cols * font.cell_width;
+    // Laid out from the top of the area first, then moved into place: how
+    // tall it comes out decides whether it is centred or scrolls.
     self.origin = .{
         .x = area.x + @max(theme.padding * 2, (area.width - w) / 2),
-        .y = area.y + @max(theme.padding * 2, area.height * 0.12),
+        .y = area.y + theme.padding * 2,
     };
     for (&self.action_rects, 0..) |*r, i| {
         r.* = rowRect(self.origin.x, self.actionsTop() + rowY(i), w);
     }
     self.projects_top = self.actionsTop() + rowY(actions.len) + theme.line_height;
-    self.layoutProjects(area, w, projects);
+    self.layoutProjects(w, projects);
 
+    const content = self.hint_y + theme.line_height + theme.padding * 2 - area.y;
+    self.max_scroll = @max(0, content - area.height);
+    self.scroll = std.math.clamp(self.scroll, 0, self.max_scroll);
+    // With room to spare the block sits a little below the top, as it
+    // always has; without it, everything moves up by the scroll.
+    const slack = if (self.max_scroll > 0) 0 else @max(0, area.height * 0.12 - theme.padding * 2);
+    moveBy(self, slack - self.scroll);
+
+    // A row scrolled out of the page is not under the mouse either.
     const mouse = rl.getMousePosition();
-    self.hovered_action = for (self.action_rects, 0..) |r, i| {
+    const on_page = rl.checkCollisionPointRec(mouse, area);
+    self.hovered_action = if (!on_page) null else for (self.action_rects, 0..) |r, i| {
         if (rl.checkCollisionPointRec(mouse, r)) break i;
     } else null;
-    self.hovered_row = for (self.rows[0..self.row_count], 0..) |row, i| {
+    self.hovered_row = if (!on_page) null else for (self.rows[0..self.row_count], 0..) |row, i| {
         if (rl.checkCollisionPointRec(mouse, row.rect)) break i;
     } else null;
-    self.hovered_star = for (self.rows[0..self.row_count], 0..) |row, i| {
+    self.hovered_star = if (!on_page) null else for (self.rows[0..self.row_count], 0..) |row, i| {
         if (rl.checkCollisionPointRec(mouse, row.star)) break i;
     } else null;
 }
 
-/// Lays out the favorites, then the folders opened recently, as many of
-/// each as the window has room for.
-fn layoutProjects(self: *WelcomePage, area: rl.Rectangle, w: f32, projects: []const core.Projects.Entry) void {
+/// Moves the whole page up or down, once its height is known.
+fn moveBy(self: *WelcomePage, dy: f32) void {
+    if (dy == 0) return;
+    self.origin.y += dy;
+    self.projects_top += dy;
+    self.hint_y += dy;
+    for (&self.action_rects) |*r| r.y += dy;
+    for (self.rows[0..self.row_count]) |*row| {
+        row.rect.y += dy;
+        row.star.y += dy;
+    }
+}
+
+pub fn scrollBy(self: *WelcomePage, wheel_y: f32) void {
+    self.scroll = std.math.clamp(self.scroll - wheel_y * (theme.line_height + 6) * 3, 0, self.max_scroll);
+}
+
+/// Lays out the favorites, then the folders opened recently — as many of
+/// each as a section lists, however short the window is: what doesn't fit
+/// is scrolled to.
+fn layoutProjects(self: *WelcomePage, w: f32, projects: []const core.Projects.Entry) void {
     self.row_count = 0;
     self.favorites = 0;
-    // What is left below the folders: the drop hint and a margin.
-    const room = area.y + area.height - theme.line_height * 3 - self.projects_top;
-    const fits: usize = @intFromFloat(@max(0, room / (theme.line_height + 6)));
-
     var y = self.projects_top;
     for ([_]bool{ true, false }) |favorites_pass| {
         var shown: usize = 0;
         var section_top = true;
         for (projects, 0..) |p, i| {
             if (p.favorite != favorites_pass) continue;
-            if (shown >= max_section_rows or self.row_count >= fits or self.row_count >= max_rows) break;
+            if (shown >= max_section_rows or self.row_count >= max_rows) break;
             // Room for the section's heading, above its first row, and
             // for a gap between one section and the last one's rows.
             if (section_top) {
@@ -132,6 +164,7 @@ fn layoutProjects(self: *WelcomePage, area: rl.Rectangle, w: f32, projects: []co
 
 /// What a click at `p` asks for, if anything.
 pub fn hitTest(self: *const WelcomePage, p: rl.Vector2) ?Hit {
+    if (!rl.checkCollisionPointRec(p, self.area)) return null;
     for (self.action_rects, actions) |r, a| {
         if (rl.checkCollisionPointRec(p, r)) return .{ .command = a };
     }
