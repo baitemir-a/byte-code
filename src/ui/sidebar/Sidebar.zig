@@ -73,6 +73,9 @@ max_scroll: f32 = 0,
 rect: rl.Rectangle = std.mem.zeroes(rl.Rectangle),
 /// What's under the mouse, for hover highlighting.
 hovered: ?Hit = null,
+/// The Git tab's tooltip is showing. It only opens from that tab, so the
+/// room it takes is free for the buttons under it until then.
+git_tip_open: bool = false,
 /// Display row to scroll into view at the next layout.
 pending_reveal: ?usize = null,
 /// Width asked for (dragging the right edge); the actual width is limited
@@ -95,6 +98,7 @@ pub const draw = Sidebar_draw.draw;
 pub const drawDragLabel = Sidebar_draw.drawDragLabel;
 pub const drawGitBadgeTooltip = Sidebar_draw.drawGitBadgeTooltip;
 pub const gitBadgeTooltip = Sidebar_draw.gitBadgeTooltip;
+pub const updateGitBadgeTooltip = Sidebar_draw.updateGitBadgeTooltip;
 
 pub fn init(gpa: std.mem.Allocator) Sidebar {
     return .{ .name = .init(gpa) };

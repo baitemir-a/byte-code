@@ -69,7 +69,7 @@ fn drawFrame(self: *const App) void {
             .git => self.git_panel.drawBadgeTooltip(&self.git, self.view.font),
             .explorer => {},
         }
-        Sidebar.drawGitBadgeTooltip(self.view.font, &self.git);
+        self.sidebar.drawGitBadgeTooltip(self.view.font, &self.git);
     }
     self.quick_open.draw(&self.file_search, self.view.font, caret, self.project != null);
     self.picker.draw(self.view.font, caret, i18n.tr().quick_open.no_matches);

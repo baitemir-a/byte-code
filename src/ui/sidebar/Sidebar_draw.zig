@@ -96,8 +96,11 @@ pub const BadgeTooltip = struct {
 };
 
 /// The tooltip as it stands, or null when there is nothing to show or
-/// the pointer is elsewhere.
-pub fn gitBadgeTooltip(font: Font, git: *const core.Git, pointer: rl.Vector2) ?BadgeTooltip {
+/// the pointer is elsewhere. It opens from the Git tab alone: `open` is
+/// whether it is already showing, which is what lets the pointer travel
+/// into it. Until then the room it will take belongs to what is under it
+/// (the buttons for a new file or folder), which stay clickable.
+pub fn gitBadgeTooltip(font: Font, git: *const core.Git, pointer: rl.Vector2, open: bool) ?BadgeTooltip {
     var tip: BadgeTooltip = .{ .box = std.mem.zeroes(rl.Rectangle), .counts = badge_size, .rows = undefined, .len = 0 };
     const active = GitPanel.activeBadges(git, &tip.rows);
     tip.len = active.len;
@@ -121,15 +124,29 @@ pub fn gitBadgeTooltip(font: Font, git: *const core.Git, pointer: rl.Vector2) ?B
         .width = width,
         .height = pad + @as(f32, @floatFromInt(active.len)) * theme.line_height,
     };
-    // The pointer can travel from the tab into the tooltip to click a row.
-    const reach: rl.Rectangle = .{ .x = tip.box.x, .y = tab.y, .width = @max(tab.width, tip.box.width), .height = tip.box.y + tip.box.height - tab.y };
-    const over = rl.checkCollisionPointRec(pointer, tab) or rl.checkCollisionPointRec(pointer, reach);
-    return if (over) tip else null;
+    // Once it is showing, the pointer can travel from the tab into the
+    // tooltip to click a row: through the gap between the two, which is
+    // only as wide as the tab, so the buttons next to it keep their hover.
+    if (rl.checkCollisionPointRec(pointer, tab)) return tip;
+    if (!open) return null;
+    const bridge: rl.Rectangle = .{ .x = tab.x, .y = tab.y + tab.height, .width = tab.width, .height = tip.box.y - (tab.y + tab.height) };
+    const inside = rl.checkCollisionPointRec(pointer, bridge) or rl.checkCollisionPointRec(pointer, tip.box);
+    return if (inside) tip else null;
 }
 
-pub fn drawGitBadgeTooltip(font: Font, git: *const core.Git) void {
+/// Follows the tooltip from frame to frame: it appears over the Git tab
+/// and stays for as long as the pointer is on it or in it.
+pub fn updateGitBadgeTooltip(self: *Sidebar, font: Font, git: *const core.Git) void {
+    if (self.rect.width == 0) {
+        self.git_tip_open = false;
+        return;
+    }
+    self.git_tip_open = gitBadgeTooltip(font, git, rl.getMousePosition(), self.git_tip_open) != null;
+}
+
+pub fn drawGitBadgeTooltip(self: *const Sidebar, font: Font, git: *const core.Git) void {
     const mouse = rl.getMousePosition();
-    const tip = gitBadgeTooltip(font, git, mouse) orelse return;
+    const tip = gitBadgeTooltip(font, git, mouse, self.git_tip_open) orelse return;
     const box = tip.box;
     rl.drawRectangleRec(.{ .x = box.x + 2, .y = box.y + 3, .width = box.width, .height = box.height }, theme.popup_shadow);
     rl.drawRectangleRec(box, theme.popup_background);

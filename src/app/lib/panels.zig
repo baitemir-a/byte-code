@@ -105,7 +105,7 @@ pub fn sideFieldKey(self: *App, cmd: core.Command) !bool {
 /// that counter stands for. Returns whether it hit one.
 pub fn badgeTooltipClick(self: *App, point: rl.Vector2, pressed: bool) bool {
     if (self.sidebar.width() == 0) return false;
-    const tip = Sidebar.gitBadgeTooltip(self.view.font, &self.git, point) orelse return false;
+    const tip = Sidebar.gitBadgeTooltip(self.view.font, &self.git, point, self.sidebar.git_tip_open) orelse return false;
     const badge = tip.rowAt(point) orelse return rl.checkCollisionPointRec(point, tip.box);
     self.wanted_cursor = .pointing_hand;
     if (!pressed) return true;

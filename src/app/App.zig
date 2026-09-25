@@ -571,6 +571,7 @@ pub fn layout(self: *App, full_window: rl.Vector2) !void {
     self.status.layout(full_window);
     const window: rl.Vector2 = .{ .x = full_window.x, .y = @max(0, full_window.y - StatusBar.height) };
     self.sidebar.layout(if (self.project) |*p| p else null, window, self.view.font);
+    self.sidebar.updateGitBadgeTooltip(self.view.font, &self.git);
     switch (self.sidebar.view) {
         .explorer => {},
         .search => self.search_panel.layout(self.sidebar.contentRect(), self.view.font),
