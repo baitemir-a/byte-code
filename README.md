@@ -99,7 +99,8 @@ the system warns the first time you open them:
   Chinese, Japanese, French, Italian, Portuguese and Korean, switched in
   Settings
 - **Settings** — language, dark/light theme, accent color, auto save, zoom,
-  minimap, word wrap, opening folders in a new window
+  minimap, file and folder icons, word wrap, smooth animations, opening
+  folders in a new window
 - **Keyboard shortcuts you can change** — the Help tab lists every
   combination, from Save to Select Word Left, and rebinds any of them
 
