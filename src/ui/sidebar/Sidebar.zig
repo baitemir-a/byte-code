@@ -23,22 +23,43 @@ pub const arrow_size: f32 = 8;
 /// From a row's arrow column to its name, with nothing between them.
 pub const name_gap: f32 = 10;
 
-/// The column the icons sit in, after the folder arrow: as wide as an
-/// icon and the gap after it, or nothing when neither files nor folders
-/// show one.
+// A row is laid out in columns, from its indent: the folder arrow, the
+// icon, then the name. Which columns there are depends on what Settings
+// shows, so nothing leaves a gap it doesn't fill:
+//
+//   folder icons on   >  📁  name     the arrow has a column of its own
+//   folder icons off  >  name         the arrow takes the icon's column
+//   no icons at all   >  name         only the arrow column is left
+
+/// The column the icons sit in: as wide as one, or nothing when neither
+/// files nor folders show any.
 pub fn iconColumn() f32 {
     const any = file_icon.mode != .none or folder_icon.mode != .none;
     return if (any) file_icon.size else 0;
 }
 
+/// The column in front of it, for the folder arrow. Without folder icons
+/// the arrow sits in the icon column instead, so there is no empty space
+/// between it and the name.
+pub fn arrowColumn() f32 {
+    if (folder_icon.mode != .none) return arrow_size + 2;
+    return if (iconColumn() > 0) 0 else arrow_size + 2;
+}
+
+/// Where a row's folder arrow is centered, from the row's indent.
+pub fn arrowOffset() f32 {
+    const column = arrowColumn();
+    return if (column > 0) column / 2 else iconColumn() / 2;
+}
+
 /// Where a row's icon is centered, from the row's indent.
 pub fn iconOffset() f32 {
-    return arrow_size + 2 + file_icon.size / 2;
+    return arrowColumn() + iconColumn() / 2;
 }
 
 /// Where a row's name starts, from the row's indent.
 pub fn nameOffset() f32 {
-    return arrow_size + name_gap + iconColumn();
+    return arrowColumn() + iconColumn() + name_gap;
 }
 const button_size: f32 = 22;
 

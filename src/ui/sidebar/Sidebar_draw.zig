@@ -283,7 +283,7 @@ pub fn drawExplorer(self: *const Sidebar, t: *const FileTree, current_path: ?[]c
         // A folder gets its arrow and the icon for its name, open or shut
         // (and turning from one to the other); a file the icon for its type.
         if (n.is_dir) {
-            const turn = drawArrow(font, x, mid, n.expanded, anim.hash("tree_arrow", index));
+            const turn = drawArrow(font, x + Sidebar.arrowOffset(), mid, n.expanded, anim.hash("tree_arrow", index));
             folder_icon.draw(n.name, turn, icon_at);
         } else file_icon.draw(n.name, icon_at);
         const color = if (n.is_dir) theme.sidebar_folder else theme.foreground;
@@ -345,7 +345,7 @@ pub fn drawInput(self: *const Sidebar, tree: *const FileTree, row: usize, font: 
     const x = r.x - Sidebar.nameOffset() + 4;
     const icon_at: rl.Vector2 = .{ .x = x + Sidebar.iconOffset(), .y = mid };
     if (kind == .folder) {
-        const turn = drawArrow(font, x, mid, false, anim.hash("tree_arrow", std.math.maxInt(u32)));
+        const turn = drawArrow(font, x + Sidebar.arrowOffset(), mid, false, anim.hash("tree_arrow", std.math.maxInt(u32)));
         folder_icon.draw(self.name.text(), turn, icon_at);
     } else file_icon.draw(self.name.text(), icon_at);
     self.name.draw(r, font, if (kind == .folder) i18n.tr().sidebar.folder_name else i18n.tr().sidebar.file_name, true, show_caret);
@@ -357,9 +357,9 @@ pub fn drawInput(self: *const Sidebar, tree: *const FileTree, row: usize, font: 
 /// turning between the two. `id` keeps one folder's turn apart from the
 /// next one's (see ui/anim.zig). Returns how far it has turned, which is
 /// also how far its icon has opened.
-pub fn drawArrow(font: Font, x: f32, mid: f32, expanded: bool, id: u64) f32 {
+pub fn drawArrow(font: Font, center_x: f32, mid: f32, expanded: bool, id: u64) f32 {
     _ = font;
     const turn = anim.fade(id, expanded, anim.collapse_speed);
-    anim.drawChevron(.{ .x = x + Sidebar.arrow_size / 2, .y = mid }, turn, 9, theme.sidebar_arrow);
+    anim.drawChevron(.{ .x = center_x, .y = mid }, turn, 9, theme.sidebar_arrow);
     return turn;
 }
