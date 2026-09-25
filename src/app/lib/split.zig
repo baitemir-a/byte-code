@@ -290,7 +290,7 @@ fn setPanes(self: *App, focus: u1, act: [2]usize) void {
 fn startPane(self: *App, view: *View, index: usize) void {
     view.font = self.view.font;
     view.wrap = self.settings.word_wrap;
-    view.scroll = self.tabs.items[index].scroll;
+    view.setScroll(self.tabs.items[index].scroll);
     view.rows_version = null;
 }
 

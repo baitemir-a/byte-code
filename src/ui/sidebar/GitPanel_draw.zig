@@ -3,6 +3,7 @@
 const std = @import("std");
 const rl = @import("raylib");
 const theme = @import("../theme/lib/theme.zig");
+const anim = @import("../anim.zig");
 const Font = @import("../Font.zig");
 const file_icon = @import("../widgets/lib/file_icon.zig");
 const Icons = @import("../Icons.zig");
@@ -70,20 +71,38 @@ pub fn draw(self: *const GitPanel, git: *const Git, font: Font, focused: bool, p
     if (self.busy) |*b| drawProgress(self, b, font, mouse);
 
     const top = self.listTop();
-    theme.clip(.{ .x = r.x, .y = top, .width = r.width, .height = r.y + r.height - top });
+    const list_clip: rl.Rectangle = .{ .x = r.x, .y = top, .width = r.width, .height = r.y + r.height - top };
+    theme.clip(list_clip);
     defer drawPrompt(self, font, prompt_focused, show_caret);
+    // A section that just unfolded: its rows, and everything after them,
+    // slide out from under its header.
+    var moving = false;
+    defer if (moving) {
+        rl.endScissorMode();
+        theme.clip(list_clip);
+    };
     var n: usize = 0;
     while (self.rowAtIndex(git, n)) |row| : (n += 1) {
-        const y = top + @as(f32, @floatFromInt(n)) * row_height - self.scroll;
+        var y = top + @as(f32, @floatFromInt(n)) * row_height - self.scroll;
+        if (self.reveal) |v| if (v.moves(n)) {
+            y += v.shift(row_height);
+            if (!moving) {
+                moving = true;
+                const under = top + @as(f32, @floatFromInt(v.row + 1)) * row_height - self.scroll;
+                const cut = @max(list_clip.y, under);
+                theme.clip(.{ .x = list_clip.x, .y = cut, .width = list_clip.width, .height = @max(0, list_clip.y + list_clip.height - cut) });
+            }
+        };
         if (y + row_height < top) continue;
         if (y > r.y + r.height) break;
         const ty = y + (row_height - theme.font_size) / 2;
         const row_hovered = mouse.y >= y and mouse.y < y + row_height and mouse.x >= r.x and mouse.x < r.x + r.width;
-        if (row_hovered) rl.drawRectangleRec(.{ .x = r.x, .y = y, .width = r.width, .height = row_height }, theme.sidebar_hover);
+        const hover_t = anim.fade(anim.hash("git_row", n), row_hovered, anim.hover_speed);
+        if (hover_t > 0) rl.drawRectangleRec(.{ .x = r.x, .y = y, .width = r.width, .height = row_height }, anim.alpha(theme.sidebar_hover, hover_t));
         switch (row) {
             .commands_header => {
-                const icon: Icons.Icon = if (self.commands_open) .chevron_down else .chevron_right;
-                font.drawIcon(icon, .{ .x = r.x + GitPanel.pad + 6, .y = y + row_height / 2 }, .small, theme.sidebar_arrow);
+                const turn = anim.fade(anim.hash("git_section", 0), self.commands_open, anim.collapse_speed);
+                anim.drawChevron(.{ .x = r.x + GitPanel.pad + 6, .y = y + row_height / 2 }, turn, 9, theme.sidebar_arrow);
                 _ = font.drawFit(t.commands, r.x + GitPanel.pad + 18, ty, r.x + r.width - GitPanel.pad, theme.sidebar_header);
             },
             .command => |c| {
@@ -111,8 +130,8 @@ pub fn draw(self: *const GitPanel, git: *const Git, font: Font, focused: bool, p
                 }
             },
             .history_header => {
-                const icon: Icons.Icon = if (self.history_open) .chevron_down else .chevron_right;
-                font.drawIcon(icon, .{ .x = r.x + GitPanel.pad + 6, .y = y + row_height / 2 }, .small, theme.sidebar_arrow);
+                const turn = anim.fade(anim.hash("git_section", 1), self.history_open, anim.collapse_speed);
+                anim.drawChevron(.{ .x = r.x + GitPanel.pad + 6, .y = y + row_height / 2 }, turn, 9, theme.sidebar_arrow);
                 _ = font.drawFit(t.history, r.x + GitPanel.pad + 18, ty, r.x + r.width - GitPanel.pad, theme.sidebar_header);
             },
             .commit => |i| {
@@ -155,7 +174,8 @@ fn drawCommit(self: *const GitPanel, git: *const Git, font: Font, index: u32, y:
     const c = git.history.commits.items[index];
     const ty = y + (row_height - theme.font_size) / 2;
     const open = git.history.open == index;
-    font.drawIcon(if (open) .chevron_down else .chevron_right, .{ .x = r.x + GitPanel.pad + 18, .y = y + row_height / 2 }, .small, theme.sidebar_arrow);
+    const turn = anim.fade(anim.hash("git_commit", index), open, anim.collapse_speed);
+    anim.drawChevron(.{ .x = r.x + GitPanel.pad + 18, .y = y + row_height / 2 }, turn, 9, theme.sidebar_arrow);
     // Under the pointer, the revert button takes the age's place.
     var age_buf: [48]u8 = undefined;
     const age = ageText(&age_buf, now, c.time);

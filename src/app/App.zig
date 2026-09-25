@@ -10,6 +10,7 @@ const Keymap = @import("../input/Keymap.zig");
 const Mouse = @import("../input/Mouse.zig");
 const Tab = @import("Tab.zig");
 const theme = @import("../ui/theme/lib/theme.zig");
+const anim = @import("../ui/anim.zig");
 const Font = @import("../ui/Font.zig");
 const file_icon = @import("../ui/widgets/lib/file_icon.zig");
 const View = @import("../ui/editor/View.zig");
@@ -545,6 +546,7 @@ pub fn readOnly(self: *const App) bool {
 
 pub fn update(self: *App) !void {
     const window = windowSize();
+    stepAnimations(self);
     try self.refreshProjectOnFocus();
     self.matchFontToDisplay();
     matchMouseToLayout();
@@ -631,6 +633,23 @@ pub fn branchStatus(self: *const App) ?StatusBar.Branch {
         .has_upstream = self.git.has_upstream,
         .busy = self.gitBusy(),
     };
+}
+
+/// One frame of every animation, before anything is laid out from what
+/// they move: scrolls following their targets, panels sliding in and out,
+/// and the fades small things keep in ui/anim.zig. With the setting off
+/// each of these lands on its target at once.
+fn stepAnimations(self: *App) void {
+    anim.newFrame();
+    self.sidebar.step(self.sidebar.visible and self.project != null);
+    self.search_panel.step();
+    self.git_panel.step();
+    self.help_page.step();
+    self.settings_page.step();
+    self.welcome.step();
+    self.terminal_panel.step();
+    self.view.step();
+    self.other_view.step();
 }
 
 /// The window's size in UI units (zoom makes each unit more pixels).

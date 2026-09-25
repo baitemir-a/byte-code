@@ -58,6 +58,8 @@ pub const strings: Strings = .{
         .pull_rebase_hint = "Eigene Commits auf das Gepullte setzen statt zu mergen",
         .inline_blame = "Blame in der aktuellen Zeile",
         .inline_blame_hint = "Wer die Zeile mit dem Cursor zuletzt geändert hat, an ihrem Ende",
+        .smooth = "Weiche Animationen",
+        .smooth_hint = "Bereiche, Scrollen, Dialoge und Tooltips bewegen sich weich",
         .shortcuts = "Tastenkombinationen",
         .shortcuts_hint = "Alle Kombinationen und wie man sie ändert",
     },

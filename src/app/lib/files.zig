@@ -44,7 +44,7 @@ pub fn openFile(self: *App, given_path: []const u8) !void {
     try self.insertTab(at, new);
     if (self.tabs.items.len == 1) {
         self.active = 0;
-        self.view.scroll = .{ .x = 0, .y = 0 };
+        self.view.setScroll(.{ .x = 0, .y = 0 });
         try self.revealCurrentFile();
     } else try self.activate(at);
 }

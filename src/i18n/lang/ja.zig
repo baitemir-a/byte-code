@@ -58,6 +58,8 @@ pub const strings: Strings = .{
         .pull_rebase_hint = "マージせずに自分のコミットを取得分の上に載せる",
         .inline_blame = "現在の行の変更者",
         .inline_blame_hint = "カーソル行を最後に変更した人を行末に表示",
+        .smooth = "滑らかなアニメーション",
+        .smooth_hint = "パネル、スクロール、ダイアログ、ツールチップが滑らかに動きます",
         .shortcuts = "キーボード ショートカット",
         .shortcuts_hint = "すべてのキーの組み合わせと変更方法",
     },

@@ -4,6 +4,7 @@ const std = @import("std");
 const rl = @import("raylib");
 const core = @import("core");
 const theme = @import("../theme/lib/theme.zig");
+const anim = @import("../anim.zig");
 const Font = @import("../Font.zig");
 const file_icon = @import("../widgets/lib/file_icon.zig");
 const controls = @import("../widgets/lib/search_controls.zig");
@@ -53,7 +54,8 @@ pub fn draw(self: *const SearchPanel, font: Font, focus: u2, show_caret: bool, h
         if (row >= first_row) {
             const y = top + @as(f32, @floatFromInt(row)) * row_height - self.scroll;
             const base = if (std.mem.lastIndexOfScalar(u8, f.path, '/')) |i| i + 1 else 0;
-            if (hovered(mouse, r, y)) rl.drawRectangleRec(.{ .x = r.x, .y = y, .width = r.width, .height = row_height }, theme.sidebar_hover);
+            const hover_t = anim.fade(anim.hash("search_row", row), hovered(mouse, r, y), anim.hover_speed);
+            if (hover_t > 0) rl.drawRectangleRec(.{ .x = r.x, .y = y, .width = r.width, .height = row_height }, anim.alpha(theme.sidebar_hover, hover_t));
             file_icon.draw(f.path[base..], .{ .x = r.x + SearchPanel.pad + file_icon.size / 2, .y = y + row_height / 2 });
             var count_buf: [12]u8 = undefined;
             const count = std.fmt.bufPrint(&count_buf, "{d}", .{f.count}) catch "";
@@ -72,7 +74,8 @@ pub fn draw(self: *const SearchPanel, font: Font, focus: u2, show_caret: bool, h
             if (row < first_row) continue;
             if (row >= first_row + visible) break;
             const y = top + @as(f32, @floatFromInt(row)) * row_height - self.scroll;
-            if (hovered(mouse, r, y)) rl.drawRectangleRec(.{ .x = r.x, .y = y, .width = r.width, .height = row_height }, theme.sidebar_hover);
+            const hover_t = anim.fade(anim.hash("search_row", row), hovered(mouse, r, y), anim.hover_speed);
+            if (hover_t > 0) rl.drawRectangleRec(.{ .x = r.x, .y = y, .width = r.width, .height = row_height }, anim.alpha(theme.sidebar_hover, hover_t));
             drawMatch(font, m, r.x + SearchPanel.pad + 18, y, r.x + r.width - SearchPanel.pad);
             if (hovered(mouse, r, y)) drawRowButton(self, font, y, .{ .match = 0 });
         }

@@ -10,6 +10,7 @@ const rl = @import("raylib");
 const core = @import("core");
 const theme = @import("../theme/lib/theme.zig");
 const Font = @import("../Font.zig");
+const anim = @import("../anim.zig");
 const View_draw = @import("View_draw.zig");
 const View_diff = @import("View_diff.zig");
 
@@ -23,7 +24,12 @@ pub const Row = core.wrap.Row;
 gpa: std.mem.Allocator,
 font: Font,
 /// Content offset in pixels; (0, 0) shows the top-left of the buffer.
+/// `scroll` is where the text is drawn and `scroll_to` where it is
+/// headed: with smooth animations on, the first follows the second a few
+/// frames behind (see ui/anim.zig). Everything that scrolls the view sets
+/// the target; `setScroll` is for jumping straight there.
 scroll: rl.Vector2 = .{ .x = 0, .y = 0 },
+scroll_to: rl.Vector2 = .{ .x = 0, .y = 0 },
 /// Where the view draws: right of the sidebar, below the tab bar.
 area: rl.Rectangle = std.mem.zeroes(rl.Rectangle),
 /// Width of the line-number gutter, and the line count it was sized for.
@@ -226,7 +232,8 @@ pub fn visibleLines(self: View) f32 {
 /// Scrolls so `line` (fractional) is at the top.
 pub fn scrollToLine(self: *View, line: f32) void {
     const l: usize = @intFromFloat(@max(0, line));
-    self.scroll.y = (@as(f32, @floatFromInt(self.rowOfLine(l))) + (@max(0, line) - @floor(@max(0, line)))) * theme.line_height;
+    self.scroll_to.y = (@as(f32, @floatFromInt(self.rowOfLine(l))) + (@max(0, line) - @floor(@max(0, line)))) * theme.line_height;
+    if (!anim.enabled) self.scroll.y = self.scroll_to.y;
 }
 
 // --------------------------------------------------------- hit-testing
@@ -264,12 +271,27 @@ pub fn posAt(self: View, buf: *const Buffer, p: rl.Vector2) usize {
 /// pointer in window coordinates.
 pub fn dragScroll(self: *View, p: rl.Vector2) void {
     const lines = theme.dragScrollLines(p.y, self.area.y, self.bottom(), theme.line_height);
-    self.scroll.y += lines * theme.line_height * rl.getFrameTime();
+    self.scroll_to.y += lines * theme.line_height * rl.getFrameTime();
+    if (!anim.enabled) self.scroll = self.scroll_to;
 }
 
 pub fn scrollBy(self: *View, wheel: rl.Vector2) void {
-    self.scroll.y -= wheel.y * theme.line_height * 3;
-    self.scroll.x -= wheel.x * self.font.cell_width * 3;
+    self.scroll_to.y -= wheel.y * theme.line_height * 3;
+    self.scroll_to.x -= wheel.x * self.font.cell_width * 3;
+    if (!anim.enabled) self.scroll = self.scroll_to;
+}
+
+/// Straight to a position, with nothing to animate: another tab, another
+/// file, a fresh view.
+pub fn setScroll(self: *View, to: rl.Vector2) void {
+    self.scroll = to;
+    self.scroll_to = to;
+}
+
+/// One frame of following the target. Called once a frame, before the
+/// layout that draws from it.
+pub fn step(self: *View) void {
+    anim.approachVec(&self.scroll, self.scroll_to, anim.scroll_speed);
 }
 
 /// Scrolls just enough to bring the cursor into view.
@@ -277,10 +299,11 @@ pub fn revealCursor(self: *View, buf: *const Buffer) void {
     const c = self.contentOffset(buf, buf.cursor);
     const w = self.right() - self.textLeft() - theme.padding;
     const h = self.area.height - 2 * theme.padding;
-    if (c.y < self.scroll.y) self.scroll.y = c.y;
-    if (c.y + theme.line_height > self.scroll.y + h) self.scroll.y = c.y + theme.line_height - h;
-    if (c.x < self.scroll.x) self.scroll.x = c.x;
-    if (c.x + self.font.cell_width > self.scroll.x + w) self.scroll.x = c.x + self.font.cell_width - w;
+    if (c.y < self.scroll_to.y) self.scroll_to.y = c.y;
+    if (c.y + theme.line_height > self.scroll_to.y + h) self.scroll_to.y = c.y + theme.line_height - h;
+    if (c.x < self.scroll_to.x) self.scroll_to.x = c.x;
+    if (c.x + self.font.cell_width > self.scroll_to.x + w) self.scroll_to.x = c.x + self.font.cell_width - w;
+    if (!anim.enabled) self.scroll = self.scroll_to;
 }
 
 /// Keeps the scroll inside the content: the last row may reach the top,
@@ -288,13 +311,17 @@ pub fn revealCursor(self: *View, buf: *const Buffer) void {
 /// right edge. With word wrap there's nothing to scroll sideways.
 pub fn clampScroll(self: *View, buf: *const Buffer) void {
     const rows: f32 = @floatFromInt(self.rowCount());
-    self.scroll.y = std.math.clamp(self.scroll.y, 0, @max(0, (rows - 1) * theme.line_height));
+    const last = @max(0, (rows - 1) * theme.line_height);
+    self.scroll_to.y = std.math.clamp(self.scroll_to.y, 0, last);
+    self.scroll.y = std.math.clamp(self.scroll.y, 0, last);
     if (self.rows_cols > 0) {
+        self.scroll_to.x = 0;
         self.scroll.x = 0;
         return;
     }
     const content_w = @as(f32, @floatFromInt(self.longestLine(buf) + 1)) * self.font.cell_width;
     const visible_w = self.right() - self.textLeft() - theme.padding;
+    self.scroll_to.x = std.math.clamp(self.scroll_to.x, 0, @max(0, content_w - visible_w));
     self.scroll.x = std.math.clamp(self.scroll.x, 0, @max(0, content_w - visible_w));
 }
 

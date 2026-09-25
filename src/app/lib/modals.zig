@@ -6,6 +6,7 @@ const std = @import("std");
 const rl = @import("raylib");
 const theme = @import("../../ui/theme/lib/theme.zig");
 const Modal = @import("../../ui/Modal.zig");
+const anim = @import("../../ui/anim.zig");
 const App = @import("../App.zig");
 const i18n = @import("../../i18n/i18n.zig");
 
@@ -18,10 +19,26 @@ pub const Confirmation = enum { cancel, ok, ok_always };
 /// Shows `modal` until a button is picked. Closing the window meanwhile
 /// counts as its cancel button.
 pub fn runModal(self: *App, m: *Modal) Modal.Answer {
-    m.focus = m.default;
     self.modal = m;
     defer self.modal = null;
     defer rl.setMouseCursor(self.cursor_shape);
+    const picked = ask(self, m);
+    // It fades out where it stands before the editor has the window back.
+    while (m.shown > 0.02) {
+        anim.newFrame();
+        m.step(false);
+        App.matchMouseToLayout();
+        self.relayout() catch {};
+        m.layout(self.view.font, App.windowSize());
+        drawOnce(self);
+        if (!anim.enabled) break;
+    }
+    return picked;
+}
+
+/// The dialog's own frames, until a button is picked.
+fn ask(self: *App, m: *Modal) Modal.Answer {
+    m.focus = m.default;
     // What was typed before it opened isn't meant for it.
     while (rl.getKeyPressed() != .null) {}
     while (rl.getCharPressed() != 0) {}
@@ -31,6 +48,8 @@ pub fn runModal(self: *App, m: *Modal) Modal.Answer {
         // (this frame's flag is still up then).
         if (!first and rl.windowShouldClose()) return m.answer(m.cancel);
         App.matchMouseToLayout();
+        anim.newFrame();
+        m.step(true);
         self.relayout() catch {};
         m.layout(self.view.font, App.windowSize());
 
@@ -71,13 +90,18 @@ pub fn runModal(self: *App, m: *Modal) Modal.Answer {
         }
         rl.setMouseCursor(if (hit != null) .pointing_hand else .default);
 
-        rl.beginDrawing();
-        rl.gl.rlPushMatrix();
-        rl.gl.rlScalef(theme.zoom, theme.zoom, 1);
-        self.draw();
-        rl.gl.rlPopMatrix();
-        rl.endDrawing();
+        drawOnce(self);
     }
+}
+
+/// One frame of the editor with the dialog over it.
+fn drawOnce(self: *App) void {
+    rl.beginDrawing();
+    rl.gl.rlPushMatrix();
+    rl.gl.rlScalef(theme.zoom, theme.zoom, 1);
+    self.draw();
+    rl.gl.rlPopMatrix();
+    rl.endDrawing();
 }
 
 /// Draws the open dialog, if any, over the frame (App.draw calls it).

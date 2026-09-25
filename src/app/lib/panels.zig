@@ -178,8 +178,10 @@ pub fn panelClick(self: *App, point: rl.Vector2) !void {
                 },
                 .commit => if (GitPanel.syncing(&self.git)) self.startGitJob(.sync) else try self.gitCommit(),
                 .toggle_commands => {
+                    const before = self.git_panel.rowTotal(&self.git);
                     self.git_panel.commands_open = !self.git_panel.commands_open;
                     self.git_panel.cancelPrompt();
+                    self.git_panel.noteToggle(&self.git, 0, before);
                 },
                 .command => |c| try runGitCommand(self, c),
                 .prompt => {
@@ -388,8 +390,8 @@ pub fn reloadUnchangedTabs(self: *App) !void {
         const scroll = if (t == self.tab()) self.view.scroll else if (in_other) self.other_view.scroll else t.scroll;
         t.load(self.gpa, self.io, copy) catch continue; // deleted, or unreadable
         t.scroll = scroll;
-        if (t == self.tab()) self.view.scroll = scroll;
-        if (in_other) self.other_view.scroll = scroll;
+        if (t == self.tab()) self.view.setScroll(scroll);
+        if (in_other) self.other_view.setScroll(scroll);
     }
 }
 

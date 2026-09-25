@@ -4,6 +4,7 @@
 const std = @import("std");
 const rl = @import("raylib");
 const theme = @import("../theme/lib/theme.zig");
+const anim = @import("../anim.zig");
 const Font = @import("../Font.zig");
 const i18n = @import("../../i18n/i18n.zig");
 const Keymap = @import("../../input/Keymap.zig");
@@ -66,6 +67,8 @@ width: f32 = 0,
 rows: [Keymap.count]rl.Rectangle = std.mem.zeroes([Keymap.count]rl.Rectangle),
 reset_all_rect: rl.Rectangle = std.mem.zeroes(rl.Rectangle),
 scroll: f32 = 0,
+/// Where the page is headed; `scroll` follows it (see ui/anim.zig).
+scroll_to: f32 = 0,
 max_scroll: f32 = 0,
 hovered: ?usize = null,
 /// The shortcut waiting for new keys.
@@ -83,6 +86,7 @@ pub fn layout(self: *HelpPage, area: rl.Rectangle, font: Font) void {
     self.origin = .{ .x = x, .y = area.y + theme.padding * 2 };
 
     self.max_scroll = @max(0, self.contentHeight() - area.height);
+    self.scroll_to = std.math.clamp(self.scroll_to, 0, self.max_scroll);
     self.scroll = std.math.clamp(self.scroll, 0, self.max_scroll);
 
     const reset_all_w = @max(110, font.textWidth(i18n.tr().help.reset_all) + 16);
@@ -116,7 +120,13 @@ fn contentHeight(self: *const HelpPage) f32 {
 }
 
 pub fn scrollBy(self: *HelpPage, wheel_y: f32) void {
-    self.scroll = std.math.clamp(self.scroll - wheel_y * row_height * 3, 0, self.max_scroll);
+    self.scroll_to = std.math.clamp(self.scroll_to - wheel_y * row_height * 3, 0, self.max_scroll);
+    if (!anim.enabled) self.scroll = self.scroll_to;
+}
+
+/// One frame of following the scroll.
+pub fn step(self: *HelpPage) void {
+    anim.approach(&self.scroll, self.scroll_to, anim.scroll_speed);
 }
 
 /// Where the combination is drawn, and the "Reset" next to it.
@@ -172,7 +182,7 @@ pub fn readChord() Recorded {
 pub fn reveal(self: *HelpPage, action: Keymap.Action) void {
     const row = self.rows[Keymap.indexOf(action)];
     const above = row.y - self.area.y;
-    if (above < 0) self.scroll = std.math.clamp(self.scroll + above, 0, self.max_scroll);
+    if (above < 0) self.scroll_to = std.math.clamp(self.scroll_to + above, 0, self.max_scroll);
     const below = row.y + row.height - (self.area.y + self.area.height);
-    if (below > 0) self.scroll = std.math.clamp(self.scroll + below, 0, self.max_scroll);
+    if (below > 0) self.scroll_to = std.math.clamp(self.scroll_to + below, 0, self.max_scroll);
 }

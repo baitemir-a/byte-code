@@ -3,6 +3,7 @@ const std = @import("std");
 const rl = @import("raylib");
 const theme = @import("../theme/lib/theme.zig");
 const Font = @import("../Font.zig");
+const anim = @import("../anim.zig");
 
 const ContextMenu = @This();
 
@@ -80,16 +81,20 @@ pub fn update(self: *ContextMenu) void {
 }
 
 pub fn draw(self: *const ContextMenu, font: Font) void {
-    if (!self.is_open) return;
-    const r = self.rect;
-    rl.drawRectangleRec(.{ .x = r.x + 3, .y = r.y + 4, .width = r.width, .height = r.height }, theme.popup_shadow);
-    rl.drawRectangleRec(r, theme.popup_background);
-    rl.drawRectangleLinesEx(r, 1, theme.popup_border);
+    // It unfolds from where it was opened (see ui/anim.zig).
+    const t = anim.ease(anim.fade(anim.hash("context_menu", 0), self.is_open, anim.popup_speed));
+    if (!self.is_open or t <= 0) return;
+    const r: rl.Rectangle = .{ .x = self.rect.x, .y = self.rect.y, .width = self.rect.width, .height = self.rect.height * t };
+    rl.drawRectangleRec(.{ .x = r.x + 3, .y = r.y + 4, .width = r.width, .height = r.height }, anim.alpha(theme.popup_shadow, t));
+    rl.drawRectangleRec(r, anim.alpha(theme.popup_background, t));
+    rl.drawRectangleLinesEx(r, 1, anim.alpha(theme.popup_border, t));
+    theme.clip(r);
+    defer rl.endScissorMode();
     for (self.labels[0..self.count], self.label_lens[0..self.count], 0..) |chars, len, i| {
         const label = chars[0..len];
-        const top = r.y + 2 + @as(f32, @floatFromInt(i)) * row_height;
+        const top = self.rect.y + 2 + @as(f32, @floatFromInt(i)) * row_height;
         if (self.hovered == i) rl.drawRectangleRec(.{ .x = r.x + 2, .y = top, .width = r.width - 4, .height = row_height }, theme.accentDim(0.35));
         const y = top + (row_height - theme.font_size) / 2;
-        _ = font.drawText(label, r.x + pad, y, theme.font_size, theme.foreground);
+        _ = font.drawText(label, r.x + pad, y, theme.font_size, anim.alpha(theme.foreground, t));
     }
 }

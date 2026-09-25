@@ -58,6 +58,8 @@ pub const strings: Strings = .{
         .pull_rebase_hint = "Poner tus commits encima de lo traído en vez de fusionar",
         .inline_blame = "Autor en la línea actual",
         .inline_blame_hint = "Quién cambió por última vez la línea del cursor, al final de ella",
+        .smooth = "Animaciones suaves",
+        .smooth_hint = "Paneles, desplazamiento, diálogos y descripciones se mueven con suavidad",
         .shortcuts = "Métodos abreviados de teclado",
         .shortcuts_hint = "Todas las combinaciones y cómo cambiarlas",
     },

@@ -9,6 +9,7 @@ const rl = @import("raylib");
 const theme = @import("theme/lib/theme.zig");
 const Font = @import("Font.zig");
 const Icons = @import("Icons.zig");
+const anim = @import("anim.zig");
 
 const StatusBar = @This();
 
@@ -153,7 +154,9 @@ pub fn draw(self: *const StatusBar, font: Font, blame: ?Blame, position: []const
     }
     // The date hangs off the blame text: everything up to where it ends.
     const over_text: rl.Rectangle = .{ .x = text_left, .y = r.y, .width = @max(0, @min(x, end) - text_left), .height = height };
-    if (rl.checkCollisionPointRec(rl.getMousePosition(), over_text)) drawPopup(font, r, b.exact);
+    const on_text = rl.checkCollisionPointRec(rl.getMousePosition(), over_text);
+    const popup_t = anim.fade(anim.hash("status_blame", 0), on_text, anim.popup_speed);
+    if (popup_t > 0) drawPopup(font, r, b.exact, popup_t);
 }
 
 /// The branch at the left end, with the counter that pushes and pulls
@@ -165,7 +168,8 @@ fn drawBranch(self: *const StatusBar, font: Font, y: f32) f32 {
     const half = Icons.Size.small.px() / 2;
 
     const on_branch = rl.checkCollisionPointRec(mouse, self.branch_rect);
-    const branch_color = theme.copy(if (on_branch) theme.foreground else theme.popup_detail);
+    const branch_t = anim.fade(anim.hash("status_branch", 0), on_branch, anim.hover_speed);
+    const branch_color = theme.copy(anim.mix(theme.popup_detail, theme.foreground, branch_t));
     font.drawIcon(.git_branch, .{ .x = self.branch_rect.x + half, .y = mid }, .small, branch_color);
     const name_x = self.branch_rect.x + 2 * half + icon_gap;
     _ = font.drawFit(self.branch(), name_x, y, self.branch_rect.x + self.branch_rect.width, branch_color);
@@ -173,14 +177,14 @@ fn drawBranch(self: *const StatusBar, font: Font, y: f32) f32 {
     // Nothing to send or take in, and no remote yet: the counter is still
     // there to push to one.
     const on_sync = rl.checkCollisionPointRec(mouse, self.sync_rect);
-    const sync_color = theme.copy(if (self.sync_busy)
+    const sync_t = anim.fade(anim.hash("status_sync", 0), on_sync, anim.hover_speed);
+    const resting = theme.copy(if (self.sync_busy)
         theme.popup_border
-    else if (on_sync)
-        theme.foreground
     else if (self.counts_len > 0)
         theme.accent
     else
         theme.popup_detail);
+    const sync_color = theme.copy(if (self.sync_busy) resting else anim.mix(resting, theme.foreground, sync_t));
     font.drawIcon(.refresh_cw, .{ .x = self.sync_rect.x + half, .y = mid }, .small, sync_color);
     if (self.counts_len > 0) {
         _ = font.drawFit(self.counts(), self.sync_rect.x + 2 * half + icon_gap, y, self.sync_rect.x + self.sync_rect.width, sync_color);
@@ -196,14 +200,16 @@ fn separator(font: Font, x: f32, y: f32, end: f32) f32 {
 
 /// The commit's exact date and time, in a box that sits on top of the
 /// bar so it doesn't cover what the bar says.
-fn drawPopup(font: Font, bar: rl.Rectangle, text: []const u8) void {
+fn drawPopup(font: Font, bar: rl.Rectangle, text: []const u8, fade: f32) void {
     if (text.len == 0) return;
+    const t = anim.ease(fade);
     const window_width = @as(f32, @floatFromInt(rl.getScreenWidth())) / theme.zoom;
     const w = font.textWidth(text) + 16;
     const x = std.math.clamp(rl.getMousePosition().x - w / 2, 4, @max(4, window_width - w - 4));
-    const r: rl.Rectangle = .{ .x = x, .y = bar.y - theme.line_height - 6, .width = w, .height = theme.line_height };
-    rl.drawRectangleRec(.{ .x = r.x + 2, .y = r.y + 3, .width = r.width, .height = r.height }, theme.popup_shadow);
-    rl.drawRectangleRec(r, theme.popup_background);
-    rl.drawRectangleLinesEx(r, 1, theme.popup_border);
-    _ = font.drawFit(text, r.x + 8, r.y + (theme.line_height - theme.font_size) / 2, r.x + r.width - 4, theme.foreground);
+    // It comes up out of the bar as it fades in.
+    const r: rl.Rectangle = .{ .x = x, .y = bar.y - theme.line_height - 6 + (1 - t) * 6, .width = w, .height = theme.line_height };
+    rl.drawRectangleRec(.{ .x = r.x + 2, .y = r.y + 3, .width = r.width, .height = r.height }, anim.alpha(theme.popup_shadow, t));
+    rl.drawRectangleRec(r, anim.alpha(theme.popup_background, t));
+    rl.drawRectangleLinesEx(r, 1, anim.alpha(theme.popup_border, t));
+    _ = font.drawFit(text, r.x + 8, r.y + (theme.line_height - theme.font_size) / 2, r.x + r.width - 4, anim.alpha(theme.foreground, t));
 }

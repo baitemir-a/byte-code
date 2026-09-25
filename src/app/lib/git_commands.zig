@@ -146,18 +146,38 @@ pub fn readHistory(self: *App, root: []const u8) !void {
 }
 
 pub fn toggleHistory(self: *App, root: []const u8) !void {
+    const row = self.git_panel.headerRow(&self.git, .history);
+    const before = self.git_panel.rowTotal(&self.git);
     self.git_panel.history_open = !self.git_panel.history_open;
     if (self.git_panel.history_open) try readHistory(self, root);
+    self.git_panel.noteToggle(&self.git, row, before);
 }
 
 /// A commit's row: shows the files it changed, or folds them away again.
+/// Its files slide out from under it (see ui/anim.zig).
 pub fn openCommit(self: *App, root: []const u8, index: u32, keep_open: bool) !void {
     const log = &self.git.history;
-    if (!keep_open and log.open == index) return log.closeFiles();
+    const row = commitRow(self, index);
+    const before = self.git_panel.rowTotal(&self.git);
+    if (!keep_open and log.open == index) {
+        log.closeFiles();
+        self.git_panel.noteToggle(&self.git, row, before);
+        return;
+    }
     const hash = log.commits.items[index].hash;
     const out = try core.Git.commitFiles(self.gpa, self.io, root, hash);
     defer if (out) |s| self.gpa.free(s);
     try log.parseFiles(index, out orelse "");
+    self.git_panel.noteToggle(&self.git, row, before);
+}
+
+/// The row a commit is on in the Git view.
+fn commitRow(self: *const App, index: u32) usize {
+    var n: usize = 0;
+    while (self.git_panel.rowAtIndex(&self.git, n)) |row| : (n += 1) {
+        if (row == .commit and row.commit == index) return n;
+    }
+    return 0;
 }
 
 /// One of the open commit's files: what the commit changed in it.

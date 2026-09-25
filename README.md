@@ -31,6 +31,10 @@ the system warns the first time you open them:
 - **Editing** — multiple tabs, undo/redo, selection with keyboard and mouse,
   word-wise movement, auto-closing brackets and quotes, auto-indent, tab
   stops, UTF-8 (Latin, Cyrillic, Greek…)
+- **Smooth animations** (Settings) — panels and the terminal slide open,
+  scrolling glides, dialogs, menus and tooltips fade in, switches and
+  hover highlights ease between states. Turn it off and everything snaps
+  into place as before
 - **Split the editor in two** — right-click a tab for "Split Right" or
   "Split Down", or drag a tab to the right or bottom edge of the text to
   make a second pane (and from one pane onto the other to move it there).

@@ -2,6 +2,7 @@
 const std = @import("std");
 const rl = @import("raylib");
 const theme = @import("../theme/lib/theme.zig");
+const anim = @import("../anim.zig");
 const Font = @import("../Font.zig");
 const core = @import("core");
 const WelcomePage = @import("WelcomePage.zig");
@@ -22,7 +23,8 @@ pub fn draw(self: *const WelcomePage, font: Font, projects: []const core.Project
 
     drawHeading(font, t.start, x, self.actionsTop() - theme.line_height - 4);
     for (WelcomePage.actions, self.action_rects, 0..) |a, r, i| {
-        if (self.hovered_action == i) rl.drawRectangleRec(r, theme.tab_hover);
+        const t_action = anim.fade(anim.hash("welcome_action", i), self.hovered_action == i, anim.hover_speed);
+        if (t_action > 0) rl.drawRectangleRec(r, anim.alpha(theme.tab_hover, t_action));
         drawText(font, WelcomePage.actionLabel(a), x, textY(r), theme.font_size, theme.accent);
     }
 
@@ -32,7 +34,8 @@ pub fn draw(self: *const WelcomePage, font: Font, projects: []const core.Project
         if (i == 0 and self.favorites > 0) drawHeading(font, t.favorites, x, heading_y);
         if (i == self.favorites) drawHeading(font, t.recent, x, heading_y);
         const entry = projects[row.entry];
-        if (self.hovered_row == i) rl.drawRectangleRec(row.rect, theme.tab_hover);
+        const t_row = anim.fade(anim.hash("welcome_row", row.entry), self.hovered_row == i, anim.hover_speed);
+        if (t_row > 0) rl.drawRectangleRec(row.rect, anim.alpha(theme.tab_hover, t_row));
         drawStar(
             .{ .x = row.star.x + row.star.width / 2, .y = row.star.y + row.star.height / 2 },
             entry.favorite,

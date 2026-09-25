@@ -58,6 +58,8 @@ pub const strings: Strings = .{
         .pull_rebase_hint = "Birleştirmek yerine commit'lerinizi çekilenlerin üstüne koy",
         .inline_blame = "Geçerli satırda yazar",
         .inline_blame_hint = "İmleçteki satırı en son kimin değiştirdiği, satır sonunda",
+        .smooth = "Yumuşak animasyonlar",
+        .smooth_hint = "Paneller, kaydırma, iletişim kutuları ve ipuçları yumuşak hareket eder",
         .shortcuts = "Klavye kısayolları",
         .shortcuts_hint = "Tüm kombinasyonlar ve nasıl değiştirilir",
     },

@@ -5,6 +5,7 @@ const std = @import("std");
 const rl = @import("raylib");
 const core = @import("core");
 const theme = @import("../theme/lib/theme.zig");
+const anim = @import("../anim.zig");
 const Font = @import("../Font.zig");
 const WelcomePage_draw = @import("WelcomePage_draw.zig");
 const i18n = @import("../../i18n/i18n.zig");
@@ -67,7 +68,9 @@ hint_y: f32 = 0,
 /// Where the page draws; set by `layout`.
 area: rl.Rectangle = std.mem.zeroes(rl.Rectangle),
 /// A window too short for the lists scrolls instead of dropping rows.
+/// `scroll` is where the page is drawn, `scroll_to` where it is headed.
 scroll: f32 = 0,
+scroll_to: f32 = 0,
 max_scroll: f32 = 0,
 
 // Drawing, in WelcomePage_draw.zig.
@@ -90,6 +93,7 @@ pub fn layout(self: *WelcomePage, area: rl.Rectangle, font: Font, projects: []co
 
     const content = self.hint_y + theme.line_height + theme.padding * 2 - area.y;
     self.max_scroll = @max(0, content - area.height);
+    self.scroll_to = std.math.clamp(self.scroll_to, 0, self.max_scroll);
     self.scroll = std.math.clamp(self.scroll, 0, self.max_scroll);
     // With room to spare the block sits a little below the top, as it
     // always has; without it, everything moves up by the scroll.
@@ -124,7 +128,13 @@ fn moveBy(self: *WelcomePage, dy: f32) void {
 }
 
 pub fn scrollBy(self: *WelcomePage, wheel_y: f32) void {
-    self.scroll = std.math.clamp(self.scroll - wheel_y * (theme.line_height + 6) * 3, 0, self.max_scroll);
+    self.scroll_to = std.math.clamp(self.scroll_to - wheel_y * (theme.line_height + 6) * 3, 0, self.max_scroll);
+    if (!anim.enabled) self.scroll = self.scroll_to;
+}
+
+/// One frame of following the scroll.
+pub fn step(self: *WelcomePage) void {
+    anim.approach(&self.scroll, self.scroll_to, anim.scroll_speed);
 }
 
 /// Lays out the favorites, then the folders opened recently — as many of

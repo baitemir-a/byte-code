@@ -74,6 +74,8 @@ pub const Strings = struct {
         pull_rebase_hint: []const u8,
         inline_blame: []const u8,
         inline_blame_hint: []const u8,
+        smooth: []const u8,
+        smooth_hint: []const u8,
         shortcuts: []const u8,
         shortcuts_hint: []const u8,
     },

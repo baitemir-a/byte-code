@@ -7,6 +7,7 @@ const builtin = @import("builtin");
 const rl = @import("raylib");
 const core = @import("core");
 const theme = @import("../theme/lib/theme.zig");
+const anim = @import("../anim.zig");
 const Font = @import("../Font.zig");
 const SettingsPage_draw = @import("SettingsPage_draw.zig");
 const i18n = @import("../../i18n/i18n.zig");
@@ -34,6 +35,7 @@ pub const Action = union(enum) {
     toggle_confirm_discard,
     toggle_pull_rebase,
     toggle_inline_blame,
+    toggle_smooth,
     /// Opens the Help tab, where the shortcuts are.
     open_help,
 };
@@ -60,7 +62,9 @@ origin: rl.Vector2 = .{ .x = 0, .y = 0 },
 /// Right edge of the rows, where their controls end.
 right: f32 = 0,
 /// How far the page is scrolled down, when it's taller than the window.
+/// `scroll` is where it is drawn, `scroll_to` where it is headed.
 scroll: f32 = 0,
+scroll_to: f32 = 0,
 max_scroll: f32 = 0,
 language_button: rl.Rectangle = undefined,
 theme_dark: rl.Rectangle = undefined,
@@ -78,6 +82,7 @@ new_window_toggle: rl.Rectangle = undefined,
 confirm_discard_toggle: rl.Rectangle = undefined,
 pull_rebase_toggle: rl.Rectangle = undefined,
 inline_blame_toggle: rl.Rectangle = undefined,
+smooth_toggle: rl.Rectangle = undefined,
 shortcuts_button: rl.Rectangle = undefined,
 
 // Drawing, in SettingsPage_draw.zig.
@@ -88,6 +93,7 @@ pub fn layout(self: *SettingsPage, area: rl.Rectangle, font: Font) void {
     const w = content_cols * font.cell_width;
     const top = @max(theme.padding * 2, area.height * 0.08);
     self.max_scroll = @max(0, top + contentHeight() - area.height);
+    self.scroll_to = std.math.clamp(self.scroll_to, 0, self.max_scroll);
     self.scroll = std.math.clamp(self.scroll, 0, self.max_scroll);
     self.origin = .{
         .x = area.x + @max(theme.padding * 2, (area.width - w) / 2),
@@ -122,6 +128,7 @@ pub fn layout(self: *SettingsPage, area: rl.Rectangle, font: Font) void {
     self.confirm_discard_toggle = .{ .x = right - 46, .y = self.rowY(rows.confirm_discard) + 3, .width = 46, .height = 22 };
     self.pull_rebase_toggle = .{ .x = right - 46, .y = self.rowY(rows.pull_rebase) + 3, .width = 46, .height = 22 };
     self.inline_blame_toggle = .{ .x = right - 46, .y = self.rowY(rows.inline_blame) + 3, .width = 46, .height = 22 };
+    self.smooth_toggle = .{ .x = right - 46, .y = self.rowY(rows.smooth) + 3, .width = 46, .height = 22 };
     const open_w = @max(80, font.textWidth(i18n.tr().common.open) + 16);
     self.shortcuts_button = .{ .x = right - open_w, .y = self.rowY(rows.shortcuts), .width = open_w, .height = button };
 }
@@ -140,9 +147,10 @@ pub const rows = struct {
     pub const confirm_discard = 9;
     pub const pull_rebase = 10;
     pub const inline_blame = 11;
-    pub const shortcuts = 12;
+    pub const smooth = 12;
+    pub const shortcuts = 13;
     /// "Saved to:" and the path.
-    pub const path = 13;
+    pub const path = 14;
 };
 
 pub fn rowY(self: *const SettingsPage, row: usize) f32 {
@@ -159,7 +167,13 @@ fn contentHeight() f32 {
 }
 
 pub fn scrollBy(self: *SettingsPage, wheel_y: f32) void {
-    self.scroll = std.math.clamp(self.scroll - wheel_y * row_gap, 0, self.max_scroll);
+    self.scroll_to = std.math.clamp(self.scroll_to - wheel_y * row_gap, 0, self.max_scroll);
+    if (!anim.enabled) self.scroll = self.scroll_to;
+}
+
+/// One frame of following the scroll.
+pub fn step(self: *SettingsPage) void {
+    anim.approach(&self.scroll, self.scroll_to, anim.scroll_speed);
 }
 
 pub fn actionAt(self: *const SettingsPage, p: rl.Vector2, settings: *const Settings) ?Action {
@@ -185,6 +199,7 @@ pub fn actionAt(self: *const SettingsPage, p: rl.Vector2, settings: *const Setti
     if (hit(p, self.confirm_discard_toggle)) return .toggle_confirm_discard;
     if (hit(p, self.pull_rebase_toggle)) return .toggle_pull_rebase;
     if (hit(p, self.inline_blame_toggle)) return .toggle_inline_blame;
+    if (hit(p, self.smooth_toggle)) return .toggle_smooth;
     if (hit(p, self.shortcuts_button)) return .open_help;
     return null;
 }

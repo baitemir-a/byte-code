@@ -8,6 +8,7 @@ const rl = @import("raylib");
 const theme = @import("theme/lib/theme.zig");
 const Font = @import("Font.zig");
 const Icons = @import("Icons.zig");
+const anim = @import("anim.zig");
 
 const Modal = @This();
 
@@ -58,6 +59,9 @@ focus: usize = 0,
 keyboard: bool = false,
 /// Where the pointer went down: a click counts when it comes up there too.
 pressed: ?Target = null,
+/// How far the dialog is in: it fades up into place and back out again
+/// when smooth animations are on (see ui/anim.zig).
+shown: f32 = 0,
 
 // Laid out by `layout`.
 window: rl.Vector2 = .{ .x = 0, .y = 0 },
@@ -175,13 +179,24 @@ pub fn answer(self: *const Modal, button: usize) Answer {
     return .{ .button = button, .checked = self.checked };
 }
 
+/// One frame of the dialog coming in (`opening`) or going away.
+pub fn step(self: *Modal, opening: bool) void {
+    anim.approach(&self.shown, if (opening) 1 else 0, anim.popup_speed);
+}
+
 pub fn draw(self: *const Modal, font: Font) void {
-    rl.drawRectangleRec(.{ .x = 0, .y = 0, .width = self.window.x, .height = self.window.y }, .{ .r = 0, .g = 0, .b = 0, .a = 110 });
+    const t = anim.ease(self.shown);
+    rl.drawRectangleRec(.{ .x = 0, .y = 0, .width = self.window.x, .height = self.window.y }, anim.alpha(.{ .r = 0, .g = 0, .b = 0, .a = 110 }, t));
+    // The dialog itself, and everything in it, rises the last few pixels
+    // into place as it fades in.
+    rl.gl.rlPushMatrix();
+    defer rl.gl.rlPopMatrix();
+    rl.gl.rlTranslatef(0, (1 - t) * 12, 0);
     const r = self.rect;
     const round = 10 / @min(r.width, r.height);
-    rl.drawRectangleRounded(.{ .x = r.x + 2, .y = r.y + 6, .width = r.width, .height = r.height }, round, 8, theme.popup_shadow);
-    rl.drawRectangleRounded(r, round, 8, theme.popup_background);
-    rl.drawRectangleRoundedLinesEx(r, round, 8, 1, theme.popup_border);
+    rl.drawRectangleRounded(.{ .x = r.x + 2, .y = r.y + 6, .width = r.width, .height = r.height }, round, 8, anim.alpha(theme.popup_shadow, t));
+    rl.drawRectangleRounded(r, round, 8, anim.alpha(theme.popup_background, t));
+    rl.drawRectangleRoundedLinesEx(r, round, 8, 1, anim.alpha(theme.popup_border, t));
     theme.clip(r);
     defer rl.endScissorMode();
 
@@ -192,7 +207,7 @@ pub fn draw(self: *const Modal, font: Font) void {
         .failure => .{ .circle_x, theme.diff_deleted },
         .question => .{ .key_round, theme.accent },
     };
-    font.drawIcon(icon, .{ .x = r.x + pad + 9, .y = y + theme.line_height / 2 }, .large, theme.copy(icon_color));
+    font.drawIcon(icon, .{ .x = r.x + pad + 9, .y = y + theme.line_height / 2 }, .large, anim.alpha(icon_color, t));
     for (self.title_lines[0..self.title_count]) |line| {
         _ = font.drawText(line, x, y + (theme.line_height - theme.font_size) / 2, theme.font_size, theme.foreground);
         y += theme.line_height;
@@ -251,11 +266,11 @@ fn drawField(self: *const Modal, font: Font) void {
     var x = left;
     if (self.secret) {
         const dots = std.unicode.utf8CountCodepoints(self.typedText()) catch self.typed_len;
-        const step = font.cell_width;
-        const shown = @min(dots, @as(usize, @intFromFloat(@max(1, (right - left) / step))));
-        for (0..shown) |_| {
-            rl.drawCircleV(.{ .x = x + step / 2, .y = f.y + f.height / 2 }, 3, theme.foreground);
-            x += step;
+        const gap = font.cell_width;
+        const count = @min(dots, @as(usize, @intFromFloat(@max(1, (right - left) / gap))));
+        for (0..count) |_| {
+            rl.drawCircleV(.{ .x = x + gap / 2, .y = f.y + f.height / 2 }, 3, theme.foreground);
+            x += gap;
         }
     } else {
         // Long text: its end, where the caret is, stays in view.

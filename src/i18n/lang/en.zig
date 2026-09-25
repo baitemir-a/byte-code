@@ -58,6 +58,8 @@ pub const strings: Strings = .{
         .pull_rebase_hint = "Put your commits on top of what's pulled instead of merging",
         .inline_blame = "Blame on the current line",
         .inline_blame_hint = "Who last changed the line the cursor is on, at its end",
+        .smooth = "Smooth animations",
+        .smooth_hint = "Panels, scrolling, dialogs and tooltips move into place",
         .shortcuts = "Keyboard shortcuts",
         .shortcuts_hint = "Every combination, and how to change it",
     },

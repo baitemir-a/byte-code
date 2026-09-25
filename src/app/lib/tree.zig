@@ -143,7 +143,17 @@ pub fn updateTreePress(self: *App, point: rl.Vector2) !void {
         const path = try self.gpa.dupe(u8, press.path);
         defer self.gpa.free(path);
         self.endTreePress();
-        if (project.node(node).is_dir) try project.toggle(self.io, node) else try self.openFromTree(path);
+        if (project.node(node).is_dir) {
+            // The rows the folder brings (or takes away) slide out from
+            // under it: where it is, and how many they are.
+            const row = std.mem.indexOfScalar(u32, project.rows.items, node);
+            const before = project.rows.items.len;
+            try project.toggle(self.io, node);
+            if (row) |at| {
+                const delta = @as(isize, @intCast(project.rows.items.len)) - @as(isize, @intCast(before));
+                self.sidebar.noteToggle(at, delta);
+            }
+        } else try self.openFromTree(path);
         return;
     }
 

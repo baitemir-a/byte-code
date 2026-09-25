@@ -4,6 +4,7 @@ const std = @import("std");
 const rl = @import("raylib");
 const core = @import("core");
 const theme = @import("../theme/lib/theme.zig");
+const anim = @import("../anim.zig");
 const View = @import("View.zig");
 
 const Completion = core.Completion;
@@ -62,14 +63,15 @@ pub fn itemAt(self: *const Popup, c: *const Completion, p: rl.Vector2) ?usize {
 }
 
 pub fn draw(self: *const Popup, c: *const Completion, view: *const View) void {
-    if (!self.visible) return;
+    const t = anim.ease(anim.fade(anim.hash("completion", 0), self.visible, anim.popup_speed));
+    if (!self.visible or t <= 0) return;
     const r = self.rect;
     const cw = view.font.cell_width;
 
-    // Shadow, background, border.
-    rl.drawRectangleRec(.{ .x = r.x + 3, .y = r.y + 4, .width = r.width, .height = r.height }, theme.popup_shadow);
-    rl.drawRectangleRec(r, theme.popup_background);
-    rl.drawRectangleLinesEx(r, 1, theme.popup_border);
+    // Shadow, background, border, all fading in with the list.
+    rl.drawRectangleRec(.{ .x = r.x + 3, .y = r.y + 4, .width = r.width, .height = r.height }, anim.alpha(theme.popup_shadow, t));
+    rl.drawRectangleRec(r, anim.alpha(theme.popup_background, t));
+    rl.drawRectangleLinesEx(r, 1, anim.alpha(theme.popup_border, t));
 
     const rows = @min(c.items.items.len - self.first, max_rows);
     for (0..rows) |row| {

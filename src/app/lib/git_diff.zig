@@ -63,7 +63,7 @@ pub fn openDiffTab(self: *App, path: []const u8, against: Against) !void {
     const at = @min(self.active + 1, self.tabs.items.len);
     try self.insertTab(at, tab);
     try self.activate(at);
-    self.view.scroll = .{ .x = 0, .y = 0 };
+    self.view.setScroll(.{ .x = 0, .y = 0 });
     const t = self.tab();
     t.diff.clear();
     readBase(self, t, path, against) catch |err| {
@@ -111,7 +111,7 @@ pub fn openRevDiff(self: *App, old_rev: []const u8, new_rev: []const u8, file: c
     const at = @min(self.active + 1, self.tabs.items.len);
     try self.insertTab(at, tab);
     try self.activate(at);
-    self.view.scroll = .{ .x = 0, .y = 0 };
+    self.view.setScroll(.{ .x = 0, .y = 0 });
     const t = self.tab();
     try t.diff.setFile(path, repo, file.path, .commit);
     try t.diff.setRevs(old_rev, new_rev);
@@ -276,6 +276,6 @@ fn reloadFile(self: *App, path: []const u8) !void {
         const scroll = if (t == self.tab()) self.view.scroll else t.scroll;
         t.load(self.gpa, self.io, path) catch |err| return self.reportError(i18n.tr().errors.open_file, path, err);
         t.scroll = scroll;
-        if (t == self.tab()) self.view.scroll = scroll;
+        if (t == self.tab()) self.view.setScroll(scroll);
     }
 }

@@ -3,6 +3,7 @@ const std = @import("std");
 const rl = @import("raylib");
 const core = @import("core");
 const theme = @import("../../ui/theme/lib/theme.zig");
+const anim = @import("../../ui/anim.zig");
 const Font = @import("../../ui/Font.zig");
 const SettingsPage = @import("../../ui/pages/SettingsPage.zig");
 const App = @import("../App.zig");
@@ -17,6 +18,7 @@ pub fn applyToTheme(s: core.Settings) void {
     theme.setMode(s.theme);
     theme.accent = .{ .r = s.accent[0], .g = s.accent[1], .b = s.accent[2], .a = 255 };
     theme.zoom = @as(f32, @floatFromInt(s.zoom)) / 100;
+    anim.enabled = s.smooth_animations;
     i18n.setLanguage(s.language);
 }
 
@@ -60,6 +62,7 @@ pub fn runSettingsAction(self: *App, action: SettingsPage.Action) !void {
         .toggle_confirm_discard => self.settings.confirm_discard = !self.settings.confirm_discard,
         .toggle_pull_rebase => self.settings.pull_rebase = !self.settings.pull_rebase,
         .toggle_inline_blame => self.settings.inline_blame = !self.settings.inline_blame,
+        .toggle_smooth => self.settings.smooth_animations = !self.settings.smooth_animations,
         .toggle_word_wrap => self.settings.word_wrap = !self.settings.word_wrap,
         .toggle_new_window => self.settings.open_folder_in_new_window = !self.settings.open_folder_in_new_window,
         .open_help, .choose_language => unreachable,

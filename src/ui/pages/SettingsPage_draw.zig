@@ -3,6 +3,7 @@
 const std = @import("std");
 const rl = @import("raylib");
 const theme = @import("../theme/lib/theme.zig");
+const anim = @import("../anim.zig");
 const Font = @import("../Font.zig");
 const core = @import("core");
 const SettingsPage = @import("SettingsPage.zig");
@@ -46,7 +47,7 @@ pub fn draw(self: *const SettingsPage, font: Font, settings: *const Settings, se
 
     // Auto save, and after how long (indented under it).
     label(font, t.autosave, t.autosave_hint, x, self.rowY(rows.autosave), self.autosave_toggle.x);
-    drawToggle(self.autosave_toggle, settings.autosave);
+    drawToggle(self.autosave_toggle, settings.autosave, anim.hash("settings_toggle", rows.autosave));
     const enabled = settings.autosave;
     label(font, t.autosave_after, "", x + 3 * font.cell_width, self.rowY(rows.delay), self.delay_minus.x);
     var secs_buf: [16]u8 = undefined;
@@ -63,28 +64,32 @@ pub fn draw(self: *const SettingsPage, font: Font, settings: *const Settings, se
 
     // Minimap
     label(font, t.minimap, t.minimap_hint, x, self.rowY(rows.minimap), self.minimap_toggle.x);
-    drawToggle(self.minimap_toggle, settings.minimap);
+    drawToggle(self.minimap_toggle, settings.minimap, anim.hash("settings_toggle", rows.minimap));
 
     // Word wrap
     var wrap_buf: [128]u8 = undefined;
     label(font, t.word_wrap, i18n.fill(&wrap_buf, t.word_wrap_hint, .{SettingsPage.opt ++ "+Z"}), x, self.rowY(rows.word_wrap), self.wrap_toggle.x);
-    drawToggle(self.wrap_toggle, settings.word_wrap);
+    drawToggle(self.wrap_toggle, settings.word_wrap, anim.hash("settings_toggle", rows.word_wrap));
 
     // Opening folders
     label(font, t.new_window, t.new_window_hint, x, self.rowY(rows.new_window), self.new_window_toggle.x);
-    drawToggle(self.new_window_toggle, settings.open_folder_in_new_window);
+    drawToggle(self.new_window_toggle, settings.open_folder_in_new_window, anim.hash("settings_toggle", rows.new_window));
 
     // Asking before changes are thrown away in the Git view.
     label(font, t.confirm_discard, t.confirm_discard_hint, x, self.rowY(rows.confirm_discard), self.confirm_discard_toggle.x);
-    drawToggle(self.confirm_discard_toggle, settings.confirm_discard);
+    drawToggle(self.confirm_discard_toggle, settings.confirm_discard, anim.hash("settings_toggle", rows.confirm_discard));
 
     // Pulling with a rebase instead of a merge.
     label(font, t.pull_rebase, t.pull_rebase_hint, x, self.rowY(rows.pull_rebase), self.pull_rebase_toggle.x);
-    drawToggle(self.pull_rebase_toggle, settings.pull_rebase);
+    drawToggle(self.pull_rebase_toggle, settings.pull_rebase, anim.hash("settings_toggle", rows.pull_rebase));
 
     // Who last changed the cursor's line, at its end.
     label(font, t.inline_blame, t.inline_blame_hint, x, self.rowY(rows.inline_blame), self.inline_blame_toggle.x);
-    drawToggle(self.inline_blame_toggle, settings.inline_blame);
+    drawToggle(self.inline_blame_toggle, settings.inline_blame, anim.hash("settings_toggle", rows.inline_blame));
+
+    // Panels, scrolling and dialogs moving instead of snapping.
+    label(font, t.smooth, t.smooth_hint, x, self.rowY(rows.smooth), self.smooth_toggle.x);
+    drawToggle(self.smooth_toggle, settings.smooth_animations, anim.hash("settings_toggle", rows.smooth));
 
     // Keyboard shortcuts live in their own tab.
     label(font, t.shortcuts, t.shortcuts_hint, x, self.rowY(rows.shortcuts), self.shortcuts_button.x);
@@ -104,9 +109,12 @@ pub fn label(font: Font, title: []const u8, hint: []const u8, x: f32, y: f32, co
 }
 
 /// An on/off switch: a pill with a knob, in the accent color when on.
-pub fn drawToggle(r: rl.Rectangle, on: bool) void {
-    rl.drawRectangleRounded(r, 1, 12, theme.copy(if (on) theme.accent else theme.popup_border));
-    const knob_x = if (on) r.x + r.width - r.height / 2 else r.x + r.height / 2;
+/// The knob slides across and the color follows it; `id` tells one switch
+/// from another (see ui/anim.zig).
+pub fn drawToggle(r: rl.Rectangle, on: bool, id: u64) void {
+    const t = anim.fade(id, on, anim.hover_speed);
+    rl.drawRectangleRounded(r, 1, 12, anim.mix(theme.popup_border, theme.accent, t));
+    const knob_x = r.x + r.height / 2 + t * (r.width - r.height);
     rl.drawCircleV(.{ .x = knob_x, .y = r.y + r.height / 2 }, r.height / 2 - 3, theme.foreground);
 }
 

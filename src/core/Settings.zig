@@ -78,6 +78,9 @@ confirm_discard: bool = true,
 pull_rebase: bool = false,
 /// Who last changed the cursor's line, shown at its end.
 inline_blame: bool = true,
+/// Panels, scrolling, dialogs and tooltips move into place instead of
+/// snapping to it (see ui/anim.zig).
+smooth_animations: bool = true,
 /// Width of the project sidebar, in UI units (dragged by its edge).
 sidebar_width: u16 = 240,
 

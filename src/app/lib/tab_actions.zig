@@ -18,7 +18,7 @@ pub fn activate(self: *App, index: usize) !void {
     if (index == self.active) return;
     self.tab().scroll = self.view.scroll;
     self.active = index;
-    self.view.scroll = self.tab().scroll;
+    self.view.setScroll(self.tab().scroll);
     self.completion.close();
     if (self.readOnly()) self.find.close(); // nothing here to replace
     self.mouse.dragging = false;
@@ -80,10 +80,10 @@ pub fn closeTab(self: *App, index: usize) !bool {
     }
     // A pane whose tab is gone shows another one, from where it left off.
     if (was_focused and !collapsed) {
-        self.view.scroll = self.tab().scroll;
+        self.view.setScroll(self.tab().scroll);
         self.completion.close();
     }
-    if (was_other and !collapsed) self.other_view.scroll = self.otherTab().scroll;
+    if (was_other and !collapsed) self.other_view.setScroll(self.otherTab().scroll);
     try self.revealCurrentFile();
     return true;
 }

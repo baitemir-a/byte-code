@@ -4,6 +4,7 @@ const std = @import("std");
 const rl = @import("raylib");
 const core = @import("core");
 const theme = @import("theme/lib/theme.zig");
+const anim = @import("anim.zig");
 const Font = @import("Font.zig");
 const TextField = @import("widgets/TextField.zig");
 const file_icon = @import("widgets/lib/file_icon.zig");
@@ -94,11 +95,16 @@ pub fn itemAt(self: *const QuickOpen, p: rl.Vector2) ?usize {
 }
 
 pub fn draw(self: *const QuickOpen, search: *const core.FileSearch, font: Font, show_caret: bool, has_project: bool) void {
-    if (!self.is_open) return;
+    const t = anim.ease(anim.fade(anim.hash("quick_open", 0), self.is_open, anim.popup_speed));
+    if (!self.is_open or t <= 0) return;
+    // It comes down from the top of the editor as it fades in.
+    rl.gl.rlPushMatrix();
+    defer rl.gl.rlPopMatrix();
+    rl.gl.rlTranslatef(0, -(1 - t) * 10, 0);
     const r = self.rect;
-    rl.drawRectangleRec(.{ .x = r.x + 3, .y = r.y + 5, .width = r.width, .height = r.height }, theme.popup_shadow);
-    rl.drawRectangleRec(r, theme.popup_background);
-    rl.drawRectangleLinesEx(r, 1, theme.popup_border);
+    rl.drawRectangleRec(.{ .x = r.x + 3, .y = r.y + 5, .width = r.width, .height = r.height }, anim.alpha(theme.popup_shadow, t));
+    rl.drawRectangleRec(r, anim.alpha(theme.popup_background, t));
+    rl.drawRectangleLinesEx(r, 1, anim.alpha(theme.popup_border, t));
     self.query.draw(self.field_rect, font, i18n.tr().quick_open.placeholder, true, show_caret);
 
     const cw = font.cell_width;

@@ -5,6 +5,7 @@ const std = @import("std");
 const rl = @import("raylib");
 const core = @import("core");
 const theme = @import("../theme/lib/theme.zig");
+const anim = @import("../anim.zig");
 const Font = @import("../Font.zig");
 const TextField = @import("../widgets/TextField.zig");
 const file_icon = @import("../widgets/lib/file_icon.zig");
@@ -104,7 +105,8 @@ pub fn scrollToSection(self: *GitPanel, git: *const Git, section: Section) void 
     var n: usize = 0;
     while (self.rowAtIndex(git, n)) |row| : (n += 1) {
         if (row == .header and row.header == section) {
-            self.scroll = @as(f32, @floatFromInt(n)) * row_height;
+            self.scroll_to = @as(f32, @floatFromInt(n)) * row_height;
+            if (!anim.enabled) self.scroll = self.scroll_to;
             return;
         }
     }
@@ -363,6 +365,10 @@ rect: rl.Rectangle = std.mem.zeroes(rl.Rectangle),
 field_rect: rl.Rectangle = std.mem.zeroes(rl.Rectangle),
 commit_rect: rl.Rectangle = std.mem.zeroes(rl.Rectangle),
 scroll: f32 = 0,
+/// Where the list is headed; `scroll` follows it (see ui/anim.zig).
+scroll_to: f32 = 0,
+/// A section just unfolded or folded: the rows under it slide into place.
+reveal: ?anim.Reveal = null,
 max_scroll: f32 = 0,
 /// Something runs in the background (a push, a pull...): a row under the
 /// commit button says what, how far it got, and offers to stop it.
@@ -508,11 +514,45 @@ pub fn layout(self: *GitPanel, rect: rl.Rectangle, font: Font, git: *const Git) 
     self.message.layout(self.field_rect.width, font);
     const content = @as(f32, @floatFromInt(self.rowCount(git))) * row_height;
     self.max_scroll = @max(0, content - (rect.y + rect.height - self.listTop()));
+    self.scroll_to = std.math.clamp(self.scroll_to, 0, self.max_scroll);
     self.scroll = std.math.clamp(self.scroll, 0, self.max_scroll);
 }
 
 pub fn scrollBy(self: *GitPanel, wheel_y: f32) void {
-    self.scroll = std.math.clamp(self.scroll - wheel_y * row_height * 3, 0, self.max_scroll);
+    self.scroll_to = std.math.clamp(self.scroll_to - wheel_y * row_height * 3, 0, self.max_scroll);
+    if (!anim.enabled) self.scroll = self.scroll_to;
+}
+
+/// One frame of following the scroll and of an unfolding section.
+pub fn step(self: *GitPanel) void {
+    anim.approach(&self.scroll, self.scroll_to, anim.scroll_speed);
+    if (self.reveal) |*r| {
+        if (!r.step(anim.collapse_speed)) self.reveal = null;
+    }
+}
+
+/// How many rows the list has, so a section that folds or unfolds can
+/// tell how much moved.
+pub fn rowTotal(self: *const GitPanel, git: *const Git) usize {
+    return self.rowCount(git);
+}
+
+/// The row a section's header is on: `Commands` at the top, the history
+/// header wherever the changes leave it.
+pub fn headerRow(self: *const GitPanel, git: *const Git, of: enum { commands, history }) usize {
+    if (of == .commands) return 0;
+    var n: usize = 0;
+    while (self.rowAtIndex(git, n)) |row| : (n += 1) {
+        if (std.meta.activeTag(row) == .history_header) return n;
+    }
+    return 0;
+}
+
+/// A section was folded or unfolded: its rows slide out from under its
+/// header. `before` is the row count it had beforehand.
+pub fn noteToggle(self: *GitPanel, git: *const Git, row: usize, before: usize) void {
+    const delta = @as(isize, @intCast(self.rowCount(git))) - @as(isize, @intCast(before));
+    self.reveal = anim.Reveal.start(row, delta);
 }
 
 /// The top of the list row under `p.y`.

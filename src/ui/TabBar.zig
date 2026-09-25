@@ -4,6 +4,7 @@ const std = @import("std");
 const rl = @import("raylib");
 const theme = @import("theme/lib/theme.zig");
 const Font = @import("Font.zig");
+const anim = @import("anim.zig");
 const Tab = @import("../app/Tab.zig");
 const file_icon = @import("widgets/lib/file_icon.zig");
 
@@ -92,11 +93,14 @@ pub fn draw(self: *const TabBar, tabs: []const Tab, active: usize, font: Font, f
     for (tabs[0..n], self.tab_rects.items[0..n], 0..) |*t, r, i| {
         const is_active = i == active;
         const hovered = self.hovered == i;
+        // One fade per tab, per bar: the two panes' bars are told apart by
+        // where they start.
+        const id = anim.hash("tab", i *% 31 +% @as(u64, @intFromFloat(@max(0, self.rect.x))));
+        const hover_t = anim.fade(id, hovered and !is_active, anim.hover_speed);
         if (is_active) {
             rl.drawRectangleRec(r, theme.background);
-            rl.drawRectangleRec(.{ .x = r.x, .y = r.y, .width = r.width, .height = 2 }, theme.copy(if (focused) theme.accent else theme.accentDim(0.5)));
-        } else if (hovered) {
-            rl.drawRectangleRec(r, theme.tab_hover);
+        } else if (hover_t > 0) {
+            rl.drawRectangleRec(r, anim.alpha(theme.tab_hover, hover_t));
         }
         rl.drawRectangleRec(.{ .x = r.x + r.width - 1, .y = r.y, .width = 1, .height = r.height }, theme.tab_separator);
 
@@ -122,5 +126,14 @@ pub fn draw(self: *const TabBar, tabs: []const Tab, active: usize, font: Font, f
         } else if (t.isDirty()) {
             rl.drawCircleV(center, 4, color);
         }
+    }
+
+    // The accent on the current tab slides over from the last one.
+    if (active < n) {
+        const a = self.tab_rects.items[active];
+        const bar = @as(u64, @intFromFloat(@max(0, self.rect.x)));
+        const x = anim.track(anim.hash("tab_line_x", bar), a.x, anim.panel_speed);
+        const w = anim.track(anim.hash("tab_line_w", bar), a.width, anim.panel_speed);
+        rl.drawRectangleRec(.{ .x = x, .y = a.y, .width = w, .height = 2 }, theme.copy(if (focused) theme.accent else theme.accentDim(0.5)));
     }
 }

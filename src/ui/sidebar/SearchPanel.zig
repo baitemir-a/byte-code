@@ -6,6 +6,7 @@ const std = @import("std");
 const rl = @import("raylib");
 const core = @import("core");
 const theme = @import("../theme/lib/theme.zig");
+const anim = @import("../anim.zig");
 const Font = @import("../Font.zig");
 const TextField = @import("../widgets/TextField.zig");
 const file_icon = @import("../widgets/lib/file_icon.zig");
@@ -38,6 +39,8 @@ replace_all_rect: rl.Rectangle = std.mem.zeroes(rl.Rectangle),
 match_case_rect: rl.Rectangle = std.mem.zeroes(rl.Rectangle),
 whole_word_rect: rl.Rectangle = std.mem.zeroes(rl.Rectangle),
 scroll: f32 = 0,
+/// Where the list is headed; `scroll` follows it (see ui/anim.zig).
+scroll_to: f32 = 0,
 max_scroll: f32 = 0,
 
 // Drawing, in SearchPanel_draw.zig.
@@ -85,11 +88,18 @@ pub fn layout(self: *SearchPanel, rect: rl.Rectangle, font: Font) void {
     self.replacement.layout(self.replace_rect.width, font);
     const content = @as(f32, @floatFromInt(self.rowCount())) * row_height;
     self.max_scroll = @max(0, content - (rect.y + rect.height - self.listTop()));
+    self.scroll_to = std.math.clamp(self.scroll_to, 0, self.max_scroll);
     self.scroll = std.math.clamp(self.scroll, 0, self.max_scroll);
 }
 
 pub fn scrollBy(self: *SearchPanel, wheel_y: f32) void {
-    self.scroll = std.math.clamp(self.scroll - wheel_y * row_height * 3, 0, self.max_scroll);
+    self.scroll_to = std.math.clamp(self.scroll_to - wheel_y * row_height * 3, 0, self.max_scroll);
+    if (!anim.enabled) self.scroll = self.scroll_to;
+}
+
+/// One frame of following the scroll.
+pub fn step(self: *SearchPanel) void {
+    anim.approach(&self.scroll, self.scroll_to, anim.scroll_speed);
 }
 
 pub fn onField(self: *const SearchPanel, p: rl.Vector2) bool {

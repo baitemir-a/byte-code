@@ -3,6 +3,7 @@
 const std = @import("std");
 const rl = @import("raylib");
 const theme = @import("../theme/lib/theme.zig");
+const anim = @import("../anim.zig");
 const Font = @import("../Font.zig");
 const file_icon = @import("../widgets/lib/file_icon.zig");
 const Icons = @import("../Icons.zig");
@@ -31,7 +32,7 @@ pub fn draw(self: *const Sidebar, tree: ?*const FileTree, current_path: ?[]const
     rl.drawRectangleRec(.{ .x = r.width - 1, .y = 0, .width = 1, .height = r.height }, theme.sidebar_border);
     drawViewStrip(self, font, terminal_open);
     drawGitBadge(font, git);
-    if (self.view == .explorer) drawExplorer(self, tree.?, current_path, font, show_caret);
+    if (self.view == .explorer) if (tree) |t| drawExplorer(self, t, current_path, font, show_caret);
 
     // The resize edge lights up while hovered or dragged.
     if (self.resizing or self.onEdge(rl.getMousePosition())) {
@@ -135,27 +136,38 @@ pub fn gitBadgeTooltip(font: Font, git: *const core.Git, pointer: rl.Vector2, op
 }
 
 /// Follows the tooltip from frame to frame: it appears over the Git tab
-/// and stays for as long as the pointer is on it or in it.
+/// and stays for as long as the pointer is on it or in it, fading in and
+/// out on the way (see ui/anim.zig).
 pub fn updateGitBadgeTooltip(self: *Sidebar, font: Font, git: *const core.Git) void {
     if (self.rect.width == 0) {
         self.git_tip_open = false;
-        return;
+    } else {
+        self.git_tip_open = gitBadgeTooltip(font, git, rl.getMousePosition(), self.git_tip_open) != null;
     }
-    self.git_tip_open = gitBadgeTooltip(font, git, rl.getMousePosition(), self.git_tip_open) != null;
+    _ = self.git_tip.update(self.git_tip_open, anim.popup_speed);
 }
 
 pub fn drawGitBadgeTooltip(self: *const Sidebar, font: Font, git: *const core.Git) void {
+    if (!self.git_tip.visible()) return;
     const mouse = rl.getMousePosition();
-    const tip = gitBadgeTooltip(font, git, mouse, self.git_tip_open) orelse return;
-    const box = tip.box;
-    rl.drawRectangleRec(.{ .x = box.x + 2, .y = box.y + 3, .width = box.width, .height = box.height }, theme.popup_shadow);
-    rl.drawRectangleRec(box, theme.popup_background);
-    rl.drawRectangleLinesEx(box, 1, theme.popup_border);
+    // Still drawn while it fades out, when the pointer has already left.
+    const tab = Sidebar.viewTabRect(.git);
+    const middle: rl.Vector2 = .{ .x = tab.x + tab.width / 2, .y = tab.y + tab.height / 2 };
+    const tip = gitBadgeTooltip(font, git, mouse, self.git_tip_open) orelse
+        gitBadgeTooltip(font, git, middle, true) orelse return;
+    const t = anim.ease(self.git_tip.t);
+    const box: rl.Rectangle = .{ .x = tip.box.x, .y = tip.box.y - (1 - t) * 6, .width = tip.box.width, .height = tip.box.height };
+    rl.drawRectangleRec(.{ .x = box.x + 2, .y = box.y + 3, .width = box.width, .height = box.height }, anim.alpha(theme.popup_shadow, t));
+    rl.drawRectangleRec(box, anim.alpha(theme.popup_background, t));
+    rl.drawRectangleLinesEx(box, 1, anim.alpha(theme.popup_border, t));
     var digits: [12]u8 = undefined;
+    const dy = box.y - tip.box.y;
     for (tip.list(), 0..) |badge, i| {
-        const row = tip.rowRect(i);
+        var row = tip.rowRect(i);
+        row.y += dy;
         // The row under the pointer lights up: clicking it goes there.
-        if (rl.checkCollisionPointRec(mouse, row)) rl.drawRectangleRec(row, theme.sidebar_hover);
+        const hover_t = anim.fade(anim.hash("badge_row", i), rl.checkCollisionPointRec(mouse, row), anim.hover_speed);
+        if (hover_t > 0) rl.drawRectangleRec(row, anim.alpha(theme.sidebar_hover, hover_t));
         const text = std.fmt.bufPrint(&digits, "{d}", .{GitPanel.badgeCount(git, badge)}) catch continue;
         const pill: rl.Rectangle = .{
             .x = row.x + BadgeTooltip.pad,
@@ -163,11 +175,11 @@ pub fn drawGitBadgeTooltip(self: *const Sidebar, font: Font, git: *const core.Gi
             .width = tip.counts,
             .height = badge_size,
         };
-        rl.drawRectangleRounded(pill, 0.5, 8, theme.copy(badge.color()));
+        rl.drawRectangleRounded(pill, 0.5, 8, anim.alpha(badge.color(), t));
         const text_x = pill.x + (pill.width - font.textWidthAt(text, badge_font)) / 2;
-        _ = font.drawFitSized(text, text_x, pill.y + (badge_size - badge_font) / 2, pill.x + pill.width, badge_font, theme.background);
+        _ = font.drawFitSized(text, text_x, pill.y + (badge_size - badge_font) / 2, pill.x + pill.width, badge_font, anim.alpha(theme.background, t));
         const ty = row.y + (row.height - theme.font_size) / 2;
-        _ = font.drawFit(badge.label(), pill.x + pill.width + BadgeTooltip.gap, ty, box.x + box.width - BadgeTooltip.pad, theme.foreground);
+        _ = font.drawFit(badge.label(), pill.x + pill.width + BadgeTooltip.gap, ty, box.x + box.width - BadgeTooltip.pad, anim.alpha(theme.foreground, t));
     }
 }
 
@@ -180,7 +192,8 @@ pub fn drawViewStrip(self: *const Sidebar, font: Font, terminal_open: bool) void
         const tab = Sidebar.viewTabRect(v);
         const active = self.view == v;
         const hovered = rl.checkCollisionPointRec(mouse, tab);
-        const color = theme.copy(if (active) theme.accent else if (hovered) theme.foreground else theme.sidebar_arrow);
+        const hover_t = anim.fade(anim.hash("view_tab", f.value), hovered, anim.hover_speed);
+        const color = theme.copy(if (active) theme.accent else anim.mix(theme.sidebar_arrow, theme.foreground, hover_t));
         const c: rl.Vector2 = .{ .x = tab.x + tab.width / 2, .y = tab.y + tab.height / 2 };
         const icon: Icons.Icon = switch (v) {
             .explorer => .files,
@@ -188,8 +201,11 @@ pub fn drawViewStrip(self: *const Sidebar, font: Font, terminal_open: bool) void
             .git => .git_branch,
         };
         font.drawIcon(icon, c, .large, color);
-        if (active) rl.drawRectangleRec(.{ .x = tab.x + 8, .y = tab.y + tab.height - 2, .width = tab.width - 16, .height = 2 }, theme.accent);
     }
+    // The line under the current view slides across to it.
+    const line_x = anim.track(anim.hash("view_line", 0), Sidebar.viewTabRect(self.view).x, anim.panel_speed);
+    const line = Sidebar.viewTabRect(self.view);
+    rl.drawRectangleRec(.{ .x = line_x + 8, .y = line.y + line.height - 2, .width = line.width - 16, .height = 2 }, theme.accent);
 
     // The buttons carry on from the tabs: terminal, open folder, help, settings.
     for (Sidebar.strip_buttons) |button| {
@@ -197,9 +213,10 @@ pub fn drawViewStrip(self: *const Sidebar, font: Font, terminal_open: bool) void
         const b = self.stripButtonRect(button);
         const hovered = rl.checkCollisionPointRec(mouse, b);
         const on = button == .terminal and terminal_open;
-        const color = theme.copy(if (on) theme.accent else if (hovered) theme.foreground else theme.sidebar_arrow);
+        const hover_t = anim.fade(anim.hash("strip_button", @intFromEnum(button)), hovered, anim.hover_speed);
+        const color = theme.copy(if (on) theme.accent else anim.mix(theme.sidebar_arrow, theme.foreground, hover_t));
         const c: rl.Vector2 = .{ .x = b.x + b.width / 2, .y = b.y + b.height / 2 };
-        if (hovered) rl.drawRectangleRounded(.{ .x = b.x + 3, .y = b.y + 4, .width = b.width - 6, .height = b.height - 8 }, 0.3, 6, theme.sidebar_hover);
+        if (hover_t > 0) rl.drawRectangleRounded(.{ .x = b.x + 3, .y = b.y + 4, .width = b.width - 6, .height = b.height - 8 }, 0.3, 6, anim.alpha(theme.sidebar_hover, hover_t));
         const icon: Icons.Icon = switch (button) {
             .terminal => .square_terminal,
             .open_folder => .folder_open,
@@ -224,8 +241,25 @@ pub fn drawExplorer(self: *const Sidebar, t: *const FileTree, current_path: ?[]c
     const total = self.rowCount(t);
     const first = @min(total, @as(usize, @intFromFloat(@max(0, self.scroll) / row_height)));
     const count: usize = @intFromFloat(r.height / row_height + 2);
+    // A folder that just opened or closed: the rows below it are on their
+    // way, and are clipped to below it so they slide out from under it.
+    const list_clip: rl.Rectangle = .{ .x = 0, .y = Sidebar.strip_height, .width = r.width - 1, .height = r.height - Sidebar.strip_height };
+    var moving = false;
+    defer if (moving) {
+        rl.endScissorMode();
+        theme.clip(list_clip);
+    };
     for (first..@min(first + count, total)) |row| {
-        const top = Sidebar.listTop() + @as(f32, @floatFromInt(row)) * row_height - self.scroll;
+        var top = Sidebar.listTop() + @as(f32, @floatFromInt(row)) * row_height - self.scroll;
+        if (self.reveal) |v| if (v.moves(row)) {
+            top += v.shift(row_height);
+            if (!moving) {
+                moving = true;
+                const under = Sidebar.listTop() + @as(f32, @floatFromInt(v.row + 1)) * row_height - self.scroll;
+                const y = @max(list_clip.y, under);
+                theme.clip(.{ .x = list_clip.x, .y = y, .width = list_clip.width, .height = @max(0, list_clip.y + list_clip.height - y) });
+            }
+        };
         const index = self.nodeAtRow(t, row) orelse {
             drawInput(self, t, row, font, show_caret);
             continue;
@@ -235,7 +269,9 @@ pub fn drawExplorer(self: *const Sidebar, t: *const FileTree, current_path: ?[]c
         const is_current = if (current_path) |p| std.mem.eql(u8, p, n.path) else false;
         const hovered = if (self.hovered) |h| h == .node and h.node == index else false;
         const is_drop = self.drop_target == index;
-        const bg: ?rl.Color = if (is_drop) theme.accentDim(0.25) else if (is_current) theme.accentDim(0.35) else if (hovered) theme.sidebar_hover else null;
+        // The hover highlight fades in and out under the pointer.
+        const hover_t = anim.fade(anim.hash("tree_row", index), hovered, anim.hover_speed);
+        const bg: ?rl.Color = if (is_drop) theme.accentDim(0.25) else if (is_current) theme.accentDim(0.35) else if (hover_t > 0) anim.alpha(theme.sidebar_hover, hover_t) else null;
         const row_rect: rl.Rectangle = .{ .x = 0, .y = top, .width = r.width - 1, .height = row_height };
         if (bg) |c| rl.drawRectangleRec(row_rect, theme.copy(c));
         if (is_drop) rl.drawRectangleLinesEx(row_rect, 1, theme.accent);
@@ -243,7 +279,7 @@ pub fn drawExplorer(self: *const Sidebar, t: *const FileTree, current_path: ?[]c
         const x = Sidebar.pad + @as(f32, @floatFromInt(n.depth)) * Sidebar.indent;
         const mid = top + row_height / 2;
         // Folders get their arrow, files the icon for their type.
-        if (n.is_dir) drawArrow(font, x, mid, n.expanded) else file_icon.draw(n.name, .{ .x = x + Sidebar.arrow_size / 2, .y = mid });
+        if (n.is_dir) drawArrow(font, x, mid, n.expanded, anim.hash("tree_arrow", index)) else file_icon.draw(n.name, .{ .x = x + Sidebar.arrow_size / 2, .y = mid });
         const color = if (n.is_dir) theme.sidebar_folder else theme.foreground;
         // Long names end in "…" before the scrollbar.
         _ = font.drawFit(n.name, x + Sidebar.arrow_size + Sidebar.name_gap, top + text_dy, r.width - Sidebar.scrollbar_grab - 2, color);
@@ -301,12 +337,17 @@ pub fn drawInput(self: *const Sidebar, tree: *const FileTree, row: usize, font: 
     // A folder arrow or the icon for the name typed so far, like the other rows.
     const mid = r.y + r.height / 2;
     const x = r.x - Sidebar.arrow_size - Sidebar.name_gap + 4;
-    if (kind == .folder) drawArrow(font, x, mid, false) else file_icon.draw(self.name.text(), .{ .x = x + Sidebar.arrow_size / 2, .y = mid });
+    if (kind == .folder) drawArrow(font, x, mid, false, anim.hash("tree_arrow", std.math.maxInt(u32))) else file_icon.draw(self.name.text(), .{ .x = x + Sidebar.arrow_size / 2, .y = mid });
     self.name.draw(r, font, if (kind == .folder) i18n.tr().sidebar.folder_name else i18n.tr().sidebar.file_name, true, show_caret);
 }
 
 /// A chevron: right for a collapsed folder, down for an expanded one,
 /// centered in the `arrow_size` column at `x`.
-pub fn drawArrow(font: Font, x: f32, mid: f32, expanded: bool) void {
-    font.drawIcon(if (expanded) .chevron_down else .chevron_right, .{ .x = x + Sidebar.arrow_size / 2, .y = mid }, .medium, theme.sidebar_arrow);
+/// A folder's chevron: right when it is shut, down when it is open, and
+/// turning between the two. `id` keeps one folder's turn apart from the
+/// next one's (see ui/anim.zig).
+pub fn drawArrow(font: Font, x: f32, mid: f32, expanded: bool, id: u64) void {
+    _ = font;
+    const turn = anim.fade(id, expanded, anim.collapse_speed);
+    anim.drawChevron(.{ .x = x + Sidebar.arrow_size / 2, .y = mid }, turn, 9, theme.sidebar_arrow);
 }

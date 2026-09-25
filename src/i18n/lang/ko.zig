@@ -58,6 +58,8 @@ pub const strings: Strings = .{
         .pull_rebase_hint = "병합 대신 가져온 커밋 위에 내 커밋을 올립니다",
         .inline_blame = "현재 줄의 작성자",
         .inline_blame_hint = "커서가 있는 줄을 마지막으로 바꾼 사람을 줄 끝에 표시",
+        .smooth = "부드러운 애니메이션",
+        .smooth_hint = "패널, 스크롤, 대화상자, 툴팁이 부드럽게 움직입니다",
         .shortcuts = "바로 가기 키",
         .shortcuts_hint = "모든 키 조합과 변경 방법",
     },

@@ -58,6 +58,8 @@ pub const strings: Strings = .{
         .pull_rebase_hint = "把你的提交放到拉取内容之上，而不是合并",
         .inline_blame = "当前行的作者",
         .inline_blame_hint = "在光标所在行末显示最后修改它的人",
+        .smooth = "平滑动画",
+        .smooth_hint = "面板、滚动、对话框和提示会平滑过渡",
         .shortcuts = "键盘快捷方式",
         .shortcuts_hint = "所有组合键及其修改方法",
     },

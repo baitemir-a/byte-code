@@ -10,6 +10,7 @@ const Font = @import("../Font.zig");
 const TextField = @import("../widgets/TextField.zig");
 const file_icon = @import("../widgets/lib/file_icon.zig");
 const Sidebar_draw = @import("Sidebar_draw.zig");
+const anim = @import("../anim.zig");
 
 const FileTree = core.FileTree;
 const Sidebar = @This();
@@ -66,16 +67,25 @@ pub const Hit = union(enum) {
 visible: bool = true,
 view: View = .explorer,
 /// Pixels scrolled down the list of rows; kept within [0, max_scroll].
+/// `scroll` is where the list is drawn and `scroll_to` where it is headed:
+/// with smooth animations on, the first follows the second (see ui/anim).
 scroll: f32 = 0,
+scroll_to: f32 = 0,
+/// How much of the sidebar is out: 0 hidden, 1 its full width.
+shown: f32 = 0,
 /// How far the list can scroll; set by `layout`.
 max_scroll: f32 = 0,
 /// Area of the sidebar; zero width when hidden. Set by `layout`.
 rect: rl.Rectangle = std.mem.zeroes(rl.Rectangle),
 /// What's under the mouse, for hover highlighting.
 hovered: ?Hit = null,
+/// A folder just opened or closed: the rows under it slide into place.
+reveal: ?anim.Reveal = null,
 /// The Git tab's tooltip is showing. It only opens from that tab, so the
-/// room it takes is free for the buttons under it until then.
+/// room it takes is free for the buttons under it until then; `git_tip`
+/// is how far it has faded in.
 git_tip_open: bool = false,
+git_tip: anim.Fade = .{},
 /// Display row to scroll into view at the next layout.
 pending_reveal: ?usize = null,
 /// Width asked for (dragging the right edge); the actual width is limited
@@ -111,6 +121,7 @@ pub fn deinit(self: *Sidebar) void {
 /// Back to the top, with no name box (e.g. when another folder opens).
 pub fn reset(self: *Sidebar) void {
     self.scroll = 0;
+    self.scroll_to = 0;
     self.pending_reveal = null;
     self.input = null;
 }
@@ -261,24 +272,25 @@ pub fn inputRect(self: *const Sidebar, tree: *const FileTree, row: usize) rl.Rec
 // ----------------------------------------------------------------- layout
 
 pub fn layout(self: *Sidebar, tree: ?*const FileTree, size: rl.Vector2, font: Font) void {
-    const shown = self.visible and tree != null;
     // At least 140 wide, and always leaving 300 for the editor.
     const w = std.math.clamp(self.preferred_width, min_width, @max(min_width, size.x - 300));
-    self.rect = .{ .x = 0, .y = 0, .width = if (shown) w else 0, .height = size.y };
-    if (!shown) return;
+    // Only part of that width while it slides in or out (see `step`).
+    self.rect = .{ .x = 0, .y = 0, .width = @round(w * anim.ease(self.shown)), .height = size.y };
+    if (tree == null or self.rect.width < 1) return;
     const t = tree.?;
 
     if (self.pending_reveal) |row| {
         self.pending_reveal = null;
         const top = @as(f32, @floatFromInt(row)) * row_height;
         const view_h = self.rect.height - listTop();
-        if (top < self.scroll) self.scroll = top;
-        if (top + row_height > self.scroll + view_h) self.scroll = top + row_height - view_h;
+        if (top < self.scroll_to) self.scroll_to = top;
+        if (top + row_height > self.scroll_to + view_h) self.scroll_to = top + row_height - view_h;
     }
 
     // Keep the scroll within the list.
     const content = @as(f32, @floatFromInt(self.rowCount(t))) * row_height;
     self.max_scroll = @max(0, content - (size.y - listTop()));
+    self.scroll_to = std.math.clamp(self.scroll_to, 0, self.max_scroll);
     self.scroll = std.math.clamp(self.scroll, 0, self.max_scroll);
 
     if (self.inputRow(t)) |row| self.name.layout(self.inputRect(t, row).width, font);
@@ -293,7 +305,24 @@ pub fn contains(self: *const Sidebar, p: rl.Vector2) bool {
 /// Scrolls by mouse-wheel ticks. Clamped right away: drawing can happen
 /// before the next `layout`.
 pub fn scrollBy(self: *Sidebar, wheel_y: f32) void {
-    self.scroll = std.math.clamp(self.scroll - wheel_y * row_height * 3, 0, self.max_scroll);
+    self.scroll_to = std.math.clamp(self.scroll_to - wheel_y * row_height * 3, 0, self.max_scroll);
+    if (!anim.enabled) self.scroll = self.scroll_to;
+}
+
+/// One frame of following the scroll (and of the sidebar sliding in or
+/// out). Called once a frame, before the layout.
+pub fn step(self: *Sidebar, open: bool) void {
+    anim.approach(&self.shown, if (open) 1 else 0, anim.panel_speed);
+    anim.approach(&self.scroll, self.scroll_to, anim.scroll_speed);
+    if (self.reveal) |*r| {
+        if (!r.step(anim.collapse_speed)) self.reveal = null;
+    }
+}
+
+/// A folder was clicked open or shut on display row `row`, and the list
+/// gained (or lost) `delta` rows: they slide out from under it.
+pub fn noteToggle(self: *Sidebar, row: usize, delta: isize) void {
+    self.reveal = anim.Reveal.start(row, delta);
 }
 
 pub fn hitTest(self: *const Sidebar, tree: *const FileTree, p: rl.Vector2) ?Hit {
@@ -367,14 +396,17 @@ pub fn handleScrollbar(self: *Sidebar, p: rl.Vector2, pressed: bool) bool {
     }
     const track = self.scrollbarTrack();
     const t = (p.y - grab - track.y) / @max(1, track.height - thumb.height);
+    // Dragging the thumb has to keep up with the pointer exactly.
     self.scroll = std.math.clamp(t, 0, 1) * self.max_scroll;
+    self.scroll_to = self.scroll;
     return true;
 }
 
 pub fn autoScroll(self: *Sidebar, p: rl.Vector2) void {
     const edge = row_height;
-    if (p.y < listTop() + edge) self.scroll = @max(0, self.scroll - 6);
-    if (p.y > self.rect.height - edge) self.scroll = @min(self.max_scroll, self.scroll + 6);
+    if (p.y < listTop() + edge) self.scroll_to = @max(0, self.scroll_to - 6);
+    if (p.y > self.rect.height - edge) self.scroll_to = @min(self.max_scroll, self.scroll_to + 6);
+    if (!anim.enabled) self.scroll = self.scroll_to;
 }
 
 /// Places the name box's cursor at a click.
