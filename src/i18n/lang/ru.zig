@@ -312,6 +312,14 @@ pub const strings: Strings = .{
         .uncommitted = "Ещё не в коммите",
         .line_column = "Стр {1}, Кол {2}",
     },
+    .problems = .{
+        .unclosed = "Скобка {1} не закрыта",
+        .unexpected = "Лишняя скобка {1}",
+        .mismatched = "Ожидалась {1}, а стоит {2}",
+        .unterminated_string = "Строка не закрыта",
+        .missing_import = "Не найден модуль {1}",
+        .invalid_json = "Ошибка в JSON",
+    },
     .find = .{
         .placeholder = "Найти",
         .replace_placeholder = "Заменить",

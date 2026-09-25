@@ -97,7 +97,7 @@ pub fn handleMouse(self: *App) !bool {
     const on_popup = editing and pressed and self.popup.contains(point);
     if (on_popup) if (self.popup.itemAt(&self.completion, point)) |i| {
         self.completion.selected = i;
-        try self.completion.accept(self.buf());
+        try self.acceptCompletion();
     };
 
     const on_find = editing and pressed and !on_popup and self.find.contains(point);

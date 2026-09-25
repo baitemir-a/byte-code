@@ -45,6 +45,7 @@ const tree = @import("lib/tree.zig");
 const mouse_input = @import("lib/mouse_input.zig");
 const git_diff = @import("lib/git_diff.zig");
 const git_blame = @import("lib/git_blame.zig");
+const problems = @import("lib/problems.zig");
 const git_jobs = @import("lib/git_job.zig");
 const git_conflicts = @import("lib/git_conflicts.zig");
 const git_pickers = @import("lib/git_pickers.zig");
@@ -221,6 +222,14 @@ git_stamp: u64 = 0,
 git_watch_at: f64 = 0,
 /// A push, pull or fetch running in the background, if any.
 git_job: ?*git_jobs.Job = null,
+/// The language parser checking a file's syntax in the background, if any;
+/// where programs are looked for (worked out by the first run); and which
+/// parsers were found to run, or not to be installed.
+syntax_job: ?*problems.Job = null,
+tool_path: ?[]u8 = null,
+ts_server: core.Diagnostics.checkers.Server,
+tools_working: std.EnumSet(core.Diagnostics.checkers.Tool) = .initEmpty(),
+tools_missing: std.EnumSet(core.Diagnostics.checkers.Tool) = .initEmpty(),
 /// The editor's environment, which git commands that may ask for a
 /// password are run with (plus what sends the question here).
 environ: ?*const std.process.Environ.Map = null,
@@ -304,6 +313,9 @@ pub const openRevDiff = git_diff.openRevDiff;
 
 // git_blame.zig
 pub const updateBlame = git_blame.updateBlame;
+// problems.zig
+pub const updateProblems = problems.updateProblems;
+pub const problemAtCursor = problems.problemAtCursor;
 pub const blameAt = git_blame.blameAt;
 pub const inlineBlame = git_blame.inlineBlame;
 pub const cursorPosition = git_blame.cursorPosition;
@@ -431,6 +443,7 @@ pub const shrinkSelection = editing.shrinkSelection;
 pub const selectScope = editing.selectScope;
 pub const scopeStepsValid = editing.scopeStepsValid;
 pub const handleCompletionKey = editing.handleCompletionKey;
+pub const acceptCompletion = editing.acceptCompletion;
 pub const updateCompletion = editing.updateCompletion;
 
 // Running commands, in dispatch.zig.
@@ -452,6 +465,7 @@ pub fn init(gpa: std.mem.Allocator, io: std.Io) !App {
         .io = io,
         .view = View.init(gpa, Font.load()),
         .other_view = undefined,
+        .ts_server = .init(gpa),
         .completion = .init(gpa),
         .find = .init(gpa),
         .sidebar = .init(gpa),
@@ -477,6 +491,8 @@ pub fn init(gpa: std.mem.Allocator, io: std.Io) !App {
 
 pub fn deinit(self: *App) void {
     git_jobs.finishGitJob(self);
+    problems.finishJob(self);
+    if (self.tool_path) |p| self.gpa.free(p);
     self.gpa.free(self.settings_path);
     self.gpa.free(self.keys_path);
     self.gpa.free(self.projects_path);
@@ -613,6 +629,7 @@ pub fn update(self: *App) !void {
     try self.updateSidebarViews();
     try self.updateDiff();
     try self.updateBlame();
+    try self.updateProblems();
     try self.updateConflicts();
 
     try self.updateTitle();

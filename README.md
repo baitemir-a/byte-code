@@ -51,7 +51,27 @@ the system warns the first time you open them:
 - **Select scope** — grow the selection word → line → inside brackets or
   quotes → the brackets themselves → …, and back
 - **Completion** — suggestions as you type from the file's own words and
-  language keywords, fuzzy matched
+  language keywords, fuzzy matched. Inside an import path it offers the
+  files and folders next to the file, packages from `node_modules` and
+  aliases like `@/shared/ui/` from `paths` in tsconfig.json / jsconfig.json
+  (`@/` and `~/` mean `src/` when none are set):
+  `import … from "./…"` and `require()` in JS/TS, `@import()` in Zig,
+  `from … import` in Python, `@import`/`@use`/`url()` in CSS, `src`/`href`
+  in HTML and `#include "…"` in C
+- **Errors underlined** — once typing pauses, a red wavy line marks each
+  syntax error, with the message at the end of its line. The language's
+  own parser finds them, run in the background on the unsaved text:
+  TypeScript for JS/TS/JSX/TSX (the project's own, a global one or the one
+  inside VS Code; needs `node`), `zig ast-check`, Python's compiler,
+  `gofmt` and `rustfmt` — whichever are installed. For JS/TS the
+  TypeScript language service stays running and reports type errors too
+  (unknown names, wrong types, misspelled properties), set up from the
+  project's tsconfig.json; for Python, names that are never defined are
+  flagged. JSON is checked by the
+  editor itself (comments allowed in tsconfig.json and .jsonc). Without a
+  parser, brackets that don't pair up and strings left open are still
+  marked. Imports of files or packages that aren't there are flagged too
+  (relative paths, tsconfig aliases, `node_modules`)
 - **Find and replace** in a file and **across the project** — match case
   and whole word options; replace one match, one file or everything
 - **File and folder icons** in the tree, tabs and lists — folders open and

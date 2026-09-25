@@ -65,6 +65,8 @@ pub const Palette = struct {
     find_match: rl.Color,
     find_current: rl.Color,
     find_no_results: rl.Color,
+    /// The wavy line under a mistake in the code, and its message.
+    problem: rl.Color,
 
     /// Syntax highlighting, indexed by `core.syntax.Kind`.
     syntax: [syntax_kinds]rl.Color,
@@ -131,6 +133,7 @@ pub const dark: Palette = .{
     .find_match = rgb(82, 66, 36),
     .find_current = rgb(150, 105, 20),
     .find_no_results = rgb(241, 76, 76),
+    .problem = rgb(241, 76, 76),
 
     .syntax = syntaxTable(.{
         .plain = rgb(220, 220, 220),
@@ -215,6 +218,7 @@ pub const light: Palette = .{
     .find_match = rgb(255, 232, 170),
     .find_current = rgb(255, 196, 80),
     .find_no_results = rgb(205, 49, 49),
+    .problem = rgb(205, 49, 49),
 
     .syntax = syntaxTable(.{
         .plain = rgb(31, 31, 31),

@@ -118,6 +118,9 @@ fn kindLetter(k: Completion.ItemKind) u21 {
         .function => 'f',
         .variable => 'v',
         .member => 'm',
+        .file => 'F',
+        .folder => 'D',
+        .module => 'M',
     };
 }
 
@@ -128,5 +131,8 @@ fn kindColor(k: Completion.ItemKind) rl.Color {
         .function => .function,
         .variable => .constant,
         .member => .plain,
+        .file => .string,
+        .folder => .type,
+        .module => .function,
     });
 }

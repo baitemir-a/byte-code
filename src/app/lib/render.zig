@@ -10,6 +10,8 @@ const View = @import("../../ui/editor/View.zig");
 const Minimap = @import("../../ui/editor/Minimap.zig");
 const View_conflicts = @import("../../ui/editor/View_conflicts.zig");
 const View_blame = @import("../../ui/editor/View_blame.zig");
+const View_problems = @import("../../ui/editor/View_problems.zig");
+const problems = @import("problems.zig");
 const git_diff = @import("git_diff.zig");
 const split_panes = @import("split.zig");
 const i18n = @import("../../i18n/i18n.zig");
@@ -99,8 +101,10 @@ fn drawPane(self: *const App, focused: bool, caret: bool) void {
             View_conflicts.drawBands(view.*, conflicts);
             view.draw(&t.buffer, &t.highlighter, if (focused) self.find.highlights(&t.buffer) else null, editor_caret, diff);
             View_conflicts.drawButtons(view.*, &t.buffer, conflicts);
+            // A mistake on the cursor's line takes the blame's place there.
+            View_problems.draw(view.*, &t.buffer, &t.problems, problems.message);
             var blame_buf: [256]u8 = undefined;
-            if (focused) if (self.inlineBlame(&blame_buf)) |text| View_blame.draw(view.*, &t.buffer, text);
+            if (focused and self.problemAtCursor() == null) if (self.inlineBlame(&blame_buf)) |text| View_blame.draw(view.*, &t.buffer, text);
             // The minimap clips to itself, so it comes after the pane's.
             if (split) rl.endScissorMode();
             if (self.settings.minimap) map.draw(view, &t.buffer, &t.highlighter, diff);

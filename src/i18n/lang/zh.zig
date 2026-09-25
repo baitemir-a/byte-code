@@ -312,6 +312,14 @@ pub const strings: Strings = .{
         .uncommitted = "尚未提交",
         .line_column = "行 {1}, 列 {2}",
     },
+    .problems = .{
+        .unclosed = "未闭合的 {1}",
+        .unexpected = "多余的 {1}",
+        .mismatched = "应为 {1}，但遇到 {2}",
+        .unterminated_string = "字符串未闭合",
+        .missing_import = "找不到 {1}",
+        .invalid_json = "无效的 JSON",
+    },
     .find = .{
         .placeholder = "查找",
         .replace_placeholder = "替换",

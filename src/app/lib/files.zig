@@ -185,6 +185,10 @@ pub fn refreshProject(self: *App) !void {
     }
 
     try project.refresh(self.io);
+    // Files may have come or gone: imports are checked again, and a
+    // parser installed meanwhile gets another chance.
+    for (self.tabs.items) |*t| t.problems.invalidate();
+    self.tools_missing = .initEmpty();
 
     if (self.sidebar.input) |*in| {
         const folder = project.find(saved.folder.?);

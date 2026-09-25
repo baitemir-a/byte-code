@@ -312,6 +312,14 @@ pub const strings: Strings = .{
         .uncommitted = "Азырынча коммитте жок",
         .line_column = "Сап {1}, Мам {2}",
     },
+    .problems = .{
+        .unclosed = "{1} жабылган жок",
+        .unexpected = "Ашыкча {1}",
+        .mismatched = "{1} күтүлгөн, бирок {2} турат",
+        .unterminated_string = "Сап жабылган жок",
+        .missing_import = "{1} табылган жок",
+        .invalid_json = "JSON катасы",
+    },
     .find = .{
         .placeholder = "Издөө",
         .replace_placeholder = "Алмаштыруу",

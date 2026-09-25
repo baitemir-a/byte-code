@@ -312,6 +312,14 @@ pub const strings: Strings = .{
         .uncommitted = "아직 커밋되지 않음",
         .line_column = "{1}행, {2}열",
     },
+    .problems = .{
+        .unclosed = "닫히지 않은 {1}",
+        .unexpected = "예상치 못한 {1}",
+        .mismatched = "{1}이(가) 필요하지만 {2}이(가) 있습니다",
+        .unterminated_string = "닫히지 않은 문자열",
+        .missing_import = "{1}을(를) 찾을 수 없습니다",
+        .invalid_json = "잘못된 JSON",
+    },
     .find = .{
         .placeholder = "찾기",
         .replace_placeholder = "바꾸기",

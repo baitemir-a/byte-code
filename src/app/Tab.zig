@@ -26,6 +26,9 @@ blame_at: f64 = 0,
 /// were found in.
 conflicts: std.ArrayList(core.Conflicts.Region) = .empty,
 conflicts_version: ?u64 = null,
+/// Mistakes found in the file (unpaired brackets, missing imports),
+/// checked again once typing pauses.
+problems: core.Diagnostics,
 /// The name a diff tab shows, e.g. "App.zig (changes)". Owned.
 label: ?[]u8 = null,
 /// The view's scroll position, kept while another tab is showing.
@@ -39,7 +42,7 @@ autosave_error_shown: bool = false,
 /// A new, untitled file. It's treated as TypeScript (which covers JS) until
 /// saved under another name.
 pub fn initFile(gpa: std.mem.Allocator) Tab {
-    var tab: Tab = .{ .kind = .file, .buffer = .init(gpa), .highlighter = .init(.typescript), .diff = .init(gpa), .blame = .init(gpa) };
+    var tab: Tab = .{ .kind = .file, .buffer = .init(gpa), .highlighter = .init(.typescript), .diff = .init(gpa), .blame = .init(gpa), .problems = .init(gpa) };
     tab.document.saved_version = tab.buffer.version;
     return tab;
 }
@@ -75,6 +78,7 @@ pub fn deinit(self: *Tab, gpa: std.mem.Allocator) void {
     if (self.label) |l| gpa.free(l);
     self.conflicts.deinit(gpa);
     self.blame.deinit();
+    self.problems.deinit();
     self.diff.deinit();
     self.highlighter.deinit(gpa);
     self.document.deinit(gpa);

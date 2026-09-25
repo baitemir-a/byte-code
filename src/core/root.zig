@@ -27,6 +27,7 @@ pub const edit = @import("editing/lib/edit.zig");
 pub const command = @import("editing/lib/command.zig");
 pub const syntax = @import("syntax/syntax.zig");
 pub const Completion = @import("completion/Completion.zig");
+pub const Diagnostics = @import("diagnostics/Diagnostics.zig");
 
 pub const Command = command.Command;
 pub const Motion = motion.Motion;

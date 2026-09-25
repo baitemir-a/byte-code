@@ -312,6 +312,14 @@ pub const strings: Strings = .{
         .uncommitted = "Henüz işlenmedi",
         .line_column = "Sr {1}, St {2}",
     },
+    .problems = .{
+        .unclosed = "Kapatılmamış {1}",
+        .unexpected = "Beklenmeyen {1}",
+        .mismatched = "{1} bekleniyordu, {2} bulundu",
+        .unterminated_string = "Kapatılmamış dize",
+        .missing_import = "{1} bulunamadı",
+        .invalid_json = "Geçersiz JSON",
+    },
     .find = .{
         .placeholder = "Bul",
         .replace_placeholder = "Değiştir",

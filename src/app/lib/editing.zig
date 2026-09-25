@@ -1,10 +1,12 @@
 //! Editor commands beyond plain editing: moving by screen rows,
 //! select scope, and the completion popup.
+const std = @import("std");
 const core = @import("core");
 const Tab = @import("../Tab.zig");
 const View = @import("../../ui/editor/View.zig");
 const CompletionPopup = @import("../../ui/editor/CompletionPopup.zig");
 const App = @import("../App.zig");
+const problems = @import("problems.zig");
 
 /// With word wrap, Up / Down / Page Up / Page Down go by screen rows (a
 /// long line has several). Returns false for other moves, or when the rows
@@ -83,27 +85,42 @@ pub fn handleCompletionKey(self: *App, cmd: core.Command) !bool {
                 else => return false,
             }
         },
-        .newline, .indent => try c.accept(self.buf()),
+        .newline, .indent => try acceptCompletion(self),
         .clear_selection => c.close(),
         else => return false,
     }
     return true;
 }
 
-/// Opens suggestions while typing a word or after `.`, keeps them in sync
-/// while editing that word, and closes them on anything else.
+/// Inserts the selected suggestion; after a folder in an import path, goes
+/// on to suggest what's inside it.
+pub fn acceptCompletion(self: *App) !void {
+    const c = &self.completion;
+    try c.accept(self.buf());
+    if (c.reopen) {
+        const t = self.tab();
+        try c.refresh(&t.buffer, &t.highlighter, false, problems.filesOf(self, t));
+    }
+}
+
+/// Opens suggestions while typing a word, after `.` or in an import path,
+/// keeps them in sync while editing that word, and closes them on anything
+/// else.
 pub fn updateCompletion(self: *App, cmd: core.Command) !void {
     const c = &self.completion;
     const t = self.tab();
     // Suggestions insert at one cursor only: not with several.
     if (t.buffer.hasExtraCursors()) return c.close();
+    const files = problems.filesOf(self, t);
     switch (cmd) {
         .type_char => |cp| {
             const word_char = cp >= 0x80 or core.syntax.js.isIdentChar(@intCast(cp));
-            if (word_char or cp == '.') try c.refresh(&t.buffer, &t.highlighter, false) else c.close();
+            // Quotes, slashes and dashes only matter in an import path.
+            const path_char = cp < 0x80 and std.mem.indexOfScalar(u8, "./\"'`@-", @intCast(cp)) != null;
+            if (word_char or path_char) try c.refresh(&t.buffer, &t.highlighter, false, files) else c.close();
         },
-        .backspace, .delete => if (c.is_open) try c.refresh(&t.buffer, &t.highlighter, false),
-        .complete => try c.refresh(&t.buffer, &t.highlighter, true),
+        .backspace, .delete => if (c.is_open) try c.refresh(&t.buffer, &t.highlighter, false, files),
+        .complete => try c.refresh(&t.buffer, &t.highlighter, true, files),
         else => c.close(),
     }
 }

@@ -301,6 +301,18 @@ pub const Strings = struct {
         /// {1}: the line, {2}: the column.
         line_column: []const u8,
     },
+    /// Mistakes found in the file, shown at the end of their line.
+    problems: struct {
+        /// {1}: the bracket, quoted.
+        unclosed: []const u8,
+        unexpected: []const u8,
+        /// {1}: the bracket wanted, {2}: the one there.
+        mismatched: []const u8,
+        unterminated_string: []const u8,
+        /// {1}: the import path, quoted.
+        missing_import: []const u8,
+        invalid_json: []const u8,
+    },
     /// The find bar in the editor.
     find: struct {
         placeholder: []const u8,

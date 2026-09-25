@@ -312,6 +312,14 @@ pub const strings: Strings = .{
         .uncommitted = "まだコミットされていません",
         .line_column = "{1} 行, {2} 列",
     },
+    .problems = .{
+        .unclosed = "{1} が閉じられていません",
+        .unexpected = "予期しない {1}",
+        .mismatched = "{1} が必要ですが {2} があります",
+        .unterminated_string = "文字列が閉じられていません",
+        .missing_import = "{1} が見つかりません",
+        .invalid_json = "無効な JSON",
+    },
     .find = .{
         .placeholder = "検索",
         .replace_placeholder = "置換",

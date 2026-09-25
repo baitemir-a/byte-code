@@ -312,6 +312,14 @@ pub const strings: Strings = .{
         .uncommitted = "Non ancora nel commit",
         .line_column = "Rg {1}, Col {2}",
     },
+    .problems = .{
+        .unclosed = "{1} non chiusa",
+        .unexpected = "{1} inattesa",
+        .mismatched = "Atteso {1} ma trovato {2}",
+        .unterminated_string = "Stringa non chiusa",
+        .missing_import = "{1} non trovato",
+        .invalid_json = "JSON non valido",
+    },
     .find = .{
         .placeholder = "Trova",
         .replace_placeholder = "Sostituisci",
