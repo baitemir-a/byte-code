@@ -48,7 +48,9 @@ pub fn updateSidebarViews(self: *App) !void {
         self.git_watch_at = now;
         if (self.git.watchStamp(self.io) != self.git_stamp) self.gitChanged();
     }
-    if (self.sidebar.width() > 0 or self.git_dirty) if (self.project) |*p| {
+    // The bar at the bottom shows the branch whether the sidebar is open
+    // or not, so the status is kept up to date either way.
+    if (self.project) |*p| {
         if (self.git_dirty or now - self.git_read_at > 5) {
             try self.git.refresh(self.io, p.root().path);
             // Taken after git status, which may itself touch the index.
@@ -57,7 +59,7 @@ pub fn updateSidebarViews(self: *App) !void {
             self.git_dirty = false;
             self.git_read_at = now;
         }
-    };
+    }
 }
 
 /// Keys while a sidebar text box has focus. Returns false for commands

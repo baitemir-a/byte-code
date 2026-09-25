@@ -17,6 +17,7 @@ pub const Icon = enum {
     settings,
     folder_open,
     square_terminal,
+    refresh_cw,
     file_plus,
     folder_plus,
     copy_minus,

@@ -620,6 +620,19 @@ pub fn relayout(self: *App) !void {
     }
 }
 
+/// What the bar at the bottom says about git: the branch and how far it
+/// is from its remote. Null outside a repository.
+pub fn branchStatus(self: *const App) ?StatusBar.Branch {
+    if (self.project == null or self.git.state != .ok or self.git.branch.len == 0) return null;
+    return .{
+        .name = self.git.branch,
+        .ahead = self.git.ahead,
+        .behind = self.git.behind,
+        .has_upstream = self.git.has_upstream,
+        .busy = self.gitBusy(),
+    };
+}
+
 /// The window's size in UI units (zoom makes each unit more pixels).
 pub fn windowSize() rl.Vector2 {
     return .{
@@ -632,7 +645,7 @@ pub fn windowSize() rl.Vector2 {
 /// each with its tab bar on top; the terminal panel along their bottom.
 pub fn layout(self: *App, full_window: rl.Vector2) !void {
     // The bar at the bottom takes its height off everything else.
-    self.status.layout(full_window);
+    self.status.layout(full_window, self.view.font, self.branchStatus());
     const window: rl.Vector2 = .{ .x = full_window.x, .y = @max(0, full_window.y - StatusBar.height) };
     self.sidebar.layout(if (self.project) |*p| p else null, window, self.view.font);
     self.sidebar.updateGitBadgeTooltip(self.view.font, &self.git);

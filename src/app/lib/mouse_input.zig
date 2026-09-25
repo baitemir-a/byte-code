@@ -74,7 +74,17 @@ pub fn handleMouse(self: *App) !bool {
 
     // The bar along the bottom takes the mouse itself: clicking it must
     // not move the cursor in the text. A selection being dragged keeps it.
-    if (!self.mouse.dragging and self.status.contains(point)) return pressed;
+    // The branch there picks another one; the counters beside it sync.
+    if (!self.mouse.dragging and self.status.contains(point)) {
+        if (!self.menu.is_open) if (self.status.hit(point)) |h| {
+            self.wanted_cursor = .pointing_hand;
+            if (pressed) switch (h) {
+                .branch => try self.openBranchPicker(.checkout),
+                .sync => if (!self.gitBusy()) self.startGitJob(.sync),
+            };
+        };
+        return pressed;
+    }
 
     // The context menu is on top of everything; any click closes it.
     if (self.menu.is_open and (pressed or right_pressed)) {
