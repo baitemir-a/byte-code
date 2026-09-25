@@ -119,9 +119,12 @@ pub fn handleMouse(self: *App) !bool {
             if (self.sidebar.view == .explorer) self.openContextMenu(hit, point);
         } else if (hit) |h| switch (h) {
             .view_tab => |v| self.showView(v),
-            .settings_button => try self.openSettings(),
-            .help_button => try self.openHelp(),
-            .open_folder_button => self.openFolderWithDialog() catch |err| self.reportError(i18n.tr().errors.open_folder, "", err),
+            .strip_button => |b| switch (b) {
+                .terminal => try self.toggleTerminalPanel(),
+                .open_folder => self.openFolderWithDialog() catch |err| self.reportError(i18n.tr().errors.open_folder, "", err),
+                .help => try self.openHelp(),
+                .settings => try self.openSettings(),
+            },
             .panel => try self.panelClick(point),
             // Acted on at release: the press may turn into a drag.
             .node => |index| try self.startTreePress(index, point),

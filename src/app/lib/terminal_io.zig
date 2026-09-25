@@ -31,6 +31,19 @@ pub fn toggleTerminal(self: *App) !void {
     }
 }
 
+/// The sidebar's terminal button: opens the panel, or closes it if it is
+/// already open. The click that pressed the button lands outside the panel
+/// and takes its focus first, so `toggleTerminal`'s focus test can't tell
+/// "open it" from "close it" here.
+pub fn toggleTerminalPanel(self: *App) !void {
+    if (self.terminal_panel.visible) {
+        self.terminal_panel.visible = false;
+        self.terminal_focused = false;
+        return;
+    }
+    try self.toggleTerminal();
+}
+
 /// This frame's keys, while the terminal has focus. Returns true if
 /// anything was typed.
 pub fn handleTerminalKeys(self: *App) !bool {

@@ -34,9 +34,16 @@ pub const Input = struct {
 /// What the sidebar shows, picked with the strip of tabs at its top.
 pub const View = enum { explorer, search, git };
 
+/// The buttons that follow the view tabs in the strip (see `strip_buttons`).
+pub const StripButton = enum { terminal, open_folder, help, settings };
+
 /// Height of that strip of view tabs.
 pub const strip_height: f32 = 34;
-const view_tab_width: f32 = 40;
+/// Tabs and buttons share one slot width, so the strip reads as one row.
+const strip_item_width: f32 = 32;
+/// Left edge of the tabs, and the break between them and the buttons.
+const strip_pad: f32 = 4;
+const strip_gap: f32 = 6;
 
 /// What's under the mouse.
 pub const Hit = union(enum) {
@@ -44,10 +51,8 @@ pub const Hit = union(enum) {
     view_tab: View,
     /// The Search or Git view's area (they handle the mouse themselves).
     panel,
-    /// Buttons at the right of the strip.
-    open_folder_button,
-    settings_button,
-    help_button,
+    /// A button after the tabs in the strip.
+    strip_button: StripButton,
     /// A tree node, by index into `FileTree.nodes`.
     node: u32,
     input,
@@ -188,22 +193,41 @@ pub fn contentRect(self: *const Sidebar) rl.Rectangle {
     return .{ .x = 0, .y = strip_height, .width = self.rect.width - 1, .height = self.rect.height - strip_height };
 }
 
-/// The strip's buttons at its right end: settings last, open-folder before it.
-pub fn stripButtonRect(self: *const Sidebar, slot: usize) rl.Rectangle {
-    const w: f32 = 32;
-    return .{ .x = self.rect.width - 8 - @as(f32, @floatFromInt(slot + 1)) * w, .y = 0, .width = w, .height = strip_height };
+/// The buttons, left to right, in the order they follow the view tabs.
+pub const strip_buttons = [_]StripButton{ .terminal, .open_folder, .help, .settings };
+
+/// Dropped from the strip's right end as the sidebar narrows, least useful
+/// first, rather than drawing buttons on top of each other.
+const strip_drop_order = [_]StripButton{ .help, .open_folder, .terminal, .settings };
+
+/// Where the buttons start: after the last view tab.
+fn stripButtonsLeft() f32 {
+    return viewTabRect(.git).x + strip_item_width + strip_gap;
 }
 
-/// A strip button shows only where it clears the view tabs: a narrow
-/// sidebar drops the outer ones (help first, then open folder) instead of
-/// drawing them on top of each other.
-pub fn stripButtonVisible(self: *const Sidebar, slot: usize) bool {
-    const tabs_right = viewTabRect(.git).x + view_tab_width;
-    return self.stripButtonRect(slot).x >= tabs_right;
+/// A button's place in the strip: the slots after the tabs, skipping the
+/// ones a narrow sidebar has no room for.
+pub fn stripButtonRect(self: *const Sidebar, button: StripButton) rl.Rectangle {
+    var slot: f32 = 0;
+    for (strip_buttons) |other| {
+        if (other == button) break;
+        if (self.stripButtonVisible(other)) slot += 1;
+    }
+    return .{ .x = stripButtonsLeft() + slot * strip_item_width, .y = 0, .width = strip_item_width, .height = strip_height };
+}
+
+pub fn stripButtonVisible(self: *const Sidebar, button: StripButton) bool {
+    const room = self.rect.width - strip_pad - stripButtonsLeft();
+    const fits: usize = @intFromFloat(@max(0, @floor(room / strip_item_width)));
+    const dropped = strip_buttons.len -| fits;
+    for (strip_drop_order[0..dropped]) |d| {
+        if (d == button) return false;
+    }
+    return true;
 }
 
 pub fn viewTabRect(view: View) rl.Rectangle {
-    return .{ .x = 6 + @as(f32, @floatFromInt(@intFromEnum(view))) * view_tab_width, .y = 0, .width = view_tab_width, .height = strip_height };
+    return .{ .x = strip_pad + @as(f32, @floatFromInt(@intFromEnum(view))) * strip_item_width, .y = 0, .width = strip_item_width, .height = strip_height };
 }
 
 /// Header buttons, right to left: collapse all, new folder, new file.
@@ -275,9 +299,9 @@ pub fn hitTest(self: *const Sidebar, tree: *const FileTree, p: rl.Vector2) ?Hit 
             const v: View = @enumFromInt(f.value);
             if (rl.checkCollisionPointRec(p, viewTabRect(v))) return .{ .view_tab = v };
         }
-        if (self.stripButtonVisible(0) and rl.checkCollisionPointRec(p, self.stripButtonRect(0))) return .settings_button;
-        if (self.stripButtonVisible(1) and rl.checkCollisionPointRec(p, self.stripButtonRect(1))) return .open_folder_button;
-        if (self.stripButtonVisible(2) and rl.checkCollisionPointRec(p, self.stripButtonRect(2))) return .help_button;
+        for (strip_buttons) |b| {
+            if (self.stripButtonVisible(b) and rl.checkCollisionPointRec(p, self.stripButtonRect(b))) return .{ .strip_button = b };
+        }
         return null;
     }
     if (self.view != .explorer) return .panel;

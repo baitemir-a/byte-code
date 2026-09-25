@@ -312,6 +312,7 @@ pub const replaceAllInFile = project_search.replaceAllInFile;
 // terminal_io.zig
 pub const terminalFocused = terminal_io.terminalFocused;
 pub const toggleTerminal = terminal_io.toggleTerminal;
+pub const toggleTerminalPanel = terminal_io.toggleTerminalPanel;
 pub const handleTerminalKeys = terminal_io.handleTerminalKeys;
 pub const handleTerminalMouse = terminal_io.handleTerminalMouse;
 

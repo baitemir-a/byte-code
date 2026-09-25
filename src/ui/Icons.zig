@@ -16,6 +16,7 @@ pub const Icon = enum {
     circle_question_mark,
     settings,
     folder_open,
+    square_terminal,
     file_plus,
     folder_plus,
     copy_minus,

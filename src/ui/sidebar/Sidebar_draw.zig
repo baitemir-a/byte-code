@@ -24,12 +24,12 @@ pub fn drawScrollbar(self: *const Sidebar) void {
     rl.drawRectangleRounded(thumb, 1, 6, theme.copy(if (active) theme.scrollbar_thumb_hover else theme.scrollbar_thumb));
 }
 
-pub fn draw(self: *const Sidebar, tree: ?*const FileTree, current_path: ?[]const u8, font: Font, show_caret: bool, git: *const core.Git) void {
+pub fn draw(self: *const Sidebar, tree: ?*const FileTree, current_path: ?[]const u8, font: Font, show_caret: bool, git: *const core.Git, terminal_open: bool) void {
     if (self.rect.width == 0) return;
     const r = self.rect;
     rl.drawRectangleRec(r, theme.sidebar_background);
     rl.drawRectangleRec(.{ .x = r.width - 1, .y = 0, .width = 1, .height = r.height }, theme.sidebar_border);
-    drawViewStrip(self, font);
+    drawViewStrip(self, font, terminal_open);
     drawGitBadge(font, git);
     if (self.view == .explorer) drawExplorer(self, tree.?, current_path, font, show_caret);
 
@@ -156,7 +156,7 @@ pub fn drawGitBadgeTooltip(font: Font, git: *const core.Git) void {
 
 /// The view tabs: Explorer, Search, Git, as icons. The current one is in
 /// the accent color with a line under it.
-pub fn drawViewStrip(self: *const Sidebar, font: Font) void {
+pub fn drawViewStrip(self: *const Sidebar, font: Font, terminal_open: bool) void {
     const mouse = rl.getMousePosition();
     inline for (@typeInfo(Sidebar.View).@"enum".fields) |f| {
         const v: Sidebar.View = @enumFromInt(f.value);
@@ -174,18 +174,20 @@ pub fn drawViewStrip(self: *const Sidebar, font: Font) void {
         if (active) rl.drawRectangleRec(.{ .x = tab.x + 8, .y = tab.y + tab.height - 2, .width = tab.width - 16, .height = 2 }, theme.accent);
     }
 
-    // Help, open folder, and settings.
-    for ([_]usize{ 2, 1, 0 }) |slot| {
-        if (!self.stripButtonVisible(slot)) continue;
-        const b = self.stripButtonRect(slot);
+    // The buttons carry on from the tabs: terminal, open folder, help, settings.
+    for (Sidebar.strip_buttons) |button| {
+        if (!self.stripButtonVisible(button)) continue;
+        const b = self.stripButtonRect(button);
         const hovered = rl.checkCollisionPointRec(mouse, b);
-        const color = theme.copy(if (hovered) theme.foreground else theme.sidebar_arrow);
+        const on = button == .terminal and terminal_open;
+        const color = theme.copy(if (on) theme.accent else if (hovered) theme.foreground else theme.sidebar_arrow);
         const c: rl.Vector2 = .{ .x = b.x + b.width / 2, .y = b.y + b.height / 2 };
         if (hovered) rl.drawRectangleRounded(.{ .x = b.x + 3, .y = b.y + 4, .width = b.width - 6, .height = b.height - 8 }, 0.3, 6, theme.sidebar_hover);
-        const icon: Icons.Icon = switch (slot) {
-            0 => .settings,
-            1 => .folder_open,
-            else => .circle_question_mark,
+        const icon: Icons.Icon = switch (button) {
+            .terminal => .square_terminal,
+            .open_folder => .folder_open,
+            .help => .circle_question_mark,
+            .settings => .settings,
         };
         font.drawIcon(icon, c, .large, color);
     }

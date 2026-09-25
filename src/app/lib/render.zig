@@ -43,7 +43,7 @@ fn drawFrame(self: *const App) void {
         self.terminal_panel.draw(&term.screen, self.view.font, self.terminalFocused(), caret, title);
     }
     self.tab_bar.draw(self.tabs.items, self.active, self.view.font);
-    self.sidebar.draw(if (self.project) |*p| p else null, t.document.path, self.view.font, caret, &self.git);
+    self.sidebar.draw(if (self.project) |*p| p else null, t.document.path, self.view.font, caret, &self.git, self.terminal_panel.visible);
     if (self.sidebar.width() > 0) switch (self.sidebar.view) {
         .explorer => {},
         .search => self.search_panel.draw(self.view.font, switch (self.side_focus) {
