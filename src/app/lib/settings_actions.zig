@@ -5,6 +5,7 @@ const core = @import("core");
 const theme = @import("../../ui/theme/lib/theme.zig");
 const anim = @import("../../ui/anim.zig");
 const file_icon = @import("../../ui/widgets/lib/file_icon.zig");
+const folder_icon = @import("../../ui/widgets/lib/folder_icon.zig");
 const Font = @import("../../ui/Font.zig");
 const SettingsPage = @import("../../ui/pages/SettingsPage.zig");
 const App = @import("../App.zig");
@@ -23,6 +24,11 @@ pub fn applyToTheme(s: core.Settings) void {
     file_icon.mode = switch (s.file_icon_mode) {
         .default => .same,
         .icons => .by_type,
+        .none => .none,
+    };
+    folder_icon.mode = switch (s.folder_icon_mode) {
+        .default => .same,
+        .icons => .by_name,
         .none => .none,
     };
     i18n.setLanguage(s.language);
@@ -55,7 +61,8 @@ pub fn runSettingsAction(self: *App, action: SettingsPage.Action) !void {
     // Not a setting: it opens a tab.
     if (action == .open_help) return self.openHelp();
     if (action == .choose_language) return openLanguageMenu(self, action.choose_language);
-    if (action == .choose_file_icons) return openFileIconsMenu(self, action.choose_file_icons);
+    if (action == .choose_file_icons) return openIconsMenu(self, action.choose_file_icons, .file);
+    if (action == .choose_folder_icons) return openIconsMenu(self, action.choose_folder_icons, .folder);
     const old = self.settings;
     switch (action) {
         .theme => |t| self.settings.theme = t,
@@ -72,7 +79,7 @@ pub fn runSettingsAction(self: *App, action: SettingsPage.Action) !void {
         .toggle_smooth => self.settings.smooth_animations = !self.settings.smooth_animations,
         .toggle_word_wrap => self.settings.word_wrap = !self.settings.word_wrap,
         .toggle_new_window => self.settings.open_folder_in_new_window = !self.settings.open_folder_in_new_window,
-        .open_help, .choose_language, .choose_file_icons => unreachable,
+        .open_help, .choose_language, .choose_file_icons, .choose_folder_icons => unreachable,
     }
     try self.settingsChanged(old);
 }
@@ -89,21 +96,24 @@ fn openLanguageMenu(self: *App, button: rl.Rectangle) void {
     self.menu.open(labels[0..languages.len], .{ .x = button.x, .y = button.y + button.height + 2 }, App.windowSize(), self.view.font);
 }
 
-/// The icon modes, in a menu under `button`.
-fn openFileIconsMenu(self: *App, button: rl.Rectangle) void {
+/// The icon modes, in a menu under `button`, for files or for folders.
+fn openIconsMenu(self: *App, button: rl.Rectangle, of: App.IconsFor) void {
     var labels: [ContextMenu.max_items][]const u8 = undefined;
-    const modes = std.enums.values(core.Settings.FileIcons);
+    const modes = std.enums.values(core.Settings.Icons);
     for (modes, 0..) |mode, i| {
         labels[i] = SettingsPage.fileIconsLabel(mode);
-        self.menu_actions[i] = .{ .set_file_icons = mode };
+        self.menu_actions[i] = .{ .set_icons = .{ .of = of, .mode = mode } };
     }
     self.menu_node = null;
     self.menu.open(labels[0..modes.len], .{ .x = button.x, .y = button.y + button.height + 2 }, App.windowSize(), self.view.font);
 }
 
-pub fn setFileIcons(self: *App, mode: core.Settings.FileIcons) !void {
+pub fn setIcons(self: *App, of: App.IconsFor, mode: core.Settings.Icons) !void {
     const old = self.settings;
-    self.settings.file_icon_mode = mode;
+    switch (of) {
+        .file => self.settings.file_icon_mode = mode,
+        .folder => self.settings.folder_icon_mode = mode,
+    }
     try self.settingsChanged(old);
 }
 

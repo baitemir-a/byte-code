@@ -54,9 +54,10 @@ the system warns the first time you open them:
   language keywords, fuzzy matched
 - **Find and replace** in a file and **across the project** — match case
   and whole word options; replace one match, one file or everything
-- **File icons** in the tree, tabs and lists — Settings picks between the
-  icon for each file's type, the same plain page for every file, or no
-  icon at all
+- **File and folder icons** in the tree, tabs and lists — folders open and
+  shut as they are unfolded. Settings picks, for each of the two, between
+  the icon for the file's type (or the folder's name), the same plain one
+  for all of them, or no icon at all
 - **Projects** — open a folder to get a file tree: create, rename, delete
   (to the Trash) and drag-and-drop to move files and folders
 - **Recent and favorite folders** — the welcome tab lists the folders you

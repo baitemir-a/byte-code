@@ -9,6 +9,7 @@ const theme = @import("../theme/lib/theme.zig");
 const Font = @import("../Font.zig");
 const TextField = @import("../widgets/TextField.zig");
 const file_icon = @import("../widgets/lib/file_icon.zig");
+const folder_icon = @import("../widgets/lib/folder_icon.zig");
 const Sidebar_draw = @import("Sidebar_draw.zig");
 const anim = @import("../anim.zig");
 
@@ -19,9 +20,26 @@ const row_height = theme.line_height;
 pub const indent: f32 = 14;
 pub const pad: f32 = 10;
 pub const arrow_size: f32 = 8;
-/// From a row's arrow column to its name: room for the 16-wide file icons
-/// centered on that column.
+/// From a row's arrow column to its name, with nothing between them.
 pub const name_gap: f32 = 10;
+
+/// The column the icons sit in, after the folder arrow: as wide as an
+/// icon and the gap after it, or nothing when neither files nor folders
+/// show one.
+pub fn iconColumn() f32 {
+    const any = file_icon.mode != .none or folder_icon.mode != .none;
+    return if (any) file_icon.size else 0;
+}
+
+/// Where a row's icon is centered, from the row's indent.
+pub fn iconOffset() f32 {
+    return arrow_size + 2 + file_icon.size / 2;
+}
+
+/// Where a row's name starts, from the row's indent.
+pub fn nameOffset() f32 {
+    return arrow_size + name_gap + iconColumn();
+}
 const button_size: f32 = 22;
 
 /// A new file or folder being named, in folder node `folder` — or, with
@@ -264,7 +282,7 @@ pub fn inputRect(self: *const Sidebar, tree: *const FileTree, row: usize) rl.Rec
     const depth: f32 = if (in.renaming) |node|
         @floatFromInt(tree.node(node).depth)
     else if (in.folder == 0) 0 else @floatFromInt(tree.node(in.folder).depth + 1);
-    const x = pad + depth * indent + arrow_size + name_gap - 4;
+    const x = pad + depth * indent + nameOffset() - 4;
     const top = listTop() + @as(f32, @floatFromInt(row)) * row_height - self.scroll;
     return .{ .x = x, .y = top + 1, .width = @max(40, self.rect.width - x - 6), .height = row_height - 2 };
 }

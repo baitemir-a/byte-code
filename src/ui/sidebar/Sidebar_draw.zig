@@ -6,6 +6,7 @@ const theme = @import("../theme/lib/theme.zig");
 const anim = @import("../anim.zig");
 const Font = @import("../Font.zig");
 const file_icon = @import("../widgets/lib/file_icon.zig");
+const folder_icon = @import("../widgets/lib/folder_icon.zig");
 const Icons = @import("../Icons.zig");
 const core = @import("core");
 const Sidebar = @import("Sidebar.zig");
@@ -278,11 +279,16 @@ pub fn drawExplorer(self: *const Sidebar, t: *const FileTree, current_path: ?[]c
 
         const x = Sidebar.pad + @as(f32, @floatFromInt(n.depth)) * Sidebar.indent;
         const mid = top + row_height / 2;
-        // Folders get their arrow, files the icon for their type.
-        if (n.is_dir) drawArrow(font, x, mid, n.expanded, anim.hash("tree_arrow", index)) else file_icon.draw(n.name, .{ .x = x + Sidebar.arrow_size / 2, .y = mid });
+        const icon_at: rl.Vector2 = .{ .x = x + Sidebar.iconOffset(), .y = mid };
+        // A folder gets its arrow and the icon for its name, open or shut
+        // (and turning from one to the other); a file the icon for its type.
+        if (n.is_dir) {
+            const turn = drawArrow(font, x, mid, n.expanded, anim.hash("tree_arrow", index));
+            folder_icon.draw(n.name, turn, icon_at);
+        } else file_icon.draw(n.name, icon_at);
         const color = if (n.is_dir) theme.sidebar_folder else theme.foreground;
         // Long names end in "…" before the scrollbar.
-        _ = font.drawFit(n.name, x + Sidebar.arrow_size + Sidebar.name_gap, top + text_dy, r.width - Sidebar.scrollbar_grab - 2, color);
+        _ = font.drawFit(n.name, x + Sidebar.nameOffset(), top + text_dy, r.width - Sidebar.scrollbar_grab - 2, color);
     }
 
     // Dropping into the project folder itself: outline the whole list.
@@ -336,8 +342,12 @@ pub fn drawInput(self: *const Sidebar, tree: *const FileTree, row: usize, font: 
     const kind = self.input.?.kind;
     // A folder arrow or the icon for the name typed so far, like the other rows.
     const mid = r.y + r.height / 2;
-    const x = r.x - Sidebar.arrow_size - Sidebar.name_gap + 4;
-    if (kind == .folder) drawArrow(font, x, mid, false, anim.hash("tree_arrow", std.math.maxInt(u32))) else file_icon.draw(self.name.text(), .{ .x = x + Sidebar.arrow_size / 2, .y = mid });
+    const x = r.x - Sidebar.nameOffset() + 4;
+    const icon_at: rl.Vector2 = .{ .x = x + Sidebar.iconOffset(), .y = mid };
+    if (kind == .folder) {
+        const turn = drawArrow(font, x, mid, false, anim.hash("tree_arrow", std.math.maxInt(u32)));
+        folder_icon.draw(self.name.text(), turn, icon_at);
+    } else file_icon.draw(self.name.text(), icon_at);
     self.name.draw(r, font, if (kind == .folder) i18n.tr().sidebar.folder_name else i18n.tr().sidebar.file_name, true, show_caret);
 }
 
@@ -345,9 +355,11 @@ pub fn drawInput(self: *const Sidebar, tree: *const FileTree, row: usize, font: 
 /// centered in the `arrow_size` column at `x`.
 /// A folder's chevron: right when it is shut, down when it is open, and
 /// turning between the two. `id` keeps one folder's turn apart from the
-/// next one's (see ui/anim.zig).
-pub fn drawArrow(font: Font, x: f32, mid: f32, expanded: bool, id: u64) void {
+/// next one's (see ui/anim.zig). Returns how far it has turned, which is
+/// also how far its icon has opened.
+pub fn drawArrow(font: Font, x: f32, mid: f32, expanded: bool, id: u64) f32 {
     _ = font;
     const turn = anim.fade(id, expanded, anim.collapse_speed);
     anim.drawChevron(.{ .x = x + Sidebar.arrow_size / 2, .y = mid }, turn, 9, theme.sidebar_arrow);
+    return turn;
 }

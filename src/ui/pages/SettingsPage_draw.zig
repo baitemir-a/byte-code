@@ -72,6 +72,12 @@ pub fn draw(self: *const SettingsPage, font: Font, settings: *const Settings, se
     const ib = self.file_icons_button;
     font.drawIcon(.chevron_down, .{ .x = ib.x + ib.width - 14, .y = ib.y + ib.height / 2 }, .small, theme.popup_detail);
 
+    // ...and the icon each folder shows.
+    label(font, t.folder_icons, t.folder_icons_hint, x, self.rowY(rows.folder_icons), self.folder_icons_button.x);
+    drawButton(font, self.folder_icons_button, SettingsPage.fileIconsLabel(settings.folder_icon_mode), true);
+    const fb = self.folder_icons_button;
+    font.drawIcon(.chevron_down, .{ .x = fb.x + fb.width - 14, .y = fb.y + fb.height / 2 }, .small, theme.popup_detail);
+
     // Word wrap
     var wrap_buf: [128]u8 = undefined;
     label(font, t.word_wrap, i18n.fill(&wrap_buf, t.word_wrap_hint, .{SettingsPage.opt ++ "+Z"}), x, self.rowY(rows.word_wrap), self.wrap_toggle.x);

@@ -70,6 +70,8 @@ pub const Strings = struct {
         file_icons_default: []const u8,
         file_icons_all: []const u8,
         file_icons_none: []const u8,
+        folder_icons: []const u8,
+        folder_icons_hint: []const u8,
         word_wrap: []const u8,
         /// {1}: its shortcut.
         word_wrap_hint: []const u8,

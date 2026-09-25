@@ -86,7 +86,7 @@ pub fn runMenuAction(self: *App, action: App.MenuAction) !void {
         .go_to_ref => |i| if (i < self.refs.items.len) try self.openRef(self.refs.items[i]),
         .all_refs => self.showRefsInSearch(),
         .set_language => |l| try self.setLanguage(l),
-        .set_file_icons => |m| try self.setFileIcons(m),
+        .set_icons => |i| try self.setIcons(i.of, i.mode),
         // The right-click menu on a tab, in split.zig.
         .split_right, .split_down, .move_to_other_pane => try self.runTabMenuAction(action),
     }

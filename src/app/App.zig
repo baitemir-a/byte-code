@@ -13,6 +13,7 @@ const theme = @import("../ui/theme/lib/theme.zig");
 const anim = @import("../ui/anim.zig");
 const Font = @import("../ui/Font.zig");
 const file_icon = @import("../ui/widgets/lib/file_icon.zig");
+const folder_icon = @import("../ui/widgets/lib/folder_icon.zig");
 const View = @import("../ui/editor/View.zig");
 const CompletionPopup = @import("../ui/editor/CompletionPopup.zig");
 const FindBar = @import("../ui/editor/FindBar.zig");
@@ -72,6 +73,9 @@ pub const drag_threshold = 5;
 /// Seconds of hovering a collapsed folder while dragging before it opens.
 pub const drag_expand_delay = 0.6;
 
+/// Which rows an icon menu is for.
+pub const IconsFor = enum { file, folder };
+
 pub const MenuAction = union(enum) {
     new_file,
     new_folder,
@@ -83,9 +87,9 @@ pub const MenuAction = union(enum) {
     go_to_ref: u32,
     /// Ctrl+click: put every one of them in the Search view.
     all_refs,
-    /// The language and file-icon menus in Settings.
+    /// The language and icon menus in Settings.
     set_language: core.Settings.Language,
-    set_file_icons: core.Settings.FileIcons,
+    set_icons: struct { of: IconsFor, mode: core.Settings.Icons },
     /// The right-click menu on a tab: the editor in two panes.
     split_right,
     split_down,
@@ -103,7 +107,7 @@ pub const MenuAction = union(enum) {
             .add_to_gitignore => t.add_to_gitignore,
             .go_to_ref, .all_refs => "",
             .set_language => |l| l.nativeName(),
-            .set_file_icons => |m| SettingsPage.fileIconsLabel(m),
+            .set_icons => |i| SettingsPage.fileIconsLabel(i.mode),
             .split_right => i18n.tr().tabs.split_right,
             .split_down => i18n.tr().tabs.split_down,
             .move_to_other_pane => i18n.tr().tabs.move_to_other,
@@ -283,7 +287,7 @@ pub const openSettings = settings_actions.openSettings;
 pub const runSettingsAction = settings_actions.runSettingsAction;
 pub const autosave = settings_actions.autosave;
 pub const setLanguage = settings_actions.setLanguage;
-pub const setFileIcons = settings_actions.setFileIcons;
+pub const setIcons = settings_actions.setIcons;
 
 // go_to_file.zig
 pub const openQuickOpen = go_to_file.openQuickOpen;
@@ -504,6 +508,7 @@ pub fn deinit(self: *App) void {
     self.completion.deinit();
     self.view.font.unload();
     file_icon.unload();
+    folder_icon.unload();
 }
 
 /// Opens the file or folder given on the command line, if any. Without a

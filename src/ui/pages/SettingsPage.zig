@@ -30,8 +30,9 @@ pub const Action = union(enum) {
     zoom_out,
     zoom_reset,
     toggle_minimap,
-    /// Opens the menu of icon modes under its button.
+    /// Open the menus of icon modes under their buttons.
     choose_file_icons: rl.Rectangle,
+    choose_folder_icons: rl.Rectangle,
     toggle_word_wrap,
     toggle_new_window,
     toggle_confirm_discard,
@@ -80,6 +81,7 @@ zoom_plus: rl.Rectangle = undefined,
 zoom_reset: rl.Rectangle = undefined,
 minimap_toggle: rl.Rectangle = undefined,
 file_icons_button: rl.Rectangle = undefined,
+folder_icons_button: rl.Rectangle = undefined,
 wrap_toggle: rl.Rectangle = undefined,
 new_window_toggle: rl.Rectangle = undefined,
 confirm_discard_toggle: rl.Rectangle = undefined,
@@ -127,9 +129,10 @@ pub fn layout(self: *SettingsPage, area: rl.Rectangle, font: Font) void {
     self.zoom_minus = .{ .x = self.zoom_plus.x - 90 - button, .y = self.rowY(5), .width = button, .height = button };
     self.minimap_toggle = .{ .x = right - 46, .y = self.rowY(rows.minimap) + 3, .width = 46, .height = 22 };
     var icons_w: f32 = 0;
-    for (std.enums.values(Settings.FileIcons)) |v| icons_w = @max(icons_w, font.textWidth(fileIconsLabel(v)));
+    for (std.enums.values(Settings.Icons)) |v| icons_w = @max(icons_w, font.textWidth(fileIconsLabel(v)));
     icons_w += 40;
     self.file_icons_button = .{ .x = right - icons_w, .y = self.rowY(rows.file_icons), .width = icons_w, .height = button };
+    self.folder_icons_button = .{ .x = right - icons_w, .y = self.rowY(rows.folder_icons), .width = icons_w, .height = button };
     self.wrap_toggle = .{ .x = right - 46, .y = self.rowY(rows.word_wrap) + 3, .width = 46, .height = 22 };
     self.new_window_toggle = .{ .x = right - 46, .y = self.rowY(rows.new_window) + 3, .width = 46, .height = 22 };
     self.confirm_discard_toggle = .{ .x = right - 46, .y = self.rowY(rows.confirm_discard) + 3, .width = 46, .height = 22 };
@@ -150,15 +153,16 @@ pub const rows = struct {
     pub const zoom = 5;
     pub const minimap = 6;
     pub const file_icons = 7;
-    pub const word_wrap = 8;
-    pub const new_window = 9;
-    pub const confirm_discard = 10;
-    pub const pull_rebase = 11;
-    pub const inline_blame = 12;
-    pub const smooth = 13;
-    pub const shortcuts = 14;
+    pub const folder_icons = 8;
+    pub const word_wrap = 9;
+    pub const new_window = 10;
+    pub const confirm_discard = 11;
+    pub const pull_rebase = 12;
+    pub const inline_blame = 13;
+    pub const smooth = 14;
+    pub const shortcuts = 15;
     /// "Saved to:" and the path.
-    pub const path = 15;
+    pub const path = 16;
 };
 
 pub fn rowY(self: *const SettingsPage, row: usize) f32 {
@@ -203,6 +207,7 @@ pub fn actionAt(self: *const SettingsPage, p: rl.Vector2, settings: *const Setti
     if (hit(p, self.zoom_reset)) return .zoom_reset;
     if (hit(p, self.minimap_toggle)) return .toggle_minimap;
     if (hit(p, self.file_icons_button)) return .{ .choose_file_icons = self.file_icons_button };
+    if (hit(p, self.folder_icons_button)) return .{ .choose_folder_icons = self.folder_icons_button };
     if (hit(p, self.wrap_toggle)) return .toggle_word_wrap;
     if (hit(p, self.new_window_toggle)) return .toggle_new_window;
     if (hit(p, self.confirm_discard_toggle)) return .toggle_confirm_discard;
@@ -214,7 +219,7 @@ pub fn actionAt(self: *const SettingsPage, p: rl.Vector2, settings: *const Setti
 }
 
 /// What the icon modes are called in the menu and on the button.
-pub fn fileIconsLabel(mode: Settings.FileIcons) []const u8 {
+pub fn fileIconsLabel(mode: Settings.Icons) []const u8 {
     const t = i18n.tr().settings;
     return switch (mode) {
         .default => t.file_icons_default,
