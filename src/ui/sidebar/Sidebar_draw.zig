@@ -223,11 +223,11 @@ pub fn drawExplorer(self: *const Sidebar, t: *const FileTree, current_path: ?[]c
 
         const x = Sidebar.pad + @as(f32, @floatFromInt(n.depth)) * Sidebar.indent;
         const mid = top + row_height / 2;
-        // Folders get their arrow, files a colored dot for their language.
+        // Folders get their arrow, files the icon for their type.
         if (n.is_dir) drawArrow(font, x, mid, n.expanded) else file_icon.draw(n.name, .{ .x = x + Sidebar.arrow_size / 2, .y = mid });
         const color = if (n.is_dir) theme.sidebar_folder else theme.foreground;
         // Long names end in "…" before the scrollbar.
-        _ = font.drawFit(n.name, x + Sidebar.arrow_size + 6, top + text_dy, r.width - Sidebar.scrollbar_grab - 2, color);
+        _ = font.drawFit(n.name, x + Sidebar.arrow_size + Sidebar.name_gap, top + text_dy, r.width - Sidebar.scrollbar_grab - 2, color);
     }
 
     // Dropping into the project folder itself: outline the whole list.
@@ -279,9 +279,10 @@ pub fn drawDragLabel(self: *const Sidebar, font: Font) void {
 pub fn drawInput(self: *const Sidebar, tree: *const FileTree, row: usize, font: Font, show_caret: bool) void {
     const r = self.inputRect(tree, row);
     const kind = self.input.?.kind;
-    // A folder arrow or file dot in front, like the other rows.
+    // A folder arrow or the icon for the name typed so far, like the other rows.
     const mid = r.y + r.height / 2;
-    if (kind == .folder) drawArrow(font, r.x - Sidebar.arrow_size - 4, mid, false) else rl.drawCircleV(.{ .x = r.x - Sidebar.arrow_size / 2 - 4, .y = mid }, 2, theme.sidebar_arrow);
+    const x = r.x - Sidebar.arrow_size - Sidebar.name_gap + 4;
+    if (kind == .folder) drawArrow(font, x, mid, false) else file_icon.draw(self.name.text(), .{ .x = x + Sidebar.arrow_size / 2, .y = mid });
     self.name.draw(r, font, if (kind == .folder) i18n.tr().sidebar.folder_name else i18n.tr().sidebar.file_name, true, show_caret);
 }
 

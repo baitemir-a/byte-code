@@ -18,6 +18,9 @@ const row_height = theme.line_height;
 pub const indent: f32 = 14;
 pub const pad: f32 = 10;
 pub const arrow_size: f32 = 8;
+/// From a row's arrow column to its name: room for the 16-wide file icons
+/// centered on that column.
+pub const name_gap: f32 = 10;
 const button_size: f32 = 22;
 
 /// A new file or folder being named, in folder node `folder` — or, with
@@ -222,7 +225,7 @@ pub fn inputRect(self: *const Sidebar, tree: *const FileTree, row: usize) rl.Rec
     const depth: f32 = if (in.renaming) |node|
         @floatFromInt(tree.node(node).depth)
     else if (in.folder == 0) 0 else @floatFromInt(tree.node(in.folder).depth + 1);
-    const x = pad + depth * indent + arrow_size + 2;
+    const x = pad + depth * indent + arrow_size + name_gap - 4;
     const top = listTop() + @as(f32, @floatFromInt(row)) * row_height - self.scroll;
     return .{ .x = x, .y = top + 1, .width = @max(40, self.rect.width - x - 6), .height = row_height - 2 };
 }

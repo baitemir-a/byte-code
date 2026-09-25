@@ -135,8 +135,8 @@ pub fn draw(self: *const GitPanel, git: *const Git, font: Font, focused: bool, p
                 const status_x = r.x + r.width - GitPanel.pad - font.cell_width;
                 const buttons: usize = if (e.section == .changes and GitPanel.canDiscard(entry)) 2 else 1;
                 const text_end = if (row_hovered) self.actionRect(y, buttons - 1).x - 4 else status_x - 8;
-                file_icon.draw(entry.path[base..], .{ .x = r.x + GitPanel.pad + 10 + file_icon.radius, .y = y + row_height / 2 });
-                const x = font.drawFit(entry.path[base..], r.x + GitPanel.pad + 10 + file_icon.radius * 2 + 8, ty, text_end, theme.foreground);
+                file_icon.draw(entry.path[base..], .{ .x = r.x + GitPanel.pad + 10 + file_icon.size / 2, .y = y + row_height / 2 });
+                const x = font.drawFit(entry.path[base..], r.x + GitPanel.pad + 10 + file_icon.size + 8, ty, text_end, theme.foreground);
                 if (base > 0) _ = font.drawFit(entry.path[0 .. base - 1], x + font.cell_width, ty, text_end, theme.popup_detail);
                 font.drawCodepoint(if (letter == '?') 'U' else letter, status_x, ty, theme.copy(if (conflict) theme.diff_deleted else statusColor(letter)));
                 if (row_hovered) {
@@ -190,8 +190,8 @@ fn ageText(buf: []u8, now: i64, time: i64) []const u8 {
 fn drawFile(font: Font, path: []const u8, letter: u8, x0: f32, ty: f32, y: f32, right: f32, conflict: bool) void {
     const base = if (std.mem.lastIndexOfScalar(u8, path, '/')) |i| i + 1 else 0;
     const status_x = right - font.cell_width;
-    file_icon.draw(path[base..], .{ .x = x0 + file_icon.radius, .y = y + row_height / 2 });
-    const x = font.drawFit(path[base..], x0 + file_icon.radius * 2 + 8, ty, status_x - 8, theme.foreground);
+    file_icon.draw(path[base..], .{ .x = x0 + file_icon.size / 2, .y = y + row_height / 2 });
+    const x = font.drawFit(path[base..], x0 + file_icon.size + 8, ty, status_x - 8, theme.foreground);
     if (base > 0) _ = font.drawFit(path[0 .. base - 1], x + font.cell_width, ty, status_x - 8, theme.popup_detail);
     font.drawCodepoint(if (letter == '?') 'U' else letter, status_x, ty, theme.copy(if (conflict) theme.diff_deleted else statusColor(letter)));
 }

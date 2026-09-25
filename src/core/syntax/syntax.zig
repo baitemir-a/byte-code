@@ -12,6 +12,7 @@ pub const toml = @import("lib/toml.zig");
 pub const yaml = @import("lib/yaml.zig");
 pub const config = @import("lib/config.zig");
 pub const clike = @import("lib/clike.zig");
+pub const generic = @import("lib/generic.zig");
 pub const Kind = @import("lib/token.zig").Kind;
 pub const Span = @import("lib/token.zig").Span;
 

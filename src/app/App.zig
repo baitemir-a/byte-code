@@ -11,6 +11,7 @@ const Mouse = @import("../input/Mouse.zig");
 const Tab = @import("Tab.zig");
 const theme = @import("../ui/theme/lib/theme.zig");
 const Font = @import("../ui/Font.zig");
+const file_icon = @import("../ui/widgets/lib/file_icon.zig");
 const View = @import("../ui/editor/View.zig");
 const CompletionPopup = @import("../ui/editor/CompletionPopup.zig");
 const FindBar = @import("../ui/editor/FindBar.zig");
@@ -443,6 +444,7 @@ pub fn deinit(self: *App) void {
     self.find.deinit();
     self.completion.deinit();
     self.view.font.unload();
+    file_icon.unload();
 }
 
 /// Opens the file or folder given on the command line, if any. Without a

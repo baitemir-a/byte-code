@@ -13,6 +13,7 @@ const toml = @import("lib/toml.zig");
 const yaml = @import("lib/yaml.zig");
 const config = @import("lib/config.zig");
 const clike = @import("lib/clike.zig");
+const generic = @import("lib/generic.zig");
 
 const Highlighter = @This();
 
@@ -41,6 +42,60 @@ pub const Language = enum {
     go,
     rust,
     zig,
+    diff,
+    // The languages of the `generic` lexer, named as its dialects.
+    c,
+    cpp,
+    objc,
+    csharp,
+    java,
+    kotlin,
+    scala,
+    groovy,
+    swift,
+    dart,
+    php,
+    solidity,
+    shader,
+    wgsl,
+    protobuf,
+    graphql,
+    verilog,
+    shell,
+    fish,
+    powershell,
+    batch,
+    ruby,
+    perl,
+    r,
+    julia,
+    elixir,
+    erlang,
+    nim,
+    crystal,
+    gdscript,
+    lua,
+    tcl,
+    coffeescript,
+    haskell,
+    elm,
+    ocaml,
+    fsharp,
+    lisp,
+    clojure,
+    sql,
+    makefile,
+    dockerfile,
+    cmake,
+    hcl,
+    nix,
+    fortran,
+    pascal,
+    ada,
+    vhdl,
+    vb,
+    assembly,
+    tex,
 
     /// JavaScript, TypeScript, and their JSX flavours: one language as
     /// far as keywords, completion and the lexer are concerned.
@@ -58,40 +113,96 @@ pub const Language = enum {
         };
     }
 
+    /// The dialect, for languages the `generic` lexer handles.
+    pub fn genericDialect(self: Language) ?generic.Dialect {
+        return switch (self) {
+            inline else => |l| if (@hasField(generic.Dialect, @tagName(l))) @field(generic.Dialect, @tagName(l)) else null,
+        };
+    }
+
     pub fn fromPath(path: []const u8) Language {
         const name = std.fs.path.basename(path);
         // Files known by name (dotfiles have no extension to go by).
         const names = [_]struct { []const u8, Language }{
-            .{ ".gitignore", .ignore },      .{ ".dockerignore", .ignore },  .{ ".npmignore", .ignore },
-            .{ ".prettierignore", .ignore }, .{ ".eslintignore", .ignore },  .{ ".hgignore", .ignore },
-            .{ ".ignore", .ignore },         .{ ".gitattributes", .ignore }, .{ ".env", .dotenv },
-            .{ "yarn.lock", .yarn_lock },    .{ "Cargo.lock", .toml },       .{ "poetry.lock", .toml },
-            .{ "uv.lock", .toml },           .{ "pdm.lock", .toml },         .{ "composer.lock", .json },
-            .{ "Pipfile.lock", .json },      .{ "flake.lock", .json },       .{ "deno.lock", .json },
-            .{ "Podfile.lock", .yaml },      .{ "Gemfile.lock", .yaml },     .{ ".editorconfig", .toml },
-            .{ ".npmrc", .toml },            .{ ".gitconfig", .toml },       .{ "Pipfile", .toml },
+            .{ ".gitignore", .ignore },      .{ ".dockerignore", .ignore },     .{ ".npmignore", .ignore },
+            .{ ".prettierignore", .ignore }, .{ ".eslintignore", .ignore },     .{ ".hgignore", .ignore },
+            .{ ".ignore", .ignore },         .{ ".gitattributes", .ignore },    .{ ".env", .dotenv },
+            .{ "yarn.lock", .yarn_lock },    .{ "Cargo.lock", .toml },          .{ "poetry.lock", .toml },
+            .{ "uv.lock", .toml },           .{ "pdm.lock", .toml },            .{ "composer.lock", .json },
+            .{ "Pipfile.lock", .json },      .{ "flake.lock", .json },          .{ "deno.lock", .json },
+            .{ "Podfile.lock", .yaml },      .{ "Gemfile.lock", .yaml },        .{ ".editorconfig", .toml },
+            .{ ".npmrc", .toml },            .{ ".gitconfig", .toml },          .{ "Pipfile", .toml },
+            .{ "Makefile", .makefile },      .{ "makefile", .makefile },        .{ "GNUmakefile", .makefile },
+            .{ "Dockerfile", .dockerfile },  .{ "Containerfile", .dockerfile }, .{ "CMakeLists.txt", .cmake },
+            .{ "Gemfile", .ruby },           .{ "Rakefile", .ruby },            .{ "Podfile", .ruby },
+            .{ "Vagrantfile", .ruby },       .{ "Brewfile", .ruby },            .{ "Jenkinsfile", .groovy },
+            .{ ".bashrc", .shell },          .{ ".bash_profile", .shell },      .{ ".zshrc", .shell },
+            .{ ".zprofile", .shell },        .{ ".profile", .shell },           .{ "PKGBUILD", .shell },
+            .{ "justfile", .makefile },      .{ "Justfile", .makefile },
         };
         for (names) |entry| {
             if (std.mem.eql(u8, name, entry[0])) return entry[1];
         }
         if (std.mem.startsWith(u8, name, ".env.")) return .dotenv; // .env.local, .env.production
+        if (std.mem.startsWith(u8, name, "Dockerfile.")) return .dockerfile; // Dockerfile.dev
 
         const ext = std.fs.path.extension(path);
         const table = [_]struct { []const u8, Language }{
-            .{ ".py", .python },      .{ ".pyw", .python },     .{ ".pyi", .python },
-            .{ ".go", .go },          .{ ".rs", .rust },        .{ ".zig", .zig },
-            .{ ".zon", .zig },        .{ ".toml", .toml },      .{ ".ini", .toml },
-            .{ ".cfg", .toml },       .{ ".conf", .toml },      .{ ".yml", .yaml },
-            .{ ".yaml", .yaml },      .{ ".env", .dotenv },     .{ ".gitignore", .ignore },
-            .{ ".js", .typescript },  .{ ".jsx", .jsx },        .{ ".mjs", .typescript },
-            .{ ".cjs", .typescript }, .{ ".ts", .typescript },  .{ ".tsx", .jsx },
-            .{ ".mts", .typescript }, .{ ".cts", .typescript }, .{ ".json", .json },
-            .{ ".jsonc", .json },     .{ ".json5", .json },     .{ ".css", .css },
-            .{ ".scss", .scss },      .{ ".sass", .scss },      .{ ".less", .scss },
-            .{ ".html", .html },      .{ ".htm", .html },       .{ ".vue", .html },
-            .{ ".svelte", .html },    .{ ".xml", .xml },        .{ ".svg", .xml },
-            .{ ".xsd", .xml },        .{ ".xsl", .xml },        .{ ".plist", .xml },
-            .{ ".xhtml", .xml },      .{ ".md", .markdown },    .{ ".markdown", .markdown },
+            .{ ".py", .python },           .{ ".pyw", .python },            .{ ".pyi", .python },
+            .{ ".go", .go },               .{ ".rs", .rust },               .{ ".zig", .zig },
+            .{ ".zon", .zig },             .{ ".toml", .toml },             .{ ".ini", .toml },
+            .{ ".cfg", .toml },            .{ ".conf", .toml },             .{ ".yml", .yaml },
+            .{ ".yaml", .yaml },           .{ ".env", .dotenv },            .{ ".gitignore", .ignore },
+            .{ ".js", .typescript },       .{ ".jsx", .jsx },               .{ ".mjs", .typescript },
+            .{ ".cjs", .typescript },      .{ ".ts", .typescript },         .{ ".tsx", .jsx },
+            .{ ".mts", .typescript },      .{ ".cts", .typescript },        .{ ".json", .json },
+            .{ ".jsonc", .json },          .{ ".json5", .json },            .{ ".css", .css },
+            .{ ".scss", .scss },           .{ ".sass", .scss },             .{ ".less", .scss },
+            .{ ".html", .html },           .{ ".htm", .html },              .{ ".vue", .html },
+            .{ ".svelte", .html },         .{ ".xml", .xml },               .{ ".svg", .xml },
+            .{ ".xsd", .xml },             .{ ".xsl", .xml },               .{ ".plist", .xml },
+            .{ ".xhtml", .xml },           .{ ".md", .markdown },           .{ ".markdown", .markdown },
+            .{ ".diff", .diff },           .{ ".patch", .diff },            .{ ".c", .c },
+            .{ ".h", .cpp },               .{ ".cpp", .cpp },               .{ ".cc", .cpp },
+            .{ ".cxx", .cpp },             .{ ".c++", .cpp },               .{ ".hpp", .cpp },
+            .{ ".hh", .cpp },              .{ ".hxx", .cpp },               .{ ".ino", .cpp },
+            .{ ".m", .objc },              .{ ".mm", .objc },               .{ ".cs", .csharp },
+            .{ ".csx", .csharp },          .{ ".java", .java },             .{ ".kt", .kotlin },
+            .{ ".kts", .kotlin },          .{ ".scala", .scala },           .{ ".sc", .scala },
+            .{ ".sbt", .scala },           .{ ".groovy", .groovy },         .{ ".gradle", .groovy },
+            .{ ".swift", .swift },         .{ ".dart", .dart },             .{ ".php", .php },
+            .{ ".phtml", .php },           .{ ".sol", .solidity },          .{ ".glsl", .shader },
+            .{ ".vert", .shader },         .{ ".frag", .shader },           .{ ".geom", .shader },
+            .{ ".comp", .shader },         .{ ".hlsl", .shader },           .{ ".fx", .shader },
+            .{ ".metal", .shader },        .{ ".wgsl", .wgsl },             .{ ".proto", .protobuf },
+            .{ ".graphql", .graphql },     .{ ".gql", .graphql },           .{ ".v", .verilog },
+            .{ ".sv", .verilog },          .{ ".svh", .verilog },           .{ ".sh", .shell },
+            .{ ".bash", .shell },          .{ ".zsh", .shell },             .{ ".ksh", .shell },
+            .{ ".fish", .fish },           .{ ".ps1", .powershell },        .{ ".psm1", .powershell },
+            .{ ".psd1", .powershell },     .{ ".bat", .batch },             .{ ".cmd", .batch },
+            .{ ".rb", .ruby },             .{ ".rake", .ruby },             .{ ".gemspec", .ruby },
+            .{ ".pl", .perl },             .{ ".pm", .perl },               .{ ".r", .r },
+            .{ ".jl", .julia },            .{ ".ex", .elixir },             .{ ".exs", .elixir },
+            .{ ".erl", .erlang },          .{ ".hrl", .erlang },            .{ ".nim", .nim },
+            .{ ".nims", .nim },            .{ ".cr", .crystal },            .{ ".gd", .gdscript },
+            .{ ".lua", .lua },             .{ ".luau", .lua },              .{ ".tcl", .tcl },
+            .{ ".coffee", .coffeescript }, .{ ".hs", .haskell },            .{ ".lhs", .haskell },
+            .{ ".elm", .elm },             .{ ".ml", .ocaml },              .{ ".mli", .ocaml },
+            .{ ".fs", .fsharp },           .{ ".fsi", .fsharp },            .{ ".fsx", .fsharp },
+            .{ ".lisp", .lisp },           .{ ".lsp", .lisp },              .{ ".cl", .lisp },
+            .{ ".el", .lisp },             .{ ".scm", .lisp },              .{ ".ss", .lisp },
+            .{ ".rkt", .lisp },            .{ ".clj", .clojure },           .{ ".cljs", .clojure },
+            .{ ".cljc", .clojure },        .{ ".edn", .clojure },           .{ ".sql", .sql },
+            .{ ".mk", .makefile },         .{ ".dockerfile", .dockerfile }, .{ ".cmake", .cmake },
+            .{ ".tf", .hcl },              .{ ".tfvars", .hcl },            .{ ".hcl", .hcl },
+            .{ ".nix", .nix },             .{ ".f90", .fortran },           .{ ".f95", .fortran },
+            .{ ".f03", .fortran },         .{ ".f", .fortran },             .{ ".for", .fortran },
+            .{ ".pas", .pascal },          .{ ".pp", .pascal },             .{ ".dpr", .pascal },
+            .{ ".adb", .ada },             .{ ".ads", .ada },               .{ ".vhd", .vhdl },
+            .{ ".vhdl", .vhdl },           .{ ".vb", .vb },                 .{ ".vbs", .vb },
+            .{ ".bas", .vb },              .{ ".asm", .assembly },          .{ ".s", .assembly },
+            .{ ".nasm", .assembly },       .{ ".tex", .tex },               .{ ".sty", .tex },
+            .{ ".cls", .tex },             .{ ".bib", .tex },
         };
         for (table) |entry| {
             if (std.ascii.eqlIgnoreCase(ext, entry[0])) return entry[1];
@@ -135,6 +246,8 @@ pub const State = union(enum) {
     dotenv: config.DotenvState,
     ignore,
     clike: clike.State,
+    diff,
+    generic: generic.State,
 
     fn initial(language: Language) State {
         return switch (language) {
@@ -151,6 +264,8 @@ pub const State = union(enum) {
             .dotenv => .{ .dotenv = .{} },
             .ignore => .ignore,
             .go, .rust, .zig => .{ .clike = .{} },
+            .diff => .diff,
+            else => .{ .generic = .{} },
         };
     }
 };
@@ -207,6 +322,8 @@ pub const Tokens = struct {
         dotenv: config.DotenvLexer,
         ignore: config.IgnoreLexer,
         clike: clike.Lexer,
+        diff: config.DiffLexer,
+        generic: generic.Lexer,
     },
 
     pub fn init(language: Language, line: []const u8, state: State) Tokens {
@@ -223,6 +340,8 @@ pub const Tokens = struct {
             .dotenv => |s| .{ .dotenv = .init(line, s) },
             .ignore => .{ .ignore = .init(line) },
             .clike => |s| .{ .clike = .init(line, s, language.clikeDialect() orelse .go) },
+            .diff => .{ .diff = .init(line) },
+            .generic => |s| .{ .generic = .init(line, s, language.genericDialect() orelse .c) },
         } };
     }
 
@@ -252,6 +371,8 @@ pub const Tokens = struct {
             .dotenv => |l| .{ .dotenv = l.state },
             .ignore => .ignore,
             .clike => |l| .{ .clike = l.state },
+            .diff => .diff,
+            .generic => |l| .{ .generic = l.state },
         };
     }
 };

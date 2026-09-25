@@ -133,6 +133,12 @@ pub fn build(b: *std.Build) void {
     exe.root_module.addAnonymousImport("lucide.ttf", .{ .root_source_file = lucide.path("font/lucide.ttf") });
     exe.root_module.addAnonymousImport("lucide_codepoints.json", .{ .root_source_file = lucide.path("font/codepoints.json") });
 
+    // nanosvg, for rasterizing the file icons (src/ui/widgets/lib/file_icon.zig).
+    const nanosvg = b.dependency("nanosvg", .{});
+    exe.root_module.addIncludePath(nanosvg.path("src"));
+    exe.root_module.addCSourceFile(.{ .file = b.path("src/ui/widgets/lib/svg.c"), .flags = &.{"-std=c99"} });
+    exe.root_module.link_libc = true;
+
     // This declares intent for the executable to be installed into the
     // install prefix when running `zig build` (i.e. when executing the default
     // step). By default the install prefix is `zig-out/` but can be overridden

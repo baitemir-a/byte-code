@@ -24,3 +24,13 @@ test "fenced code is highlighted in its language" {
     const other = try expect(markdown.Lexer.init("~~~text", .{}), "~~~text", &.{ "punctuation:~~~", "keyword:text" });
     _ = try expect(markdown.Lexer.init("# not a heading", other.state), "# not a heading", &.{"code:# not a heading"});
 }
+
+test "fences in the other highlighted languages" {
+    const expect = token.expectTokens;
+    const sh = try expect(markdown.Lexer.init("```Bash", .{}), "```Bash", &.{ "punctuation:```", "keyword:Bash" });
+    _ = try expect(markdown.Lexer.init("echo $HOME # hi", sh.state), "echo $HOME # hi", &.{ "function:echo", "property:$HOME", "comment:# hi" });
+    const rs = try expect(markdown.Lexer.init("```rust", .{}), "```rust", &.{ "punctuation:```", "keyword:rust" });
+    _ = try expect(markdown.Lexer.init("fn main() {}", rs.state), "fn main() {}", &.{ "keyword:fn", "function:main", "punctuation:(", "punctuation:)", "punctuation:{", "punctuation:}" });
+    const py = try expect(markdown.Lexer.init("```py", .{}), "```py", &.{ "punctuation:```", "keyword:py" });
+    _ = try expect(markdown.Lexer.init("# note", py.state), "# note", &.{"comment:# note"});
+}

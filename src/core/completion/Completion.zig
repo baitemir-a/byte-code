@@ -6,6 +6,7 @@ const Buffer = @import("../buffer/Buffer.zig");
 const Highlighter = @import("../syntax/Highlighter.zig");
 const js = @import("../syntax/lib/js.zig");
 const clike = @import("../syntax/lib/clike.zig");
+const generic = @import("../syntax/lib/generic.zig");
 const Index = @import("Index.zig");
 const builtins = @import("lib/builtins.zig");
 const fuzzy = @import("lib/fuzzy.zig");
@@ -76,7 +77,7 @@ pub fn refresh(self: *Completion, buf: *const Buffer, hl: *Highlighter, explicit
     while (start > 0 and js.isIdentChar(buf.items()[start - 1])) start -= 1;
     const word = buf.items()[start..buf.cursor];
     // Member access is a code thing; in plain text a '.' ends a sentence.
-    const code = hl.language.isJs() or hl.language == .python or hl.language.clikeDialect() != null;
+    const code = hl.language.isJs() or hl.language == .python or hl.language.clikeDialect() != null or hl.language.genericDialect() != null;
     const after_dot = code and buf.byteBefore(start) == '.';
 
     if (word.len > 0 and std.ascii.isDigit(word[0])) return self.close();
@@ -118,6 +119,12 @@ pub fn refresh(self: *Completion, buf: *const Buffer, hl: *Highlighter, explicit
             for (words.keyword_list) |l| try self.consider(l, .keyword, word, 1);
             for (words.constant_list) |l| try self.consider(l, .keyword, word, 1);
             for (words.type_list) |l| try self.consider(l, .type, word, 3);
+        } else if (hl.language.genericDialect()) |dialect| {
+            const spec = &generic.language(dialect).spec;
+            for (spec.keywords) |l| try self.consider(l, .keyword, word, 1);
+            for (spec.constants) |l| try self.consider(l, .keyword, word, 1);
+            for (spec.builtins) |l| try self.consider(l, .function, word, 2);
+            for (spec.types) |l| try self.consider(l, .type, word, 3);
         } else if (hl.language == .python) {
             for (builtins.python_keywords) |l| try self.consider(l, .keyword, word, 1);
             for (builtins.python_functions) |l| try self.consider(l, .function, word, 2);

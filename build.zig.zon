@@ -40,6 +40,10 @@
             .url = "https://registry.npmjs.org/lucide-static/-/lucide-static-1.47.0.tgz",
             .hash = "N-V-__8AABQKBQNfwtpjeZbN__wtym29X2ePXx3QQ8H-ixWt",
         },
+        .nanosvg = .{
+            .url = "https://github.com/memononen/nanosvg/archive/239e102ec2c691f2902e20ace2ed36ee4a35cfe6.tar.gz",
+            .hash = "N-V-__8AAE5yBwD_bLZNt1HvBZCk6poKiYnxBFzEuwomFCsa",
+        },
     },
     .paths = .{
         "build.zig",

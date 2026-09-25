@@ -119,8 +119,8 @@ pub fn draw(self: *const QuickOpen, search: *const core.FileSearch, font: Font, 
 
         // "Name.zig   src/ui" with matched characters in the accent color.
         const base_start = if (std.mem.lastIndexOfScalar(u8, path, '/')) |s| s + 1 else 0;
-        file_icon.draw(path[base_start..], .{ .x = r.x + pad + 4 + file_icon.radius, .y = y + row_height / 2 });
-        const name_x = r.x + pad + 4 + file_icon.radius * 2 + 8;
+        file_icon.draw(path[base_start..], .{ .x = r.x + pad + 4 + file_icon.size / 2, .y = y + row_height / 2 });
+        const name_x = r.x + pad + 4 + file_icon.size + 8;
         var x = drawText(font, path[base_start..], name_x, ty, theme.foreground, res.matches, base_start);
         if (base_start > 0) {
             x += cw * 2;

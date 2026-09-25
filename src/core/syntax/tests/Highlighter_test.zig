@@ -4,6 +4,7 @@ const Buffer = @import("../../buffer/Buffer.zig");
 const token = @import("../lib/token.zig");
 const js = @import("../lib/js.zig");
 const Highlighter = @import("../Highlighter.zig");
+const generic = @import("../lib/generic.zig");
 
 test "states follow the buffer" {
     const gpa = std.testing.allocator;
@@ -35,7 +36,13 @@ test "language from path" {
     try std.testing.expectEqual(Highlighter.Language.xml, Highlighter.Language.fromPath("icon.svg"));
     try std.testing.expectEqual(Highlighter.Language.markdown, Highlighter.Language.fromPath("README.md"));
     try std.testing.expectEqual(Highlighter.Language.plain, Highlighter.Language.fromPath("notes.txt"));
-    try std.testing.expectEqual(Highlighter.Language.plain, Highlighter.Language.fromPath("Makefile"));
+    try std.testing.expectEqual(Highlighter.Language.makefile, Highlighter.Language.fromPath("Makefile"));
+    try std.testing.expectEqual(Highlighter.Language.cpp, Highlighter.Language.fromPath("src/list.hpp"));
+    try std.testing.expectEqual(Highlighter.Language.shell, Highlighter.Language.fromPath("scripts/icons.sh"));
+    try std.testing.expectEqual(Highlighter.Language.dockerfile, Highlighter.Language.fromPath("Dockerfile.dev"));
+    try std.testing.expectEqual(Highlighter.Language.diff, Highlighter.Language.fromPath("fix.patch"));
+    try std.testing.expectEqual(generic.Dialect.kotlin, Highlighter.Language.fromPath("App.kt").genericDialect().?);
+    try std.testing.expectEqual(@as(?generic.Dialect, null), Highlighter.Language.fromPath("main.zig").genericDialect());
     try std.testing.expectEqual(Highlighter.Language.python, Highlighter.Language.fromPath("app/main.py"));
     try std.testing.expectEqual(Highlighter.Language.dotenv, Highlighter.Language.fromPath("/p/.env"));
     try std.testing.expectEqual(Highlighter.Language.dotenv, Highlighter.Language.fromPath(".env.local"));

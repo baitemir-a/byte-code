@@ -105,9 +105,13 @@ pub var find_current: rl.Color = dark.find_current;
 pub var find_no_results: rl.Color = dark.find_no_results;
 pub var syntax: [syntax_kinds]rl.Color = dark.syntax;
 
+/// The palette in use, for artwork drawn in its own colors (file icons).
+pub var mode: Mode = .dark;
+
 /// Switches every color to the dark or light palette.
-pub fn setMode(mode: Mode) void {
-    const p = switch (mode) {
+pub fn setMode(m: Mode) void {
+    mode = m;
+    const p = switch (m) {
         .dark => dark,
         .light => light,
     };

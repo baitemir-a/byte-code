@@ -1,16 +1,20 @@
 //! Markdown lexer for highlighting, one line at a time: headings, lists,
 //! quotes, emphasis, inline code, links and fenced code blocks. Fences
-//! tagged js/ts, json or css are highlighted in that language.
+//! tagged with a language the editor highlights are highlighted in it.
 const std = @import("std");
 const token = @import("token.zig");
 const js = @import("js.zig");
 const css = @import("css.zig");
 const json = @import("json.zig");
+const python = @import("python.zig");
+const clike = @import("clike.zig");
+const generic = @import("generic.zig");
+const config = @import("config.zig");
 
 const Kind = token.Kind;
 const Span = token.Span;
 
-pub const Fence = enum(u8) { none, code, js, css, json };
+pub const Fence = enum(u8) { none, code, js, css, json, python, clike, generic, diff };
 
 pub const State = struct {
     fence: Fence = .none,
@@ -21,6 +25,11 @@ pub const State = struct {
     js: js.State = .{},
     css: css.State = .{},
     json: json.State = .{},
+    python: python.State = .{},
+    clike: clike.State = .{},
+    clike_dialect: clike.Dialect = .go,
+    generic: generic.State = .{},
+    generic_dialect: generic.Dialect = .c,
 };
 
 pub const Lexer = struct {
@@ -35,7 +44,15 @@ pub const Lexer = struct {
     prefix_kind: Kind = .punctuation,
     /// A link's "(url)" part, emitted after its "[text]".
     url: ?struct { start: usize, end: usize } = null,
-    inner: ?union(enum) { js: js.Lexer, css: css.Lexer, json: json.Lexer } = null,
+    inner: ?union(enum) {
+        js: js.Lexer,
+        css: css.Lexer,
+        json: json.Lexer,
+        python: python.Lexer,
+        clike: clike.Lexer,
+        generic: generic.Lexer,
+        diff: config.DiffLexer,
+    } = null,
 
     pub fn init(line: []const u8, state: State) Lexer {
         return .{ .line = line, .state = state };
@@ -55,6 +72,10 @@ pub const Lexer = struct {
                 .js => |l| self.state.js = l.state,
                 .css => |l| self.state.css = l.state,
                 .json => |l| self.state.json = l.state,
+                .python => |l| self.state.python = l.state,
+                .clike => |l| self.state.clike = l.state,
+                .generic => |l| self.state.generic = l.state,
+                .diff => {},
             }
             self.inner = null;
             self.pos = self.line.len;
@@ -93,6 +114,10 @@ pub const Lexer = struct {
                 .js => self.inner = .{ .js = .init(l, self.state.js) },
                 .css => self.inner = .{ .css = .init(l, self.state.css, .scss) },
                 .json => self.inner = .{ .json = .init(l, self.state.json) },
+                .python => self.inner = .{ .python = .init(l, self.state.python) },
+                .clike => self.inner = .{ .clike = .init(l, self.state.clike, self.state.clike_dialect) },
+                .generic => self.inner = .{ .generic = .init(l, self.state.generic, self.state.generic_dialect) },
+                .diff => self.inner = .{ .diff = .init(l) },
                 else => self.rest_kind = .code,
             }
             return;
@@ -103,7 +128,9 @@ pub const Lexer = struct {
         for ("`~") |ch| {
             const n = fenceLength(rest, ch);
             if (n >= 3) {
-                self.state = .{ .fence = fenceLanguage(std.mem.trim(u8, rest[n..], " \t\r")), .fence_char = ch, .fence_len = @intCast(@min(n, 255)) };
+                self.state = fenceState(std.mem.trim(u8, rest[n..], " \t\r"));
+                self.state.fence_char = ch;
+                self.state.fence_len = @intCast(@min(n, 255));
                 self.prefix_end = indent + n;
                 self.rest_kind = .keyword;
                 return;
@@ -235,18 +262,48 @@ fn isRule(s: []const u8) bool {
     return n >= 3;
 }
 
-fn fenceLanguage(info: []const u8) Fence {
-    const word = info[0 .. std.mem.indexOfAny(u8, info, " \t{") orelse info.len];
-    const table = [_]struct { []const u8, Fence }{
-        .{ "js", .js },         .{ "javascript", .js }, .{ "jsx", .js },   .{ "ts", .js },
-        .{ "typescript", .js }, .{ "tsx", .js },        .{ "mjs", .js },   .{ "json", .json },
-        .{ "jsonc", .json },    .{ "css", .css },       .{ "scss", .css }, .{ "sass", .css },
-        .{ "less", .css },
+/// The state for a fenced block whose info string is `info`: the lexer
+/// for its language, if there's one.
+fn fenceState(info: []const u8) State {
+    var word = info[0 .. std.mem.indexOfAny(u8, info, " \t{") orelse info.len];
+    var buf: [32]u8 = undefined;
+    if (word.len <= buf.len) word = std.ascii.lowerString(buf[0..word.len], word);
+    const simple = [_]struct { []const u8, Fence }{
+        .{ "js", .js },         .{ "javascript", .js }, .{ "jsx", .js },    .{ "ts", .js },
+        .{ "typescript", .js }, .{ "tsx", .js },        .{ "mjs", .js },    .{ "json", .json },
+        .{ "jsonc", .json },    .{ "css", .css },       .{ "scss", .css },  .{ "sass", .css },
+        .{ "less", .css },      .{ "python", .python }, .{ "py", .python }, .{ "diff", .diff },
+        .{ "patch", .diff },
     };
-    for (table) |entry| {
-        if (std.ascii.eqlIgnoreCase(word, entry[0])) return entry[1];
+    for (simple) |entry| {
+        if (std.mem.eql(u8, word, entry[0])) return .{ .fence = entry[1] };
     }
-    return .code;
+    const c_family = [_]struct { []const u8, clike.Dialect }{
+        .{ "go", .go }, .{ "golang", .go }, .{ "rust", .rust }, .{ "rs", .rust }, .{ "zig", .zig },
+    };
+    for (c_family) |entry| {
+        if (std.mem.eql(u8, word, entry[0])) return .{ .fence = .clike, .clike_dialect = entry[1] };
+    }
+    const aliases = [_]struct { []const u8, generic.Dialect }{
+        .{ "c++", .cpp },         .{ "cc", .cpp },            .{ "hpp", .cpp },             .{ "objective-c", .objc },
+        .{ "cs", .csharp },       .{ "c#", .csharp },         .{ "kt", .kotlin },           .{ "sol", .solidity },
+        .{ "glsl", .shader },     .{ "hlsl", .shader },       .{ "metal", .shader },        .{ "proto", .protobuf },
+        .{ "gql", .graphql },     .{ "sh", .shell },          .{ "bash", .shell },          .{ "zsh", .shell },
+        .{ "console", .shell },   .{ "shellscript", .shell }, .{ "ps1", .powershell },      .{ "pwsh", .powershell },
+        .{ "bat", .batch },       .{ "cmd", .batch },         .{ "rb", .ruby },             .{ "pl", .perl },
+        .{ "jl", .julia },        .{ "ex", .elixir },         .{ "exs", .elixir },          .{ "erl", .erlang },
+        .{ "cr", .crystal },      .{ "gd", .gdscript },       .{ "coffee", .coffeescript }, .{ "hs", .haskell },
+        .{ "ml", .ocaml },        .{ "fs", .fsharp },         .{ "f#", .fsharp },           .{ "elisp", .lisp },
+        .{ "emacs-lisp", .lisp }, .{ "scheme", .lisp },       .{ "racket", .lisp },         .{ "clj", .clojure },
+        .{ "make", .makefile },   .{ "docker", .dockerfile }, .{ "terraform", .hcl },       .{ "tf", .hcl },
+        .{ "delphi", .pascal },   .{ "vbnet", .vb },          .{ "asm", .assembly },        .{ "nasm", .assembly },
+        .{ "latex", .tex },       .{ "postgres", .sql },      .{ "mysql", .sql },           .{ "sqlite", .sql },
+    };
+    for (aliases) |entry| {
+        if (std.mem.eql(u8, word, entry[0])) return .{ .fence = .generic, .generic_dialect = entry[1] };
+    }
+    if (std.meta.stringToEnum(generic.Dialect, word)) |d| return .{ .fence = .generic, .generic_dialect = d };
+    return .{ .fence = .code };
 }
 
 test {

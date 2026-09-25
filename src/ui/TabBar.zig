@@ -7,8 +7,8 @@ const Font = @import("Font.zig");
 const Tab = @import("../app/Tab.zig");
 const file_icon = @import("widgets/lib/file_icon.zig");
 
-/// Room for the file-type dot in front of a file tab's name.
-const icon_space: f32 = file_icon.radius * 2 + 8;
+/// Room for the file-type icon in front of a file tab's name.
+const icon_space: f32 = file_icon.size + 8;
 
 fn iconSpace(t: *const Tab) f32 {
     return if (t.kind == .file or t.kind == .diff) icon_space else 0;
@@ -99,7 +99,7 @@ pub fn draw(self: *const TabBar, tabs: []const Tab, active: usize, font: Font) v
         // Name, ending in "…" when longer than a tab allows.
         const color = theme.copy(if (is_active) theme.foreground else theme.tab_inactive_text);
         const y = r.y + (r.height - theme.font_size) / 2;
-        if (t.kind == .file or t.kind == .diff) file_icon.draw(t.name(), .{ .x = r.x + pad + file_icon.radius, .y = r.y + r.height / 2 });
+        if (t.kind == .file or t.kind == .diff) file_icon.draw(t.name(), .{ .x = r.x + pad + file_icon.size / 2, .y = r.y + r.height / 2 });
         const name_x = r.x + pad + iconSpace(t);
         const name_end = name_x + @as(f32, @floatFromInt(max_name_cols)) * font.cell_width + 0.5;
         _ = font.drawFit(t.name(), name_x, y, name_end, color);

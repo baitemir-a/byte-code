@@ -1,6 +1,7 @@
-//! Lexers for two small line-based formats:
+//! Lexers for small line-based formats:
 //! - dotenv (`.env`, `.env.local`): `KEY=value`, `export`, `$VAR` references;
-//! - ignore files (`.gitignore`, `.dockerignore`, ...): glob patterns.
+//! - ignore files (`.gitignore`, `.dockerignore`, ...): glob patterns;
+//! - diffs and patches: added and removed lines, hunk headers.
 const std = @import("std");
 const token = @import("token.zig");
 
@@ -146,6 +147,35 @@ pub const IgnoreLexer = struct {
             break :blk .plain;
         };
         return .{ .start = start, .end = self.pos, .kind = kind };
+    }
+};
+
+/// A whole line at a time: added lines as strings, removed ones as regexes
+/// (green and red in the themes), `@@` hunk headers as constants, and file
+/// headers (`diff`, `---`, `+++`, `index`) as keywords.
+pub const DiffLexer = struct {
+    line: []const u8,
+    done: bool = false,
+
+    pub fn init(line: []const u8) DiffLexer {
+        return .{ .line = line };
+    }
+
+    pub fn next(self: *DiffLexer) ?Span {
+        const l = self.line;
+        if (self.done or l.len == 0) return null;
+        self.done = true;
+        const heads = [_][]const u8{ "diff ", "--- ", "+++ ", "index ", "new file", "deleted file", "similarity", "rename ", "old mode", "new mode" };
+        const kind: Kind = for (heads) |h| {
+            if (std.mem.startsWith(u8, l, h)) break .keyword;
+        } else switch (l[0]) {
+            '+', '>' => .string,
+            '-', '<' => .regex,
+            '@' => .constant,
+            '\\' => .comment, // \ No newline at end of file
+            else => .plain,
+        };
+        return .{ .start = 0, .end = l.len, .kind = kind };
     }
 };
 
