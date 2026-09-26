@@ -14,6 +14,8 @@ pub const max_rows = 8;
 const row_height = theme.line_height;
 const icon_cols = 2; // kind letter + gap
 const detail_cols = 9; // "function"
+/// Room for where an auto-import comes from ("@/shared/ui/Button").
+const max_detail_cols = 32;
 const pad = 6;
 
 /// Where the popup is on screen; empty when hidden.
@@ -33,10 +35,14 @@ pub fn layout(self: *Popup, c: *const Completion, view: *const View, buf: *const
     self.first = @min(self.first, n - rows);
 
     var longest: usize = 0;
-    for (c.items.items) |it| longest = @max(longest, core.text.codepointCount(it.label));
+    var detail: usize = detail_cols;
+    for (c.items.items) |it| {
+        longest = @max(longest, core.text.codepointCount(it.label));
+        detail = @max(detail, core.text.codepointCount(it.detail));
+    }
     const cw = view.font.cell_width;
-    const cols: f32 = @floatFromInt(icon_cols + longest + 2 + detail_cols);
-    const w = std.math.clamp(cols * cw + 2 * pad, 200, 520);
+    const cols: f32 = @floatFromInt(icon_cols + longest + 2 + @min(detail, max_detail_cols));
+    const w = std.math.clamp(cols * cw + 2 * pad, 200, 640);
     const h = @as(f32, @floatFromInt(rows)) * row_height + 2;
 
     // Align the labels with the word being completed; open above the cursor
@@ -99,8 +105,13 @@ pub fn draw(self: *const Popup, c: *const Completion, view: *const View) void {
             x += cw;
         }
 
-        // Kind name on the right, for the selected row only (keeps it calm).
-        if (i == c.selected) {
+        // Where an auto-import comes from, dimmed on the right; else the
+        // kind name, for the selected row only (keeps it calm).
+        if (item.detail.len > 0) {
+            const cols = @min(core.text.codepointCount(item.detail), max_detail_cols);
+            const dx = r.x + r.width - pad - @as(f32, @floatFromInt(cols)) * cw;
+            if (dx > x + cw) _ = view.font.drawFit(item.detail, dx, text_y, r.x + r.width - pad + 0.5, theme.popup_detail);
+        } else if (i == c.selected) {
             const name = @tagName(item.kind);
             var dx = r.x + r.width - pad - @as(f32, @floatFromInt(name.len)) * cw;
             if (dx > x + cw) for (name) |ch| {
