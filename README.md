@@ -86,6 +86,16 @@ the system warns the first time you open them:
   parser, brackets that don't pair up and strings left open are still
   marked. Imports of files or packages that aren't there are flagged too
   (relative paths, tsconfig aliases, `node_modules`)
+- **Formatting** (Shift+Option+F, or on every save — Settings) with the
+  language's own formatter: Prettier for JS/TS, JSON, CSS, HTML, Markdown
+  and YAML (the project's own copy first), `zig fmt`, gofmt, rustfmt,
+  Black or Ruff, clang-format. It runs in the background on the unsaved
+  text, and only what it changed is replaced, as one undo step
+- **Tidy saves** (Settings, both on by default) — saving takes the blanks
+  off the ends of lines (not in Markdown) and ends the file with a newline
+- **Indentation** — each file's is worked out when it opens (tabs, 2 or 4
+  spaces) and shown at the right end of the bottom bar; click it to
+  indent with something else
 - **Find and replace** in a file and **across the project** — match case
   and whole word options; replace one match, one file or everything
 - **File and folder icons** in the tree, tabs and lists — folders open and
@@ -144,7 +154,8 @@ the system warns the first time you open them:
   Settings
 - **Settings** — language, dark/light theme, accent color, auto save, zoom,
   minimap, file and folder icons, word wrap, smooth animations, opening
-  folders in a new window
+  folders in a new window, format on save, trimming trailing whitespace,
+  a final newline
 - **Keyboard shortcuts you can change** — the Help tab lists every
   combination, from Save to Select Word Left, and rebinds any of them
 
@@ -173,6 +184,7 @@ On macOS use Cmd; on Windows and Linux use Ctrl.
 | Cmd+Shift+\ | Go to the matching bracket |
 | Cmd+Option+[ / ] | Fold / unfold the block (Ctrl+Alt on Windows and Linux) |
 | Cmd+Shift+P (F1) | Command palette |
+| Shift+Option+F | Format the file (Shift+Alt+F on Windows and Linux) |
 | Ctrl+G | Go to line (Ctrl+L on Windows and Linux) |
 | Cmd+R | Go to symbol in the file |
 | Ctrl+- / Ctrl+Shift+- | Go back / forward (Alt+Left / Alt+Right on Windows and Linux) |

@@ -95,6 +95,8 @@ pub const Command = union(enum) {
     unfold,
     fold_all,
     unfold_all,
+    /// Run the file through its language's formatter (Shift+Option+F).
+    format_document,
 };
 
 /// Whether the command changes the text. A read-only view (the tab
@@ -102,7 +104,7 @@ pub const Command = union(enum) {
 /// these.
 pub fn changesText(cmd: Command) bool {
     return switch (cmd) {
-        .type_char, .newline, .indent, .backspace, .delete_forward, .delete, .undo, .redo, .cut, .paste, .complete, .move_line_up, .move_line_down, .save, .save_as, .find_replace, .toggle_comment, .outdent, .indent_lines, .duplicate_lines, .delete_lines => true,
+        .type_char, .newline, .indent, .backspace, .delete_forward, .delete, .undo, .redo, .cut, .paste, .complete, .move_line_up, .move_line_down, .save, .save_as, .find_replace, .toggle_comment, .outdent, .indent_lines, .duplicate_lines, .delete_lines, .format_document => true,
         else => false,
     };
 }
@@ -177,7 +179,7 @@ pub fn run(buf: *Buffer, cmd: Command, page_lines: usize) !void {
         .indent_lines => _ = try lines.indentLines(buf, null),
         .duplicate_lines => _ = try lines.duplicateLines(buf, null),
         .delete_lines => _ = try lines.deleteLines(buf, null),
-        .toggle_comment, .select_next_occurrence, .go_to_line, .go_to_symbol, .command_palette, .jump_to_bracket, .nav_back, .nav_forward, .fold, .unfold, .fold_all, .unfold_all, .complete, .copy, .cut, .paste, .open, .open_folder, .new_file, .close_tab, .next_tab, .prev_tab, .toggle_sidebar, .toggle_terminal, .open_settings, .open_help, .close_folder, .quick_open, .show_explorer, .show_search, .show_git, .zoom_in, .zoom_out, .zoom_reset, .save, .save_as, .find, .find_replace, .find_next, .find_prev, .toggle_match_case, .toggle_whole_word, .expand_selection, .shrink_selection, .toggle_word_wrap => unreachable,
+        .toggle_comment, .select_next_occurrence, .go_to_line, .go_to_symbol, .command_palette, .jump_to_bracket, .nav_back, .nav_forward, .fold, .unfold, .fold_all, .unfold_all, .format_document, .complete, .copy, .cut, .paste, .open, .open_folder, .new_file, .close_tab, .next_tab, .prev_tab, .toggle_sidebar, .toggle_terminal, .open_settings, .open_help, .close_folder, .quick_open, .show_explorer, .show_search, .show_git, .zoom_in, .zoom_out, .zoom_reset, .save, .save_as, .find, .find_replace, .find_next, .find_prev, .toggle_match_case, .toggle_whole_word, .expand_selection, .shrink_selection, .toggle_word_wrap => unreachable,
     }
 }
 

@@ -202,6 +202,7 @@ pub const Action = enum {
     unfold,
     fold_all,
     unfold_all,
+    format_document,
     // Cursor
     cursor_left,
     cursor_right,
@@ -417,6 +418,7 @@ pub const entries = [_]Entry{
     .{ .action = .unfold, .group = .editing, .default = primary(.right_bracket, .{ .alt = true }) },
     .{ .action = .fold_all, .group = .editing, .default = null },
     .{ .action = .unfold_all, .group = .editing, .default = null },
+    .{ .action = .format_document, .group = .editing, .default = with(.f, .{ .alt = true, .shift = true }) },
     // ----------------------------------------------------------- cursor
     .{ .action = .cursor_left, .group = .cursor, .default = plain(.left) },
     .{ .action = .cursor_right, .group = .cursor, .default = plain(.right) },
@@ -520,6 +522,7 @@ pub fn command(action: Action) core.Command {
         .unfold => .unfold,
         .fold_all => .fold_all,
         .unfold_all => .unfold_all,
+        .format_document => .format_document,
         .close_tab => .close_tab,
         .next_tab => .next_tab,
         .prev_tab => .prev_tab,

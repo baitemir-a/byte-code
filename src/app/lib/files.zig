@@ -249,16 +249,37 @@ pub fn save(self: *App, choose_path: bool) !bool {
         try t.document.setPath(self.gpa, path);
         t.highlighter.language = .fromPath(path);
     }
-    t.document.save(self.gpa, self.io, std.Io.Dir.cwd(), &t.buffer) catch |err| {
-        self.reportError(i18n.tr().errors.save_file, t.document.path.?, err);
-        return false;
-    };
+    if (!saveFile(self, t)) return false;
     // Saving under a new name may have added a file to the project.
     if (choose_path) {
         try self.refreshProject();
         try self.revealCurrentFile();
     }
     return true;
+}
+
+/// Tidies the text as Settings ask (blanks at the ends of lines, a final
+/// newline) and writes it to the tab's file. False if that failed, which
+/// is reported.
+fn saveFile(self: *App, t: *Tab) bool {
+    const trim = self.settings.trim_trailing_whitespace and t.highlighter.language != .markdown;
+    if (trim or self.settings.insert_final_newline) {
+        core.whitespace.tidy(&t.buffer, .{ .trim_trailing = trim, .final_newline = self.settings.insert_final_newline }) catch {};
+    }
+    t.document.save(self.gpa, self.io, std.Io.Dir.cwd(), &t.buffer) catch |err| {
+        self.reportError(i18n.tr().errors.save_file, t.document.path.?, err);
+        return false;
+    };
+    return true;
+}
+
+/// Saves the tab at `index` under its own name (after formatting on
+/// save, which may finish once another tab is showing).
+pub fn saveTab(self: *App, index: usize) void {
+    const t = &self.tabs.items[index];
+    if (t.kind != .file or t.document.path == null) return;
+    self.gitChanged();
+    _ = saveFile(self, t);
 }
 
 /// If the active tab has unsaved changes, asks whether to save them.

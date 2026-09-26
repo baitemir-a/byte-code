@@ -85,6 +85,13 @@ pub const Strings = struct {
         inline_blame_hint: []const u8,
         smooth: []const u8,
         smooth_hint: []const u8,
+        format_on_save: []const u8,
+        /// {1}: Format Document's shortcut, {2}: Save's.
+        format_on_save_hint: []const u8,
+        trim_whitespace: []const u8,
+        trim_whitespace_hint: []const u8,
+        final_newline: []const u8,
+        final_newline_hint: []const u8,
         shortcuts: []const u8,
         shortcuts_hint: []const u8,
     },
@@ -300,6 +307,12 @@ pub const Strings = struct {
         uncommitted: []const u8,
         /// {1}: the line, {2}: the column.
         line_column: []const u8,
+        /// How the file is indented: {1} spaces, or tabs; and the menu
+        /// that changes it ({1}: how many spaces).
+        indent_spaces: []const u8,
+        indent_tabs: []const u8,
+        indent_use_tabs: []const u8,
+        indent_use_spaces: []const u8,
     },
     /// Mistakes found in the file, shown at the end of their line.
     problems: struct {
@@ -378,6 +391,12 @@ pub const Strings = struct {
         nothing_to_commit_detail: []const u8,
         message_needed: []const u8,
         message_needed_detail: []const u8,
+        /// {1}: the formatter.
+        format_failed: []const u8,
+        no_formatter: []const u8,
+        no_formatter_detail: []const u8,
+        /// {1}: the formatters that would do.
+        install_formatter: []const u8,
     },
     /// Why something failed, under an error's title.
     reasons: struct {

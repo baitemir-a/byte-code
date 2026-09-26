@@ -103,6 +103,16 @@ pub fn draw(self: *const SettingsPage, font: Font, settings: *const Settings, se
     label(font, t.smooth, t.smooth_hint, x, self.rowY(rows.smooth), self.smooth_toggle.x);
     drawToggle(self.smooth_toggle, settings.smooth_animations, anim.hash("settings_toggle", rows.smooth));
 
+    var format_buf: [256]u8 = undefined;
+    label(font, t.format_on_save, i18n.fill(&format_buf, t.format_on_save_hint, .{ SettingsPage.format_shortcut, SettingsPage.cmd ++ "+S" }), x, self.rowY(rows.format_on_save), self.format_toggle.x);
+    drawToggle(self.format_toggle, settings.format_on_save, anim.hash("settings_toggle", rows.format_on_save));
+
+    label(font, t.trim_whitespace, t.trim_whitespace_hint, x, self.rowY(rows.trim_whitespace), self.trim_toggle.x);
+    drawToggle(self.trim_toggle, settings.trim_trailing_whitespace, anim.hash("settings_toggle", rows.trim_whitespace));
+
+    label(font, t.final_newline, t.final_newline_hint, x, self.rowY(rows.final_newline), self.newline_toggle.x);
+    drawToggle(self.newline_toggle, settings.insert_final_newline, anim.hash("settings_toggle", rows.final_newline));
+
     // Keyboard shortcuts live in their own tab.
     label(font, t.shortcuts, t.shortcuts_hint, x, self.rowY(rows.shortcuts), self.shortcuts_button.x);
     drawButton(font, self.shortcuts_button, i18n.tr().common.open, true);

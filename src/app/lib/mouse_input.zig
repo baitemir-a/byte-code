@@ -91,6 +91,7 @@ pub fn handleMouse(self: *App) !bool {
             if (pressed) switch (h) {
                 .branch => try self.openBranchPicker(.checkout),
                 .sync => if (!self.gitBusy()) self.startGitJob(.sync),
+                .indent => self.openIndentMenu(),
             };
         };
         return pressed;

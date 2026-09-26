@@ -1,9 +1,10 @@
 //! The bar along the bottom of the window: the branch and how far it is
 //! from its remote on the left, then who last touched the line the cursor
 //! is on (author, how long ago, the commit and its message), and where the
-//! cursor is at the right end. Hovering the blame shows the commit's exact
-//! date and time; the branch picks another one and the counters beside it
-//! push and pull.
+//! cursor is and how the file is indented at the right end. Hovering the
+//! blame shows the commit's exact date and time; the branch picks another
+//! one and the counters beside it push and pull; the indentation offers
+//! tabs or spaces instead.
 const std = @import("std");
 const rl = @import("raylib");
 const theme = @import("theme/lib/theme.zig");
@@ -47,8 +48,8 @@ pub const Branch = struct {
     busy: bool,
 };
 
-/// What the branch and its counters answer to.
-pub const Hit = enum { branch, sync };
+/// What the branch, its counters and the indentation answer to.
+pub const Hit = enum { branch, sync, indent };
 
 rect: rl.Rectangle = std.mem.zeroes(rl.Rectangle),
 /// The branch's name and its counters ("2↓ 1↑"), made by `layout` and
@@ -60,11 +61,21 @@ counts_len: usize = 0,
 branch_rect: rl.Rectangle = std.mem.zeroes(rl.Rectangle),
 sync_rect: rl.Rectangle = std.mem.zeroes(rl.Rectangle),
 sync_busy: bool = false,
+/// "Spaces: 4" or "Tabs" at the right end, for a file; empty otherwise.
+indent_buf: [32]u8 = undefined,
+indent_len: usize = 0,
+indent_rect: rl.Rectangle = std.mem.zeroes(rl.Rectangle),
 
 /// The bar sits across the bottom; everything else is laid out above it.
-/// The branch takes the left end, so the blame starts after it.
-pub fn layout(self: *StatusBar, window: rl.Vector2, font: Font, git: ?Branch) void {
+/// The branch takes the left end, so the blame starts after it; the
+/// indentation (`indent`, null outside a file) the right end.
+pub fn layout(self: *StatusBar, window: rl.Vector2, font: Font, git: ?Branch, indent: ?[]const u8) void {
     self.rect = .{ .x = 0, .y = window.y - height, .width = window.x, .height = height };
+    const label = indent orelse "";
+    self.indent_len = @min(label.len, self.indent_buf.len);
+    @memcpy(self.indent_buf[0..self.indent_len], label[0..self.indent_len]);
+    const indent_w = if (self.indent_len > 0) font.textWidth(self.indentLabel()) + 2 * gap else 0;
+    self.indent_rect = .{ .x = self.rect.x + self.rect.width - pad - indent_w, .y = self.rect.y, .width = indent_w, .height = height };
     self.name_len = 0;
     self.counts_len = 0;
     self.branch_rect = std.mem.zeroes(rl.Rectangle);
@@ -110,6 +121,10 @@ pub fn branch(self: *const StatusBar) []const u8 {
     return self.name_buf[0..self.name_len];
 }
 
+fn indentLabel(self: *const StatusBar) []const u8 {
+    return self.indent_buf[0..self.indent_len];
+}
+
 fn counts(self: *const StatusBar) []const u8 {
     return self.counts_buf[0..self.counts_len];
 }
@@ -120,6 +135,7 @@ pub fn contains(self: *const StatusBar, p: rl.Vector2) bool {
 
 /// The branch or its counters under a point, for the cursor and clicks.
 pub fn hit(self: *const StatusBar, p: rl.Vector2) ?Hit {
+    if (self.indent_len > 0 and rl.checkCollisionPointRec(p, self.indent_rect)) return .indent;
     if (self.name_len == 0) return null;
     if (rl.checkCollisionPointRec(p, self.branch_rect)) return .branch;
     if (rl.checkCollisionPointRec(p, self.sync_rect)) return .sync;
@@ -132,9 +148,15 @@ pub fn draw(self: *const StatusBar, font: Font, blame: ?Blame, position: []const
     rl.drawRectangleRec(.{ .x = r.x, .y = r.y, .width = r.width, .height = 1 }, theme.sidebar_border);
     const y = r.y + (height - theme.font_size) / 2;
 
-    // Where the cursor is, at the right end.
+    // The indentation at the right end, and where the cursor is before it.
+    if (self.indent_len > 0) {
+        const on = rl.checkCollisionPointRec(rl.getMousePosition(), self.indent_rect);
+        const t = anim.fade(anim.hash("status_indent", 0), on, anim.hover_speed);
+        const color = theme.copy(anim.mix(theme.popup_detail, theme.foreground, t));
+        _ = font.drawFit(self.indentLabel(), self.indent_rect.x + gap, y, self.indent_rect.x + self.indent_rect.width, color);
+    }
     const position_w = font.textWidth(position);
-    const right = r.x + r.width - pad;
+    const right = if (self.indent_len > 0) self.indent_rect.x else r.x + r.width - pad;
     _ = font.drawFit(position, right - position_w, y, right, theme.popup_detail);
 
     const text_left = drawBranch(self, font, y);

@@ -13,7 +13,7 @@ pub const max_items = 12;
 /// and line, say). A longer one keeps its end, where the telling part of
 /// a path is. In bytes: text in other scripts takes 2-3 per character.
 pub const max_label = 96;
-const row_height = theme.line_height + 4;
+pub const row_height = theme.line_height + 4;
 const pad: f32 = 12;
 
 is_open: bool = false,

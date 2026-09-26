@@ -91,6 +91,14 @@ inline_blame: bool = true,
 /// Panels, scrolling, dialogs and tooltips move into place instead of
 /// snapping to it (see ui/anim.zig).
 smooth_animations: bool = true,
+/// Saving (Cmd+S) runs the file through its language's formatter first
+/// (Prettier, zig fmt, gofmt...; see format/format.zig).
+format_on_save: bool = false,
+/// Saving takes the blanks off the ends of lines (not in Markdown, where
+/// two spaces end a line)...
+trim_trailing_whitespace: bool = true,
+/// ...and ends the file with a newline.
+insert_final_newline: bool = true,
 /// Width of the project sidebar, in UI units (dragged by its edge).
 sidebar_width: u16 = 240,
 

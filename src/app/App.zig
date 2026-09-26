@@ -59,6 +59,7 @@ const shortcuts = @import("lib/shortcuts.zig");
 const palette = @import("lib/palette.zig");
 const folding = @import("lib/folding.zig");
 const Navigation = @import("lib/navigation.zig");
+const formatting = @import("lib/formatting.zig");
 
 pub const app_name = "byte code";
 
@@ -94,6 +95,9 @@ pub const MenuAction = union(enum) {
     /// The language and icon menus in Settings.
     set_language: core.Settings.Language,
     set_icons: struct { of: IconsFor, mode: core.Settings.Icons },
+    /// The indentation menu in the bar at the bottom: a tab (0) or that
+    /// many spaces.
+    set_indent: u8,
     /// The right-click menu on a tab: the editor in two panes.
     split_right,
     split_down,
@@ -109,7 +113,7 @@ pub const MenuAction = union(enum) {
             .rename => t.rename,
             .delete => t.delete,
             .add_to_gitignore => t.add_to_gitignore,
-            .go_to_ref, .all_refs => "",
+            .go_to_ref, .all_refs, .set_indent => "",
             .set_language => |l| l.nativeName(),
             .set_icons => |i| SettingsPage.fileIconsLabel(i.mode),
             .split_right => i18n.tr().tabs.split_right,
@@ -230,6 +234,8 @@ git_job: ?*git_jobs.Job = null,
 /// parsers were found to run, or not to be installed.
 syntax_job: ?*problems.Job = null,
 tool_path: ?[]u8 = null,
+/// A formatter running over a file's text in the background, if any.
+format_job: ?*formatting.Job = null,
 ts_server: core.Diagnostics.checkers.Server,
 tools_working: std.EnumSet(core.Diagnostics.checkers.Tool) = .initEmpty(),
 tools_missing: std.EnumSet(core.Diagnostics.checkers.Tool) = .initEmpty(),
@@ -414,6 +420,7 @@ pub const refreshProject = files.refreshProject;
 pub const retargetTabs = files.retargetTabs;
 pub const confirmClose = files.confirmClose;
 pub const save = files.save;
+pub const saveTab = files.saveTab;
 pub const resolveUnsavedChanges = files.resolveUnsavedChanges;
 pub const reportError = files.reportError;
 
@@ -484,6 +491,8 @@ pub const updateCompletion = editing.updateCompletion;
 pub const toggleComment = editing.toggleComment;
 pub const selectNextOccurrence = editing.selectNextOccurrence;
 pub const jumpToBracket = editing.jumpToBracket;
+pub const openIndentMenu = editing.openIndentMenu;
+pub const setIndent = editing.setIndent;
 
 // Running commands, in dispatch.zig.
 pub const execute = dispatch.execute;
@@ -531,6 +540,7 @@ pub fn init(gpa: std.mem.Allocator, io: std.Io) !App {
 pub fn deinit(self: *App) void {
     git_jobs.finishGitJob(self);
     problems.finishJob(self);
+    formatting.finish(self);
     if (self.tool_path) |p| self.gpa.free(p);
     self.gpa.free(self.settings_path);
     self.gpa.free(self.keys_path);
@@ -680,6 +690,7 @@ pub fn update(self: *App) !void {
     try self.updateDiff();
     try self.updateBlame();
     try self.updateProblems();
+    try formatting.poll(self);
     try self.updateConflicts();
 
     try self.updateTitle();
@@ -739,7 +750,8 @@ pub fn windowSize() rl.Vector2 {
 /// each with its tab bar on top; the terminal panel along their bottom.
 pub fn layout(self: *App, full_window: rl.Vector2) !void {
     // The bar at the bottom takes its height off everything else.
-    self.status.layout(full_window, self.view.font, self.branchStatus());
+    var indent_buf: [32]u8 = undefined;
+    self.status.layout(full_window, self.view.font, self.branchStatus(), editing.indentLabel(self, &indent_buf));
     const window: rl.Vector2 = .{ .x = full_window.x, .y = @max(0, full_window.y - StatusBar.height) };
     self.sidebar.layout(if (self.project) |*p| p else null, window, self.view.font);
     self.sidebar.updateGitBadgeTooltip(self.view.font, &self.git);

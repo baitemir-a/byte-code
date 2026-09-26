@@ -8,6 +8,8 @@ const View = @import("../../ui/editor/View.zig");
 const CompletionPopup = @import("../../ui/editor/CompletionPopup.zig");
 const App = @import("../App.zig");
 const problems = @import("problems.zig");
+const ContextMenu = @import("../../ui/sidebar/ContextMenu.zig");
+const i18n = @import("../../i18n/i18n.zig");
 
 /// With word wrap, Up / Down / Page Up / Page Down go by screen rows (a
 /// long line has several); with folds too, stepping over the folded
@@ -88,6 +90,46 @@ pub fn updateBracketPair(self: *App) void {
     self.bracket_pair = null;
     if (b.selection() != null or b.hasExtraCursors()) return;
     self.bracket_pair = core.brackets.matchAt(b, &t.highlighter, b.cursor);
+}
+
+/// What the bar at the bottom says about the file's indentation: "Tabs"
+/// or "Spaces: 4". Null when no file is showing.
+pub fn indentLabel(self: *const App, out: []u8) ?[]const u8 {
+    const t = self.activeTab();
+    if (t.kind != .file) return null;
+    const s = i18n.tr().status;
+    const indent = t.buffer.indent;
+    if (std.mem.eql(u8, indent, "\t")) return s.indent_tabs;
+    return i18n.fill(out, s.indent_spaces, .{indent.len});
+}
+
+/// The ways to indent, in a menu over the bar at the bottom.
+pub fn openIndentMenu(self: *App) void {
+    const s = i18n.tr().status;
+    var rows: [3][96]u8 = undefined;
+    const labels = [3][]const u8{
+        s.indent_use_tabs,
+        i18n.fill(&rows[1], s.indent_use_spaces, .{2}),
+        i18n.fill(&rows[2], s.indent_use_spaces, .{4}),
+    };
+    self.menu_actions[0] = .{ .set_indent = 0 };
+    self.menu_actions[1] = .{ .set_indent = 2 };
+    self.menu_actions[2] = .{ .set_indent = 4 };
+    self.menu_node = null;
+    const r = self.status.indent_rect;
+    // Above the bar; the menu keeps itself inside the window.
+    self.menu.open(&labels, .{ .x = r.x, .y = r.y - 3 * ContextMenu.row_height - 6 }, App.windowSize(), self.view.font);
+}
+
+/// What Tab and new lines indent the file with from now on (the text
+/// already there stays as it is).
+pub fn setIndent(self: *App, spaces: u8) void {
+    if (self.activeTab().kind != .file) return;
+    self.buf().indent = switch (spaces) {
+        0 => "\t",
+        2 => "  ",
+        else => "    ",
+    };
 }
 
 /// Grows the selection to the enclosing scope (see core/scope.zig).

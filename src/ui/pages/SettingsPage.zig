@@ -1,6 +1,6 @@
 //! The Settings tab: language, theme, accent color, auto save, zoom,
-//! minimap, word wrap and whether the Git view asks before throwing
-//! changes away.
+//! minimap, word wrap, whether the Git view asks before throwing changes
+//! away, and what saving does to the text.
 //! Changes apply immediately and are saved to settings.json.
 const std = @import("std");
 const builtin = @import("builtin");
@@ -17,6 +17,8 @@ const SettingsPage = @This();
 
 pub const cmd = if (builtin.os.tag == .macos) "Cmd" else "Ctrl";
 pub const opt = if (builtin.os.tag == .macos) "Option" else "Alt";
+/// Format Document's default shortcut, for the hint.
+pub const format_shortcut = "Shift+" ++ opt ++ "+F";
 
 pub const Action = union(enum) {
     /// Opens the menu of languages under the language button.
@@ -39,6 +41,9 @@ pub const Action = union(enum) {
     toggle_pull_rebase,
     toggle_inline_blame,
     toggle_smooth,
+    toggle_format_on_save,
+    toggle_trim_whitespace,
+    toggle_final_newline,
     /// Opens the Help tab, where the shortcuts are.
     open_help,
 };
@@ -88,6 +93,9 @@ confirm_discard_toggle: rl.Rectangle = undefined,
 pull_rebase_toggle: rl.Rectangle = undefined,
 inline_blame_toggle: rl.Rectangle = undefined,
 smooth_toggle: rl.Rectangle = undefined,
+format_toggle: rl.Rectangle = undefined,
+trim_toggle: rl.Rectangle = undefined,
+newline_toggle: rl.Rectangle = undefined,
 shortcuts_button: rl.Rectangle = undefined,
 
 // Drawing, in SettingsPage_draw.zig.
@@ -139,6 +147,9 @@ pub fn layout(self: *SettingsPage, area: rl.Rectangle, font: Font) void {
     self.pull_rebase_toggle = .{ .x = right - 46, .y = self.rowY(rows.pull_rebase) + 3, .width = 46, .height = 22 };
     self.inline_blame_toggle = .{ .x = right - 46, .y = self.rowY(rows.inline_blame) + 3, .width = 46, .height = 22 };
     self.smooth_toggle = .{ .x = right - 46, .y = self.rowY(rows.smooth) + 3, .width = 46, .height = 22 };
+    self.format_toggle = .{ .x = right - 46, .y = self.rowY(rows.format_on_save) + 3, .width = 46, .height = 22 };
+    self.trim_toggle = .{ .x = right - 46, .y = self.rowY(rows.trim_whitespace) + 3, .width = 46, .height = 22 };
+    self.newline_toggle = .{ .x = right - 46, .y = self.rowY(rows.final_newline) + 3, .width = 46, .height = 22 };
     const open_w = @max(80, font.textWidth(i18n.tr().common.open) + 16);
     self.shortcuts_button = .{ .x = right - open_w, .y = self.rowY(rows.shortcuts), .width = open_w, .height = button };
 }
@@ -160,9 +171,12 @@ pub const rows = struct {
     pub const pull_rebase = 12;
     pub const inline_blame = 13;
     pub const smooth = 14;
-    pub const shortcuts = 15;
+    pub const format_on_save = 15;
+    pub const trim_whitespace = 16;
+    pub const final_newline = 17;
+    pub const shortcuts = 18;
     /// "Saved to:" and the path.
-    pub const path = 16;
+    pub const path = 19;
 };
 
 pub fn rowY(self: *const SettingsPage, row: usize) f32 {
@@ -214,6 +228,9 @@ pub fn actionAt(self: *const SettingsPage, p: rl.Vector2, settings: *const Setti
     if (hit(p, self.pull_rebase_toggle)) return .toggle_pull_rebase;
     if (hit(p, self.inline_blame_toggle)) return .toggle_inline_blame;
     if (hit(p, self.smooth_toggle)) return .toggle_smooth;
+    if (hit(p, self.format_toggle)) return .toggle_format_on_save;
+    if (hit(p, self.trim_toggle)) return .toggle_trim_whitespace;
+    if (hit(p, self.newline_toggle)) return .toggle_final_newline;
     if (hit(p, self.shortcuts_button)) return .open_help;
     return null;
 }
