@@ -30,6 +30,7 @@ pub const brackets = @import("editing/lib/brackets.zig");
 pub const fold = @import("editing/lib/fold.zig");
 pub const whitespace = @import("editing/lib/whitespace.zig");
 pub const format = @import("format/format.zig");
+pub const lsp = @import("lsp/lsp.zig");
 pub const fuzzy = @import("completion/lib/fuzzy.zig");
 pub const command = @import("editing/lib/command.zig");
 pub const syntax = @import("syntax/syntax.zig");

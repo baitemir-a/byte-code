@@ -9,6 +9,7 @@ const rl = @import("raylib");
 const core = @import("core");
 const App = @import("../App.zig");
 const Tab = @import("../Tab.zig");
+const lsp = @import("lsp.zig");
 const i18n = @import("../../i18n/i18n.zig");
 
 /// How long typing has to pause before the file is checked again, so
@@ -69,11 +70,14 @@ fn check(self: *App, t: *Tab) !void {
     if (t.kind != .file) return;
     if (rl.getTime() - t.changed_at < settle_seconds) return;
     const tool = core.Diagnostics.checkers.toolFor(t.highlighter.language);
+    // A language server reports the file's errors itself.
+    const served = lsp.serves(self, t);
     if (!t.problems.isCurrent(&t.buffer)) {
         // With a parser that works, it has the say on brackets and strings.
-        const parsed = if (tool) |tl| self.tools_working.contains(tl) else false;
+        const parsed = served or if (tool) |tl| self.tools_working.contains(tl) else false;
         try t.problems.update(self.gpa, &t.buffer, &t.highlighter, .{ .files = filesOf(self, t), .structural = !parsed });
     }
+    if (served) return;
     if (tool) |tl| if (t.problems.syntax_asked != t.buffer.version and !self.tools_missing.contains(tl)) startJob(self, t, tl);
 }
 

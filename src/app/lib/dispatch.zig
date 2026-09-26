@@ -4,6 +4,8 @@ const core = @import("core");
 const keymap = @import("../../input/lib/keymap.zig");
 const clipboard = @import("clipboard.zig");
 const formatting = @import("formatting.zig");
+const lsp = @import("lsp.zig");
+const symbol_nav = @import("symbol_nav.zig");
 const App = @import("../App.zig");
 const i18n = @import("../../i18n/i18n.zig");
 
@@ -104,6 +106,9 @@ pub fn execute(self: *App, cmd: core.Command) !void {
         .paste => if (clipboard.getClipboard()) |s| try clipboard.pasteAtCursors(self.gpa, b, s),
         .save, .save_as => try formatting.saveCommand(self, cmd == .save_as),
         .format_document => try formatting.formatDocument(self),
+        .rename_symbol => try lsp.rename(self),
+        .quick_fix => try lsp.quickFix(self),
+        .go_to_definition => try symbol_nav.definitionAtCursor(self),
         .complete => {},
         .expand_selection => try self.expandSelection(b),
         .shrink_selection => self.shrinkSelection(b),

@@ -8,6 +8,7 @@ const View = @import("../../ui/editor/View.zig");
 const CompletionPopup = @import("../../ui/editor/CompletionPopup.zig");
 const App = @import("../App.zig");
 const problems = @import("problems.zig");
+const lsp = @import("lsp.zig");
 const ContextMenu = @import("../../ui/sidebar/ContextMenu.zig");
 const i18n = @import("../../i18n/i18n.zig");
 
@@ -195,7 +196,14 @@ pub fn handleCompletionKey(self: *App, cmd: core.Command) !bool {
 /// on to suggest what's inside it.
 pub fn acceptCompletion(self: *App) !void {
     const c = &self.completion;
+    // What the server needs to hear about the pick, copied: accepting
+    // closes the list.
+    var raw: std.ArrayList(u8) = .empty;
+    defer raw.deinit(self.gpa);
+    const word = core.lsp.protocol.toPosition(self.buf().items(), c.word_start);
+    if (c.selectedItem()) |item| try raw.appendSlice(self.gpa, item.raw);
     try c.accept(self.buf());
+    try lsp.completionPicked(self, raw.items, word);
     if (c.reopen) {
         const t = self.tab();
         try c.refresh(&t.buffer, &t.highlighter, false, problems.filesOf(self, t));
@@ -217,9 +225,14 @@ pub fn updateCompletion(self: *App, cmd: core.Command) !void {
             // Quotes, slashes and dashes only matter in an import path.
             const path_char = cp < 0x80 and std.mem.indexOfScalar(u8, "./\"'`@-", @intCast(cp)) != null;
             if (word_char or path_char) try c.refresh(&t.buffer, &t.highlighter, false, files) else c.close();
+            // The language server's suggestions join the list when they come.
+            if (word_char or cp == '.') try lsp.requestCompletion(self, false);
         },
         .backspace, .delete => if (c.is_open) try c.refresh(&t.buffer, &t.highlighter, false, files),
-        .complete => try c.refresh(&t.buffer, &t.highlighter, true, files),
+        .complete => {
+            try c.refresh(&t.buffer, &t.highlighter, true, files);
+            try lsp.requestCompletion(self, true);
+        },
         else => c.close(),
     }
 }

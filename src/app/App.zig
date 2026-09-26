@@ -60,6 +60,7 @@ const palette = @import("lib/palette.zig");
 const folding = @import("lib/folding.zig");
 const Navigation = @import("lib/navigation.zig");
 const formatting = @import("lib/formatting.zig");
+const lsp_client = @import("lib/lsp.zig");
 
 pub const app_name = "byte code";
 
@@ -98,6 +99,8 @@ pub const MenuAction = union(enum) {
     /// The indentation menu in the bar at the bottom: a tab (0) or that
     /// many spaces.
     set_indent: u8,
+    /// Quick Fix: one of the server's actions (maxInt: "none here").
+    code_action: u32,
     /// The right-click menu on a tab: the editor in two panes.
     split_right,
     split_down,
@@ -113,7 +116,7 @@ pub const MenuAction = union(enum) {
             .rename => t.rename,
             .delete => t.delete,
             .add_to_gitignore => t.add_to_gitignore,
-            .go_to_ref, .all_refs, .set_indent => "",
+            .go_to_ref, .all_refs, .set_indent, .code_action => "",
             .set_language => |l| l.nativeName(),
             .set_icons => |i| SettingsPage.fileIconsLabel(i.mode),
             .split_right => i18n.tr().tabs.split_right,
@@ -234,6 +237,8 @@ git_job: ?*git_jobs.Job = null,
 /// parsers were found to run, or not to be installed.
 syntax_job: ?*problems.Job = null,
 tool_path: ?[]u8 = null,
+/// The language servers, and what the editor is waiting to hear from them.
+lsp: lsp_client.State,
 /// A formatter running over a file's text in the background, if any.
 format_job: ?*formatting.Job = null,
 ts_server: core.Diagnostics.checkers.Server,
@@ -492,6 +497,7 @@ pub const toggleComment = editing.toggleComment;
 pub const selectNextOccurrence = editing.selectNextOccurrence;
 pub const jumpToBracket = editing.jumpToBracket;
 pub const openIndentMenu = editing.openIndentMenu;
+pub const runCodeAction = lsp_client.runCodeAction;
 pub const setIndent = editing.setIndent;
 
 // Running commands, in dispatch.zig.
@@ -530,6 +536,7 @@ pub fn init(gpa: std.mem.Allocator, io: std.Io) !App {
         .git = .init(gpa),
         .picker = .init(gpa),
         .git_refs = .init(gpa),
+        .lsp = .init(gpa),
     };
     // The second pane's view shares the font that was just loaded.
     app.other_view = View.init(gpa, app.view.font);
@@ -541,6 +548,7 @@ pub fn deinit(self: *App) void {
     git_jobs.finishGitJob(self);
     problems.finishJob(self);
     formatting.finish(self);
+    self.lsp.deinit(self.gpa);
     if (self.tool_path) |p| self.gpa.free(p);
     self.gpa.free(self.settings_path);
     self.gpa.free(self.keys_path);
@@ -691,6 +699,7 @@ pub fn update(self: *App) !void {
     try self.updateBlame();
     try self.updateProblems();
     try formatting.poll(self);
+    try lsp_client.update(self);
     try self.updateConflicts();
 
     try self.updateTitle();

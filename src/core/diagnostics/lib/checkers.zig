@@ -212,6 +212,8 @@ const ts_server_script =
     \\  return out.join('');
     \\}
     \\let buf = '';
+    \\// The editor gone (even without saying so): so is this.
+    \\process.stdin.on('end', () => process.exit(0));
     \\process.stdin.setEncoding('utf8');
     \\process.stdin.on('data', d => {
     \\  buf += d;
@@ -433,7 +435,7 @@ pub fn findExe(alloc: Allocator, io: Io, search_path: []const u8, name: []const 
 
 /// TypeScript's compiler: the project's own (in a node_modules up from
 /// the file), else a global install, else the one inside VS Code or Cursor.
-fn findTypeScript(alloc: Allocator, io: Io, path: []const u8, home: []const u8) ?[]const u8 {
+pub fn findTypeScript(alloc: Allocator, io: Io, path: []const u8, home: []const u8) ?[]const u8 {
     const rel = "node_modules/typescript/lib/typescript.js";
     var up: ?[]const u8 = std.fs.path.dirname(path);
     while (up) |d| : (up = std.fs.path.dirname(d)) {

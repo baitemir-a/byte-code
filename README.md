@@ -96,6 +96,26 @@ the system warns the first time you open them:
 - **Indentation** — each file's is worked out when it opens (tabs, 2 or 4
   spaces) and shown at the right end of the bottom bar; click it to
   indent with something else
+- **Language servers** — for Zig (zls), Go (gopls), Rust (rust-analyzer),
+  Python (pyright, basedpyright or python-lsp-server) and C/C++ (clangd),
+  whichever is installed, started the first time a file of the language
+  opens. JavaScript and TypeScript need nothing extra: the editor runs its
+  own small server on the project's TypeScript (with node). With one:
+  - **Go to declaration** asks it where a name is declared
+  - **Hover** a name for its type and documentation, and an underlined
+    problem for its message
+  - **Suggestions** from the server (members, types, imports) lead the
+    completion list, ahead of the file's own words
+  - **Auto-import** — the list also offers what other files and packages
+    export, with where each comes from beside it (`./utils`, `react`);
+    picking one adds its `import` at the top of the file (in TypeScript,
+    and with any server that sends the import along: gopls, pyright,
+    rust-analyzer, clangd)
+  - **Rename Symbol** (F2) renames a name everywhere it's used — in open
+    tabs (unsaved, so it can be undone) and in the files on disk
+  - **Quick Fix** (Cmd+.) lists what the server can do about the problem
+    at the cursor: add a missing import, fix a typo, and the like
+  - The server's errors replace the one-off parser runs
 - **Find and replace** in a file and **across the project** — match case
   and whole word options; replace one match, one file or everything
 - **File and folder icons** in the tree, tabs and lists — folders open and
@@ -118,10 +138,11 @@ the system warns the first time you open them:
 - **Go back / forward** (Ctrl+- / Ctrl+Shift+- on macOS, Alt+Left /
   Alt+Right elsewhere, or the mouse's side buttons) — through the places
   the cursor jumped from: another file, a declaration, a search result
-- **Go to declaration** — Ctrl+click (Cmd+click) a name to jump to where it
-  is declared; click the declaration itself to list where it is used. It
-  reads the shape of the code, not a language server, so it is a good guess
-  rather than an answer
+- **Go to declaration** — Ctrl+click (Cmd+click) a name, or F12, to jump
+  to where it is declared, in whatever file; on the declaration itself it
+  lists where the name is used. With a language server (see below) that's
+  the server's answer; without one it reads the shape of the code, a good
+  guess rather than an answer
 - **Git** — the branch with counters beside it: blue for changes waiting
   to be staged, yellow for staged ones, green for commits to push, purple
   for commits to pull (as of the last fetch) and red for a half-done
@@ -185,6 +206,9 @@ On macOS use Cmd; on Windows and Linux use Ctrl.
 | Cmd+Option+[ / ] | Fold / unfold the block (Ctrl+Alt on Windows and Linux) |
 | Cmd+Shift+P (F1) | Command palette |
 | Shift+Option+F | Format the file (Shift+Alt+F on Windows and Linux) |
+| F12 | Go to where the name at the cursor is declared |
+| F2 | Rename the name at the cursor everywhere (needs a language server) |
+| Cmd+. | Quick fixes for the problem at the cursor (needs a language server) |
 | Ctrl+G | Go to line (Ctrl+L on Windows and Linux) |
 | Cmd+R | Go to symbol in the file |
 | Ctrl+- / Ctrl+Shift+- | Go back / forward (Alt+Left / Alt+Right on Windows and Linux) |

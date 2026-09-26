@@ -42,6 +42,23 @@ pub const Item = struct {
     rank: u8,
     /// Order added; keeps built-in lists in their curated order.
     seq: u32,
+    /// What accepting it inserts, when that isn't the label (a language
+    /// server's suggestion may differ).
+    insert: []const u8 = "",
+    /// Shown dimmed beside it: where an auto-import comes from.
+    detail: []const u8 = "",
+    /// A language server's suggestion as it sent it (JSON), for the edits
+    /// that come with picking it (the import).
+    raw: []const u8 = "",
+};
+
+/// A suggestion from a language server (see `setServer`).
+pub const ServerItem = struct {
+    label: []const u8,
+    kind: ItemKind,
+    insert: []const u8,
+    detail: []const u8 = "",
+    raw: []const u8 = "",
 };
 
 gpa: std.mem.Allocator,
@@ -59,9 +76,14 @@ path_mode: bool = false,
 reopen: bool = false,
 /// File names read for path suggestions; reset by each refresh.
 names: std.heap.ArenaAllocator,
+/// A language server's suggestions and the word start they are for:
+/// they go first while the word being typed is that one.
+server_arena: std.heap.ArenaAllocator,
+server_items: std.ArrayList(ServerItem) = .empty,
+server_start: ?usize = null,
 
 pub fn init(gpa: std.mem.Allocator) Completion {
-    return .{ .gpa = gpa, .index = .init(gpa), .names = .init(gpa) };
+    return .{ .gpa = gpa, .index = .init(gpa), .names = .init(gpa), .server_arena = .init(gpa) };
 }
 
 pub fn deinit(self: *Completion) void {
@@ -69,6 +91,29 @@ pub fn deinit(self: *Completion) void {
     self.seen.deinit(self.gpa);
     self.index.deinit();
     self.names.deinit();
+    self.server_arena.deinit();
+}
+
+/// Takes a language server's suggestions for the word starting at
+/// `word_start` (copied); the next `refresh` puts them in.
+pub fn setServer(self: *Completion, word_start: usize, items: []const ServerItem) !void {
+    self.clearServer();
+    const alloc = self.server_arena.allocator();
+    for (items) |it| try self.server_items.append(alloc, .{
+        .label = try alloc.dupe(u8, it.label),
+        .kind = it.kind,
+        .insert = try alloc.dupe(u8, it.insert),
+        .detail = try alloc.dupe(u8, it.detail),
+        .raw = try alloc.dupe(u8, it.raw),
+    });
+    self.server_start = word_start;
+}
+
+pub fn clearServer(self: *Completion) void {
+    // The items were in the arena: the list goes with it.
+    self.server_items = .empty;
+    _ = self.server_arena.reset(.retain_capacity);
+    self.server_start = null;
 }
 
 pub fn close(self: *Completion) void {
@@ -117,37 +162,47 @@ pub fn refresh(self: *Completion, buf: *const Buffer, hl: *Highlighter, explicit
     self.word_start = start;
     self.path_mode = false;
 
-    if (after_dot) {
-        if (hl.language.isJs()) for (builtins.membersOf(objectBefore(buf, start))) |l| try self.consider(l, .member, word, 0);
-        for (self.index.words.keys(), self.index.words.values()) |l, w| {
-            if (w.as_member) try self.consider(l, if (w.called) .function else .member, word, 1);
+    // The language server knows the code; its suggestions go first.
+    if (self.server_start == start) for (self.server_items.items) |it| {
+        if (try self.consider(it.label, it.kind, word, 0)) |i| {
+            const item = &self.items.items[i];
+            if (!std.mem.eql(u8, it.insert, it.label)) item.insert = it.insert;
+            item.detail = it.detail;
+            item.raw = it.raw;
         }
-        if (hl.language.isJs()) for (builtins.common_members) |l| try self.consider(l, .function, word, 2);
+    };
+
+    if (after_dot) {
+        if (hl.language.isJs()) for (builtins.membersOf(objectBefore(buf, start))) |l| try self.add(l, .member, word, 0);
+        for (self.index.words.keys(), self.index.words.values()) |l, w| {
+            if (w.as_member) try self.add(l, if (w.called) .function else .member, word, 1);
+        }
+        if (hl.language.isJs()) for (builtins.common_members) |l| try self.add(l, .function, word, 2);
     } else {
         for (self.index.words.keys(), self.index.words.values()) |l, w| {
             if (!w.as_name) continue;
             const kind: ItemKind = if (w.called) .function else if (w.is_type) .type else .variable;
-            try self.consider(l, kind, word, 0);
+            try self.add(l, kind, word, 0);
         }
         if (hl.language.isJs()) {
-            for (builtins.keywords) |l| try self.consider(l, .keyword, word, 1);
-            for (builtins.globals) |l| try self.consider(l, if (std.ascii.isUpper(l[0])) .type else .variable, word, 2);
-            for (builtins.types) |l| try self.consider(l, .type, word, 3);
+            for (builtins.keywords) |l| try self.add(l, .keyword, word, 1);
+            for (builtins.globals) |l| try self.add(l, if (std.ascii.isUpper(l[0])) .type else .variable, word, 2);
+            for (builtins.types) |l| try self.add(l, .type, word, 3);
         } else if (hl.language.clikeDialect()) |dialect| {
             const words = clike.wordsFor(dialect);
-            for (words.keyword_list) |l| try self.consider(l, .keyword, word, 1);
-            for (words.constant_list) |l| try self.consider(l, .keyword, word, 1);
-            for (words.type_list) |l| try self.consider(l, .type, word, 3);
+            for (words.keyword_list) |l| try self.add(l, .keyword, word, 1);
+            for (words.constant_list) |l| try self.add(l, .keyword, word, 1);
+            for (words.type_list) |l| try self.add(l, .type, word, 3);
         } else if (hl.language.genericDialect()) |dialect| {
             const spec = &generic.language(dialect).spec;
-            for (spec.keywords) |l| try self.consider(l, .keyword, word, 1);
-            for (spec.constants) |l| try self.consider(l, .keyword, word, 1);
-            for (spec.builtins) |l| try self.consider(l, .function, word, 2);
-            for (spec.types) |l| try self.consider(l, .type, word, 3);
+            for (spec.keywords) |l| try self.add(l, .keyword, word, 1);
+            for (spec.constants) |l| try self.add(l, .keyword, word, 1);
+            for (spec.builtins) |l| try self.add(l, .function, word, 2);
+            for (spec.types) |l| try self.add(l, .type, word, 3);
         } else if (hl.language == .python) {
-            for (builtins.python_keywords) |l| try self.consider(l, .keyword, word, 1);
-            for (builtins.python_functions) |l| try self.consider(l, .function, word, 2);
-            for (builtins.python_types) |l| try self.consider(l, .type, word, 3);
+            for (builtins.python_keywords) |l| try self.add(l, .keyword, word, 1);
+            for (builtins.python_functions) |l| try self.add(l, .function, word, 2);
+            for (builtins.python_types) |l| try self.add(l, .type, word, 3);
         }
     }
 
@@ -233,11 +288,11 @@ fn refreshImport(self: *Completion, buf: *const Buffer, hl: *Highlighter, files:
                 try self.listFolder(files, &.{ here, dir }, style, seg, 0);
             }
             if (onlyDots(dir) and (style != .js or dir.len > 0 or seg.len == 0 or seg[0] == '.')) {
-                if (dir.len == 0 and style == .js) try self.consider("./", .folder, seg, 0);
-                try self.consider("../", .folder, seg, 0);
+                if (dir.len == 0 and style == .js) try self.add("./", .folder, seg, 0);
+                try self.add("../", .folder, seg, 0);
             }
             if (style == .zig and dir.len == 0) {
-                for ([_][]const u8{ "std", "builtin", "root" }) |l| try self.consider(l, .module, seg, 1);
+                for ([_][]const u8{ "std", "builtin", "root" }) |l| try self.add(l, .module, seg, 1);
             }
         },
     }
@@ -271,7 +326,7 @@ fn listAliased(self: *Completion, files: Files, here: []const u8, dir: []const u
         } else if (dir.len == 0 and a.prefix.len > 0) {
             // `@/` leads into a folder; an exact alias names a module.
             const folder = a.wildcard and a.prefix[a.prefix.len - 1] == '/';
-            if (folder or !a.wildcard) try self.consider(a.prefix, if (folder) .folder else .module, seg, 0);
+            if (folder or !a.wildcard) try self.add(a.prefix, if (folder) .folder else .module, seg, 0);
         }
     }
     // With a baseUrl, bare paths also start there.
@@ -332,7 +387,7 @@ fn listFolder(self: *Completion, files: Files, parts: []const []const u8, style:
         }
     }
     std.mem.sort(Entry, entries.items, {}, Entry.lessThan);
-    for (entries.items) |e| try self.consider(e.label, e.kind, seg, rank);
+    for (entries.items) |e| try self.add(e.label, e.kind, seg, rank);
 }
 
 /// Whether a path is only `./` and `../` steps (or empty).
@@ -342,12 +397,18 @@ fn onlyDots(dir: []const u8) bool {
     return true;
 }
 
-fn consider(self: *Completion, label: []const u8, kind: ItemKind, word: []const u8, rank: u8) !void {
+fn add(self: *Completion, label: []const u8, kind: ItemKind, word: []const u8, rank: u8) !void {
+    _ = try self.consider(label, kind, word, rank);
+}
+
+/// Adds a suggestion if it matches the word and isn't there yet; returns
+/// its index.
+fn consider(self: *Completion, label: []const u8, kind: ItemKind, word: []const u8, rank: u8) !?usize {
     // The word exactly as typed is no suggestion.
-    if (std.mem.eql(u8, label, word)) return;
-    const m = fuzzy.match(label, word) orelse return;
+    if (std.mem.eql(u8, label, word)) return null;
+    const m = fuzzy.match(label, word) orelse return null;
     const gop = try self.seen.getOrPut(self.gpa, label);
-    if (gop.found_existing) return;
+    if (gop.found_existing) return null;
     try self.items.append(self.gpa, .{
         .label = label,
         .kind = kind,
@@ -356,6 +417,7 @@ fn consider(self: *Completion, label: []const u8, kind: ItemKind, word: []const 
         .rank = rank,
         .seq = @intCast(self.items.items.len),
     });
+    return self.items.items.len - 1;
 }
 
 /// Best match first; among equals the preferred source, then (once
@@ -383,7 +445,7 @@ pub fn accept(self: *Completion, buf: *Buffer) !void {
     }
     buf.moveTo(self.word_start, false);
     buf.moveTo(end, true);
-    try buf.insert(item.label);
+    try buf.insert(if (item.insert.len > 0) item.insert else item.label);
     self.close();
     self.reopen = item.kind == .folder;
 }

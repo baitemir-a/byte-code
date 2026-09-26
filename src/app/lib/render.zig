@@ -15,6 +15,7 @@ const problems = @import("problems.zig");
 const git_diff = @import("git_diff.zig");
 const split_panes = @import("split.zig");
 const palette = @import("palette.zig");
+const lsp = @import("lsp.zig");
 const View_draw = @import("../../ui/editor/View_draw.zig");
 const i18n = @import("../../i18n/i18n.zig");
 
@@ -72,6 +73,7 @@ fn drawFrame(self: *const App) void {
         }
         self.sidebar.drawGitBadgeTooltip(self.view.font, &self.git);
     }
+    lsp.drawHover(self);
     self.quick_open.draw(&self.file_search, self.view.font, caret, self.project != null);
     var empty_buf: [256]u8 = undefined;
     self.picker.draw(self.view.font, caret, palette.emptyMessage(self, &empty_buf));

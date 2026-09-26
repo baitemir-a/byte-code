@@ -195,6 +195,33 @@ pub fn setSyntax(self: *Diagnostics, buf: *const Buffer, version: u64, found: []
     }
 }
 
+/// A problem a language server found, as a byte range of the text.
+pub const Range = struct { start: usize, end: usize, message: []const u8 };
+
+/// Takes a language server's findings for version `version` of the
+/// buffer, in place of the parser's.
+pub fn setRanges(self: *Diagnostics, buf: *const Buffer, version: u64, found: []const Range) !void {
+    defer self.merge() catch {};
+    _ = self.syntax_arena.reset(.retain_capacity);
+    self.syntax = .empty;
+    self.syntax_version = version;
+    self.syntax_asked = version;
+    if (version != buf.version) return;
+    const alloc = self.syntax_arena.allocator();
+    const len = buf.items().len;
+    for (found[0..@min(found.len, max_items)]) |f| {
+        var start = @min(f.start, len);
+        // Nothing to underline at the very end: the last character.
+        if (start == len and start > 0) start -= 1;
+        try self.syntax.append(alloc, .{
+            .start = start,
+            .end = @max(@min(f.end, len), start + 1),
+            .kind = .syntax,
+            .message = try alloc.dupe(u8, f.message),
+        });
+    }
+}
+
 /// The byte offset of 1-based `line` and `col`.
 fn offsetOf(text: []const u8, starts: []const usize, line: u32, col: u32, in_chars: bool) usize {
     if (line == 0) return 0;

@@ -60,7 +60,8 @@ pub fn applyEdits(buf: *Buffer, edits: []const Edit) !void {
 
 fn mapPos(p: usize, e: Edit) usize {
     if (p < e.pos) return p;
-    if (p < e.pos + e.remove) return e.pos;
+    // Inside replaced text: as far in as the new text reaches.
+    if (p < e.pos + e.remove) return e.pos + @min(p - e.pos, e.insert.len);
     return p - e.remove + e.insert.len;
 }
 

@@ -357,6 +357,18 @@ pub const Strings = struct {
         symbols: []const u8,
         no_symbols: []const u8,
     },
+    /// Language servers: Rename Symbol and Quick Fix.
+    lsp: struct {
+        /// {1}: the name.
+        rename_title: []const u8,
+        new_name: []const u8,
+        rename_failed: []const u8,
+        no_fixes: []const u8,
+        no_server: []const u8,
+        /// {1}: the servers that would do.
+        no_server_detail: []const u8,
+        no_server_any: []const u8,
+    },
     /// The terminal panel's header. (What the terminal itself prints stays
     /// in English: its screen can't lay out wide characters yet.)
     terminal: struct {

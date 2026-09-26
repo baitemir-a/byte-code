@@ -148,6 +148,7 @@ pub const Action = enum {
     command_palette,
     go_to_line,
     go_to_symbol,
+    go_to_definition,
     // Tabs and views
     close_tab,
     next_tab,
@@ -203,6 +204,8 @@ pub const Action = enum {
     fold_all,
     unfold_all,
     format_document,
+    rename_symbol,
+    quick_fix,
     // Cursor
     cursor_left,
     cursor_right,
@@ -306,6 +309,7 @@ pub const entries = [_]Entry{
     // Cmd+G / Ctrl+G is the Git view.
     .{ .action = .go_to_line, .group = .files, .default = if (is_mac) with(.g, .{ .ctrl = true }) else with(.l, .{ .ctrl = true }) },
     .{ .action = .go_to_symbol, .group = .files, .default = primary(.r, .{}) },
+    .{ .action = .go_to_definition, .group = .files, .default = plain(.f12) },
     // ----------------------------------------------------- tabs and views
     .{ .action = .close_tab, .group = .views, .default = primary(.w, .{}) },
     .{
@@ -419,6 +423,8 @@ pub const entries = [_]Entry{
     .{ .action = .fold_all, .group = .editing, .default = null },
     .{ .action = .unfold_all, .group = .editing, .default = null },
     .{ .action = .format_document, .group = .editing, .default = with(.f, .{ .alt = true, .shift = true }) },
+    .{ .action = .rename_symbol, .group = .editing, .default = plain(.f2) },
+    .{ .action = .quick_fix, .group = .editing, .default = primary(.period, .{}) },
     // ----------------------------------------------------------- cursor
     .{ .action = .cursor_left, .group = .cursor, .default = plain(.left) },
     .{ .action = .cursor_right, .group = .cursor, .default = plain(.right) },
@@ -509,6 +515,7 @@ pub fn command(action: Action) core.Command {
         .command_palette => .command_palette,
         .go_to_line => .go_to_line,
         .go_to_symbol => .go_to_symbol,
+        .go_to_definition => .go_to_definition,
         .nav_back => .nav_back,
         .nav_forward => .nav_forward,
         .select_next_occurrence => .select_next_occurrence,
@@ -523,6 +530,8 @@ pub fn command(action: Action) core.Command {
         .fold_all => .fold_all,
         .unfold_all => .unfold_all,
         .format_document => .format_document,
+        .rename_symbol => .rename_symbol,
+        .quick_fix => .quick_fix,
         .close_tab => .close_tab,
         .next_tab => .next_tab,
         .prev_tab => .prev_tab,

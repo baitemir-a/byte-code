@@ -1,15 +1,19 @@
-//! Ctrl+click (Cmd+click on macOS) on a name in the text: go to where it
-//! is declared, or, clicking the declaration itself, list where it is
-//! used. Without a language server the declaration is recognised by the
-//! shape of its line (see core/search/lib/symbols.zig), and the uses come
-//! from a whole-word search of the project — the same search the sidebar's
-//! Search view shows, so the whole list is one click away.
+//! Ctrl+click (Cmd+click on macOS) on a name in the text, or F12: go to
+//! where it is declared, or, on the declaration itself, list where it is
+//! used. A language server, when there is one, says where the
+//! declaration is (see lsp.zig). Without one — or when it has no answer —
+//! the declaration is recognised by the shape of its line (see
+//! core/search/lib/symbols.zig). The uses come from a whole-word search
+//! of the project — the same search the sidebar's Search view shows, so
+//! the whole list is one click away.
 const std = @import("std");
 const rl = @import("raylib");
 const core = @import("core");
 const ContextMenu = @import("../../ui/sidebar/ContextMenu.zig");
 const App = @import("../App.zig");
 const i18n = @import("../../i18n/i18n.zig");
+const lsp = @import("lsp.zig");
+const theme = @import("../../ui/theme/lib/theme.zig");
 
 /// Uses kept for the menu; far more than it can list, but "All uses"
 /// hands the rest to the Search view anyway.
@@ -21,9 +25,25 @@ const symbol_options: core.find.Options = .{ .match_case = true, .whole_word = t
 /// mouse, so the click can go on to place the cursor as usual.
 pub fn symbolClick(self: *App, point: rl.Vector2) !bool {
     const buf = self.buf();
-    const word = core.motion.wordRange(buf.items(), self.view.posAt(buf, point));
-    const name = buf.items()[word.start..word.end];
-    if (!core.symbols.isName(name)) return false;
+    return goToDefinition(self, core.motion.wordRange(buf.items(), self.view.posAt(buf, point)), point);
+}
+
+/// F12: the same for the name at the cursor; a menu of uses opens under
+/// it.
+pub fn definitionAtCursor(self: *App) !void {
+    if (!self.isEditing()) return;
+    const buf = self.buf();
+    const word = core.motion.wordRange(buf.items(), buf.cursor);
+    const at = self.view.screenPos(buf, word.start);
+    _ = try goToDefinition(self, word, .{ .x = at.x, .y = at.y + theme.line_height });
+}
+
+/// Selects the name in `word` and asks the language server where it is
+/// declared, or looks for that in the text. `point` is where a menu of
+/// uses would open. False when `word` isn't a name.
+fn goToDefinition(self: *App, word: core.Buffer.Range, point: rl.Vector2) !bool {
+    const buf = self.buf();
+    if (!core.symbols.isName(buf.items()[word.start..word.end])) return false;
 
     // Select it, so it's plain which name was clicked.
     buf.moveTo(word.start, false);
@@ -32,6 +52,18 @@ pub fn symbolClick(self: *App, point: rl.Vector2) !bool {
     self.completion.close();
     self.find.focus = .editor;
 
+    // The server's answer comes later (see lsp.zig), which falls back to
+    // `lookUp` when it has none.
+    if (try lsp.requestDefinition(self, word, point)) return true;
+    try lookUp(self, word, point);
+    return true;
+}
+
+/// Without a language server: the declaration found by the shape of its
+/// line, or — clicking the declaration — the menu of uses.
+pub fn lookUp(self: *App, word: core.Buffer.Range, point: rl.Vector2) !void {
+    const buf = self.buf();
+    const name = buf.items()[word.start..word.end];
     const line_start = buf.lineStart(word.start);
     const line = buf.items()[line_start..buf.lineEnd(word.start)];
     const on_declaration = core.symbols.isDeclaration(line, word.start - line_start, word.end - line_start);
@@ -41,10 +73,9 @@ pub fn symbolClick(self: *App, point: rl.Vector2) !bool {
     // (or with none to be found), show where the name is used.
     if (!on_declaration) if (declaration(self, name)) |ref| {
         try self.openRef(ref);
-        return true;
+        return;
     };
     openRefsMenu(self, point);
-    return true;
 }
 
 /// Opens the file a use is in (if it isn't the current one) and selects it.
