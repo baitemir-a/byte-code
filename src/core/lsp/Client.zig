@@ -18,6 +18,12 @@ pub const State = enum { starting, ready, dead };
 pub const Capabilities = struct {
     hover: bool = false,
     definition: bool = false,
+    references: bool = false,
+    signature_help: bool = false,
+    document_symbol: bool = false,
+    workspace_symbol: bool = false,
+    /// Characters that open the parameter hint ("(", ",").
+    signature_chars: []const []const u8 = &.{},
     completion: bool = false,
     /// Suggestions come without their extra edits (the import), which
     /// `completionItem/resolve` fills in.
@@ -149,11 +155,19 @@ fn initialize(self: *Client) !void {
                 .workspaceEdit = .{ .documentChanges = true },
                 .configuration = true,
                 .workspaceFolders = true,
+                .symbol = .{ .dynamicRegistration = false },
             },
             .textDocument = .{
                 .synchronization = .{ .dynamicRegistration = false, .didSave = false },
                 .hover = .{ .contentFormat = .{ "markdown", "plaintext" } },
                 .definition = .{ .linkSupport = true },
+                .references = .{ .dynamicRegistration = false },
+                .signatureHelp = .{ .signatureInformation = .{
+                    .documentationFormat = .{"plaintext"},
+                    .parameterInformation = .{ .labelOffsetSupport = true },
+                    .activeParameterSupport = true,
+                } },
+                .documentSymbol = .{ .hierarchicalDocumentSymbolSupport = true },
                 .completion = .{ .completionItem = .{
                     .snippetSupport = false,
                     .documentationFormat = .{"plaintext"},
@@ -299,6 +313,19 @@ fn ready(self: *Client, result: std.json.Value) !void {
     if (field(result, "capabilities")) |c| {
         self.caps.hover = provided(c, "hoverProvider");
         self.caps.definition = provided(c, "definitionProvider");
+        self.caps.references = provided(c, "referencesProvider");
+        self.caps.document_symbol = provided(c, "documentSymbolProvider");
+        self.caps.workspace_symbol = provided(c, "workspaceSymbolProvider");
+        if (field(c, "signatureHelpProvider")) |sh| if (sh != .null) {
+            self.caps.signature_help = true;
+            var list: std.ArrayList([]const u8) = .empty;
+            for ([_][]const u8{ "triggerCharacters", "retriggerCharacters" }) |name| {
+                if (field(sh, name)) |tc| if (tc == .array) for (tc.array.items) |t| {
+                    if (t == .string) try list.append(alloc, try alloc.dupe(u8, t.string));
+                };
+            }
+            self.caps.signature_chars = list.items;
+        };
         self.caps.rename = provided(c, "renameProvider");
         self.caps.code_action = provided(c, "codeActionProvider");
         if (field(c, "codeActionProvider")) |ca| if (field(ca, "resolveProvider")) |r| {

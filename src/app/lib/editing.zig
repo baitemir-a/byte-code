@@ -214,6 +214,7 @@ pub fn acceptCompletion(self: *App) !void {
 /// keeps them in sync while editing that word, and closes them on anything
 /// else.
 pub fn updateCompletion(self: *App, cmd: core.Command) !void {
+    try lsp.signatureAfter(self, cmd);
     const c = &self.completion;
     const t = self.tab();
     // Suggestions insert at one cursor only: not with several.

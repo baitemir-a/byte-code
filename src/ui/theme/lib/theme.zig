@@ -104,6 +104,7 @@ pub var find_match: rl.Color = dark.find_match;
 pub var find_current: rl.Color = dark.find_current;
 pub var find_no_results: rl.Color = dark.find_no_results;
 pub var problem: rl.Color = dark.problem;
+pub var warning: rl.Color = dark.warning;
 pub var syntax: [syntax_kinds]rl.Color = dark.syntax;
 
 /// The palette in use, for artwork drawn in its own colors (file icons).

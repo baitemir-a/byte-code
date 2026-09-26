@@ -32,6 +32,10 @@ const Pending = struct {
     what: union(enum) {
         hover: Key,
         definition: struct { word: core.Buffer.Range, version: u64, point: rl.Vector2 },
+        references: struct { word: core.Buffer.Range, version: u64, point: rl.Vector2 },
+        signature: struct { cursor: usize, version: u64 },
+        symbols: struct { version: u64 },
+        workspace_symbols,
         completion: struct { word_start: usize, version: u64, explicit: bool },
         resolve_completion: struct { word: lsp.protocol.Position },
         rename,
@@ -51,6 +55,33 @@ const Hover = struct {
     anchor: rl.Vector2 = .{ .x = 0, .y = 0 },
     problem: std.ArrayList(u8) = .empty,
     text: std.ArrayList(u8) = .empty,
+};
+
+/// What a server last reported for a file: the diagnostics as JSON, and
+/// how many errors and warnings are among them.
+const Reported = struct { json: []u8, errors: u32, warnings: u32 };
+
+/// A row of the problems list.
+pub const ProblemEntry = struct {
+    path: []const u8,
+    start: lsp.protocol.Position,
+    end: lsp.protocol.Position,
+    message: []const u8,
+    warning: bool,
+};
+
+/// The call the cursor is in: its signature over the cursor, the
+/// parameter being typed picked out.
+const Signature = struct {
+    open: bool = false,
+    label: std.ArrayList(u8) = .empty,
+    doc: std.ArrayList(u8) = .empty,
+    param_start: usize = 0,
+    param_end: usize = 0,
+    index: usize = 0,
+    count: usize = 1,
+    /// The line it was asked on: moving off it puts it away.
+    line_start: usize = 0,
 };
 
 /// Finding where programs are, on a thread (it asks the login shell).
@@ -78,8 +109,19 @@ pub const State = struct {
     frame: std.heap.ArenaAllocator,
     /// The problems each server last reported for a file (as JSON), to
     /// give back when asking for fixes.
-    diagnostics: std.StringHashMapUnmanaged([]u8) = .empty,
+    diagnostics: std.StringHashMapUnmanaged(Reported) = .empty,
     hover: Hover = .{},
+    signature: Signature = .{},
+    /// Go to Symbol's query while the server's list is on its way.
+    symbols_query: std.ArrayList(u8) = .empty,
+    /// The project-wide symbol search: the query last sent, and the
+    /// list shown (in `workspace_arena`).
+    workspace_query: std.ArrayList(u8) = .empty,
+    workspace_arena: std.heap.ArenaAllocator,
+    workspace_symbols: []lsp.results.Symbol = &.{},
+    /// The problems list (Cmd+Shift+M), in `problems_arena`.
+    problem_list: std.ArrayList(ProblemEntry) = .empty,
+    problems_arena: std.heap.ArenaAllocator,
     /// The quick fixes offered in the menu, and the server they're from.
     actions_arena: std.heap.ArenaAllocator,
     actions: []lsp.results.Action = &.{},
@@ -90,7 +132,7 @@ pub const State = struct {
     path_job: ?*PathJob = null,
 
     pub fn init(gpa: std.mem.Allocator) State {
-        return .{ .frame = .init(gpa), .actions_arena = .init(gpa) };
+        return .{ .frame = .init(gpa), .actions_arena = .init(gpa), .workspace_arena = .init(gpa), .problems_arena = .init(gpa) };
     }
 
     pub fn deinit(self: *State, gpa: std.mem.Allocator) void {
@@ -110,11 +152,17 @@ pub const State = struct {
         var it = self.diagnostics.iterator();
         while (it.next()) |e| {
             gpa.free(e.key_ptr.*);
-            gpa.free(e.value_ptr.*);
+            gpa.free(e.value_ptr.json);
         }
         self.diagnostics.deinit(gpa);
         self.pending.deinit(gpa);
         self.hover.problem.deinit(gpa);
+        self.signature.label.deinit(gpa);
+        self.signature.doc.deinit(gpa);
+        self.symbols_query.deinit(gpa);
+        self.workspace_query.deinit(gpa);
+        self.workspace_arena.deinit();
+        self.problems_arena.deinit();
         self.hover.text.deinit(gpa);
         self.frame.deinit();
         self.actions_arena.deinit();
@@ -228,6 +276,7 @@ pub fn update(self: *App) !void {
     syncShown(self, self.tab(), now);
     if (self.split != null) syncShown(self, self.otherTab(), now);
     try updateHover(self, now);
+    checkSignature(self);
 }
 
 fn syncShown(self: *App, t: *Tab, now: f64) void {
@@ -264,6 +313,10 @@ fn handle(self: *App, client: *Client, m: Client.Incoming) !void {
                 },
                 .completion => |c| try completionAnswer(self, c.word_start, c.version, c.explicit, r.result),
                 .definition => |d| try definitionAnswer(self, d.word, d.version, d.point, if (r.err == null) r.result else .null),
+                .references => |d| try referencesAnswer(self, d.word, d.version, d.point, if (r.err == null) r.result else .null),
+                .signature => |sg| try signatureAnswer(self, sg.cursor, sg.version, if (r.err == null) r.result else .null),
+                .symbols => |sy| try symbolsAnswer(self, sy.version, if (r.err == null) r.result else .null),
+                .workspace_symbols => if (r.err == null) try workspaceAnswer(self, r.result),
                 .rename => {
                     if (r.err) |e| return self.showError(i18n.tr().lsp.rename_failed, e);
                     if (r.result == .null) return self.showError(i18n.tr().lsp.rename_failed, "");
@@ -291,19 +344,27 @@ fn published(self: *App, client: *Client, params: Value) !void {
     if (Client.field(params, "diagnostics")) |list| {
         const json = try std.json.Stringify.valueAlloc(self.gpa, list, .{});
         const gop = try self.lsp.diagnostics.getOrPut(self.gpa, p.path);
-        if (gop.found_existing) self.gpa.free(gop.value_ptr.*) else gop.key_ptr.* = try self.gpa.dupe(u8, p.path);
-        gop.value_ptr.* = json;
+        if (gop.found_existing) self.gpa.free(gop.value_ptr.json) else gop.key_ptr.* = try self.gpa.dupe(u8, p.path);
+        var errors: u32 = 0;
+        var warnings: u32 = 0;
+        for (p.problems) |x| switch (x.severity) {
+            1 => errors += 1,
+            2 => warnings += 1,
+            else => {},
+        };
+        gop.value_ptr.* = .{ .json = json, .errors = errors, .warnings = warnings };
     }
     const version = client.bufferVersionOf(p.path, p.version) orelse return;
     for (self.tabs.items) |*t| {
         if (!t.hasPath(p.path) or t.buffer.version != version) continue;
         var lines = try lsp.protocol.Lines.init(arena, t.buffer.items());
         var found: std.ArrayList(core.Diagnostics.Range) = .empty;
-        // Errors only: they're underlined in red, like the parser's.
-        for (p.problems) |x| if (x.severity <= 1) try found.append(arena, .{
+        // Errors and warnings; hints and notes would crowd the text.
+        for (p.problems) |x| if (x.severity <= 2) try found.append(arena, .{
             .start = lines.offset(x.start),
             .end = lines.offset(x.end),
             .message = x.message,
+            .warning = x.severity == 2,
         });
         try t.problems.setRanges(&t.buffer, version, found.items);
     }
@@ -477,6 +538,7 @@ fn definitionAnswer(self: *App, word: core.Buffer.Range, version: u64, point: rl
     if (t.kind != .file or t.buffer.version != version) return;
     const here = t.document.path orelse return;
     const places = try lsp.results.locations(self.lsp.frame.allocator(), result);
+    if (places.len == 0) return symbol_nav.lookUp(self, word, point);
     const target = for (places) |p| {
         if (!std.mem.eql(u8, p.path, here)) break p;
         const start = lsp.protocol.toOffset(t.buffer.items(), p.start);
@@ -484,7 +546,11 @@ fn definitionAnswer(self: *App, word: core.Buffer.Range, version: u64, point: rl
         // The name clicked is the one declared: not somewhere to go.
         if (start <= word.start and word.end <= @max(end, start + 1)) continue;
         break p;
-    } else return symbol_nav.lookUp(self, word, point);
+    } else {
+        // On the declaration: where it's used instead.
+        if (!try requestReferences(self, word, point)) try symbol_nav.lookUp(self, word, point);
+        return;
+    };
 
     if (!std.mem.eql(u8, target.path, here)) {
         self.openFile(target.path) catch |err| return self.reportError(i18n.tr().errors.open_file, target.path, err);
@@ -496,6 +562,309 @@ fn definitionAnswer(self: *App, word: core.Buffer.Range, version: u64, point: rl
     // A place that spans lines (a whole declaration) only puts the cursor.
     if (end > start and std.mem.indexOfScalar(u8, b.items()[start..end], '\n') == null) b.moveTo(end, true);
     palette.center(self, b.lineIndex(start));
+}
+
+/// Asks the server where the name in `word` is used (not counting its
+/// declaration). False when there's no server ready to answer.
+pub fn requestReferences(self: *App, word: core.Buffer.Range, point: rl.Vector2) !bool {
+    const t = self.tab();
+    const client = clientFor(self, t) orelse return false;
+    if (client.state != .ready or !client.caps.references) return false;
+    sync(self, t, client);
+    const id = try client.request("textDocument/references", .{
+        .textDocument = .{ .uri = try uriOf(self, t) },
+        .position = lsp.protocol.toPosition(t.buffer.items(), word.start),
+        .context = .{ .includeDeclaration = false },
+    });
+    try self.lsp.pending.append(self.gpa, .{ .client = client, .id = id, .what = .{ .references = .{ .word = word, .version = t.buffer.version, .point = point } } });
+    return true;
+}
+
+/// The uses the server found, in the menu; none, and they're searched
+/// for as text.
+fn referencesAnswer(self: *App, word: core.Buffer.Range, version: u64, point: rl.Vector2, result: Value) !void {
+    const t = self.tab();
+    if (t.kind != .file or t.buffer.version != version) return;
+    const places = try lsp.results.locations(self.lsp.frame.allocator(), result);
+    if (places.len == 0) return symbol_nav.usesMenu(self, word, point);
+    try symbol_nav.serverUsesMenu(self, t.buffer.items()[word.start..word.end], places, point);
+}
+
+// ---------------------------------------------------------------- symbols
+
+/// Asks the server what the file declares; Go to Symbol opens with the
+/// answer. False when there's no server ready to answer.
+pub fn requestSymbols(self: *App, query: []const u8) !bool {
+    const t = self.tab();
+    const client = clientFor(self, t) orelse return false;
+    if (client.state != .ready or !client.caps.document_symbol) return false;
+    sync(self, t, client);
+    self.lsp.symbols_query.clearRetainingCapacity();
+    try self.lsp.symbols_query.appendSlice(self.gpa, query);
+    const id = try client.request("textDocument/documentSymbol", .{ .textDocument = .{ .uri = try uriOf(self, t) } });
+    try self.lsp.pending.append(self.gpa, .{ .client = client, .id = id, .what = .{ .symbols = .{ .version = t.buffer.version } } });
+    return true;
+}
+
+fn symbolsAnswer(self: *App, version: u64, result: Value) !void {
+    const t = self.tab();
+    if (t.kind != .file or t.buffer.version != version) return;
+    const found = try lsp.results.documentSymbols(self.lsp.frame.allocator(), result);
+    if (found.len == 0) {
+        try palette.ownOutline(self);
+    } else {
+        var lines = try lsp.protocol.Lines.init(self.lsp.frame.allocator(), t.buffer.items());
+        self.symbols.clearRetainingCapacity();
+        for (found) |f| {
+            const start = lines.offset(f.start);
+            const end = lines.offset(f.end);
+            // A name on one line; a range over several isn't one.
+            if (end <= start or std.mem.indexOfScalar(u8, t.buffer.items()[start..end], '\n') != null) continue;
+            try self.symbols.append(self.gpa, .{ .start = start, .end = end, .line = f.start.line, .kind = kindWord(f.kind), .depth = f.depth });
+        }
+    }
+    try palette.showSymbols(self, self.lsp.symbols_query.items);
+}
+
+/// The kind names as static strings (the answer's memory goes away).
+fn kindWord(kind: []const u8) []const u8 {
+    for ([_][]const u8{ "module", "namespace", "package", "class", "method", "property", "field", "constructor", "enum", "interface", "fn", "var", "const", "member", "struct", "event", "operator", "type" }) |k| {
+        if (std.mem.eql(u8, k, kind)) return k;
+    }
+    return "";
+}
+
+/// Searches the project's declarations for `query`, unless that's what
+/// was last asked.
+pub fn requestWorkspaceSymbols(self: *App, query: []const u8) !void {
+    const s = &self.lsp;
+    if (std.mem.eql(u8, s.workspace_query.items, query) and s.workspace_symbols.len > 0) return;
+    s.workspace_query.clearRetainingCapacity();
+    try s.workspace_query.appendSlice(self.gpa, query);
+    // The shown file's server, else any that can search.
+    var client: ?*Client = if (self.isEditing()) clientFor(self, self.tab()) else null;
+    if (client) |c| if (c.state != .ready or !c.caps.workspace_symbol) {
+        client = null;
+    };
+    if (client == null) for (s.clients.items) |e| {
+        if (!e.client.isDead() and e.client.state == .ready and e.client.caps.workspace_symbol) {
+            client = e.client;
+            break;
+        }
+    };
+    const c = client orelse return;
+    const id = try c.request("workspace/symbol", .{ .query = query });
+    try s.pending.append(self.gpa, .{ .client = c, .id = id, .what = .workspace_symbols });
+}
+
+fn workspaceAnswer(self: *App, result: Value) !void {
+    const s = &self.lsp;
+    if (!self.picker.is_open or self.picker_mode != .workspace_symbol) return;
+    // Typed on since: the answer for the query as it is now comes next.
+    if (!std.mem.eql(u8, self.picker.query.text(), s.workspace_query.items)) return;
+    _ = s.workspace_arena.reset(.retain_capacity);
+    const a = s.workspace_arena.allocator();
+    const json = try std.json.Stringify.valueAlloc(a, result, .{});
+    const kept = std.json.parseFromSliceLeaky(Value, a, json, .{}) catch return;
+    s.workspace_symbols = try lsp.results.workspaceSymbols(a, kept);
+    self.picker.clearItems();
+    for (s.workspace_symbols) |sym| {
+        var buf: [300]u8 = undefined;
+        const detail = std.fmt.bufPrint(&buf, "{s}  {s}:{d}", .{ sym.kind, palette.relative(self, sym.path orelse ""), sym.start.line + 1 }) catch "";
+        try self.picker.add(.{ .label = sym.name, .detail = detail });
+    }
+    try self.picker.filter();
+}
+
+/// How many errors and warnings are known, as the problems list would
+/// show them: in the open files, and reported for the others. For the
+/// counters in the bar at the bottom.
+pub fn problemCounts(self: *const App) [2]u32 {
+    var counts: [2]u32 = .{ 0, 0 };
+    for (self.tabs.items) |*t| {
+        if (t.kind != .file or t.document.path == null or !t.problems.isCurrent(&t.buffer)) continue;
+        for (t.problems.items.items) |it| counts[@intFromBool(it.warning)] += 1;
+    }
+    var it = self.lsp.diagnostics.iterator();
+    while (it.next()) |e| {
+        const open = for (self.tabs.items) |*t| {
+            if (t.hasPath(e.key_ptr.*)) break true;
+        } else false;
+        if (open) continue;
+        counts[0] += e.value_ptr.errors;
+        counts[1] += e.value_ptr.warnings;
+    }
+    return counts;
+}
+
+/// Everything known to be wrong, into `problem_list`: the open files'
+/// problems, then what the servers reported for files that aren't open.
+/// Errors before warnings, then by file and line.
+pub fn collectProblems(self: *App) !void {
+    const s = &self.lsp;
+    s.problem_list.clearRetainingCapacity();
+    _ = s.problems_arena.reset(.retain_capacity);
+    const a = s.problems_arena.allocator();
+    for (self.tabs.items) |*t| {
+        if (t.kind != .file) continue;
+        const path = t.document.path orelse continue;
+        if (!t.problems.isCurrent(&t.buffer)) continue;
+        for (t.problems.items.items) |it| {
+            var buf: [512]u8 = undefined;
+            try s.problem_list.append(a, .{
+                .path = try a.dupe(u8, path),
+                .start = lsp.protocol.toPosition(t.buffer.items(), it.start),
+                .end = lsp.protocol.toPosition(t.buffer.items(), it.end),
+                .message = try a.dupe(u8, problems.message(&buf, it)),
+                .warning = it.warning,
+            });
+        }
+    }
+    var it = s.diagnostics.iterator();
+    while (it.next()) |e| {
+        const open = for (self.tabs.items) |*t| {
+            if (t.hasPath(e.key_ptr.*)) break true;
+        } else false;
+        if (open) continue;
+        const list = std.json.parseFromSliceLeaky(Value, a, e.value_ptr.json, .{}) catch continue;
+        if (list != .array) continue;
+        for (list.array.items) |d| {
+            const r = lsp.edits.parseRange(Client.field(d, "range") orelse continue) orelse continue;
+            const sev: i64 = if (Client.field(d, "severity")) |x| (if (x == .integer) x.integer else 1) else 1;
+            if (sev > 2) continue;
+            const msg = Client.field(d, "message") orelse continue;
+            if (msg != .string) continue;
+            try s.problem_list.append(a, .{ .path = e.key_ptr.*, .start = r[0], .end = r[1], .message = msg.string, .warning = sev == 2 });
+        }
+    }
+    std.mem.sort(ProblemEntry, s.problem_list.items, {}, struct {
+        fn f(_: void, x: ProblemEntry, y: ProblemEntry) bool {
+            if (x.warning != y.warning) return !x.warning;
+            switch (std.mem.order(u8, x.path, y.path)) {
+                .lt => return true,
+                .gt => return false,
+                .eq => return x.start.line < y.start.line,
+            }
+        }
+    }.f);
+}
+
+// -------------------------------------------------------------- signatures
+
+/// After a command: `(` and `,` (whatever the server says opens it) ask
+/// for the signature of the call; while it shows, edits and moves ask
+/// again (the parameter changes, or the call ends); Esc and Enter put it
+/// away.
+pub fn signatureAfter(self: *App, cmd: core.Command) !void {
+    const s = &self.lsp.signature;
+    switch (cmd) {
+        .clear_selection, .newline, .undo, .redo => return closeSignature(self),
+        .type_char => |cp| {
+            const t = self.tab();
+            const client = clientFor(self, t) orelse return;
+            const opens = cp < 0x80 and for (client.caps.signature_chars) |c| {
+                if (c.len == 1 and c[0] == cp) break true;
+            } else false;
+            if (opens or s.open) try requestSignature(self, client, if (opens) @intCast(cp) else null);
+        },
+        .backspace, .delete, .delete_forward, .move, .paste => if (s.open) {
+            const client = clientFor(self, self.tab()) orelse return closeSignature(self);
+            try requestSignature(self, client, null);
+        },
+        else => {},
+    }
+}
+
+fn requestSignature(self: *App, client: *Client, trigger: ?u8) !void {
+    if (client.state != .ready or !client.caps.signature_help) return;
+    const t = self.tab();
+    const b = &t.buffer;
+    if (b.hasExtraCursors()) return closeSignature(self);
+    sync(self, t, client);
+    const Context = struct { triggerKind: u8, triggerCharacter: ?[]const u8 = null, isRetrigger: bool };
+    const ch: [1]u8 = .{trigger orelse 0};
+    const id = try client.request("textDocument/signatureHelp", .{
+        .textDocument = .{ .uri = try uriOf(self, t) },
+        .position = lsp.protocol.toPosition(b.items(), b.cursor),
+        .context = if (trigger != null)
+            Context{ .triggerKind = 2, .triggerCharacter = &ch, .isRetrigger = self.lsp.signature.open }
+        else
+            Context{ .triggerKind = 3, .isRetrigger = self.lsp.signature.open },
+    });
+    try self.lsp.pending.append(self.gpa, .{ .client = client, .id = id, .what = .{ .signature = .{ .cursor = b.cursor, .version = b.version } } });
+}
+
+fn signatureAnswer(self: *App, cursor: usize, version: u64, result: Value) !void {
+    const b = self.buf();
+    // Moved on since: the next answer is the one that counts.
+    if (b.cursor != cursor or b.version != version) return;
+    const sig = lsp.results.signature(result) orelse return closeSignature(self);
+    const s = &self.lsp.signature;
+    s.label.clearRetainingCapacity();
+    try s.label.appendSlice(self.gpa, sig.label);
+    s.doc.clearRetainingCapacity();
+    try s.doc.appendSlice(self.gpa, std.mem.trim(u8, sig.doc, " \t\r\n"));
+    s.param_start = sig.param_start;
+    s.param_end = sig.param_end;
+    s.index = sig.index;
+    s.count = sig.count;
+    s.line_start = b.lineStart(b.cursor);
+    s.open = true;
+}
+
+fn closeSignature(self: *App) void {
+    self.lsp.signature.open = false;
+}
+
+/// Puts the signature away when the cursor left its line (a click
+/// elsewhere, another tab).
+fn checkSignature(self: *App) void {
+    const s = &self.lsp.signature;
+    if (!s.open) return;
+    if (!self.isEditing() or self.activeTab().kind != .file) return closeSignature(self);
+    const b = self.buf();
+    if (b.lineStart(b.cursor) != s.line_start) closeSignature(self);
+}
+
+/// The signature over the cursor's line: the parameter being typed in
+/// the accent color, its documentation dimmed under it.
+pub fn drawSignature(self: *const App) void {
+    const s = &self.lsp.signature;
+    if (!s.open or s.label.items.len == 0 or !self.isEditing()) return;
+    const font = self.view.font;
+    const cw = font.cell_width;
+    const b = &self.activeTab().buffer;
+    const at = self.view.screenPos(b, b.cursor);
+    const max_cols = 90;
+    var counter: [16]u8 = undefined;
+    const prefix = if (s.count > 1) std.fmt.bufPrint(&counter, "{d}/{d}  ", .{ s.index + 1, s.count }) catch "" else "";
+    const label_cols = core.text.codepointCount(prefix) + core.text.codepointCount(s.label.items);
+    const doc = s.doc.items[0..cutAt(s.doc.items, max_cols)];
+    const cols = @min(max_cols, @max(label_cols, core.text.codepointCount(doc)));
+    const pad: f32 = 8;
+    const rows: f32 = if (doc.len > 0) 2 else 1;
+    const w = @as(f32, @floatFromInt(cols)) * cw + 2 * pad;
+    const h = rows * theme.line_height + 2 * pad;
+    const window = App.windowSize();
+    var y = at.y - h - 2;
+    if (y < self.view.area.y) y = at.y + theme.line_height + 2;
+    const x = std.math.clamp(at.x - pad, 4, @max(4, window.x - w - 4));
+    const r: rl.Rectangle = .{ .x = x, .y = y, .width = w, .height = h };
+    rl.drawRectangleRec(.{ .x = r.x + 3, .y = r.y + 4, .width = r.width, .height = r.height }, theme.popup_shadow);
+    rl.drawRectangleRec(r, theme.popup_background);
+    rl.drawRectangleLinesEx(r, 1, theme.popup_border);
+    const ty = r.y + pad + (theme.line_height - theme.font_size) / 2;
+    const right = r.x + r.width;
+    var tx = font.drawFit(prefix, r.x + pad, ty, right, theme.popup_detail);
+    const l = s.label.items;
+    const a = @min(s.param_start, l.len);
+    const z = @min(@max(s.param_end, a), l.len);
+    tx = font.drawFit(l[0..a], tx, ty, right, theme.foreground);
+    const param_x = tx;
+    tx = font.drawFit(l[a..z], tx, ty, right, theme.accent);
+    if (z > a) rl.drawRectangleRec(.{ .x = param_x, .y = ty + theme.font_size + 1, .width = tx - param_x, .height = 1 }, theme.accent);
+    _ = font.drawFit(l[z..], tx, ty, right, theme.foreground);
+    if (doc.len > 0) _ = font.drawFit(doc, r.x + pad, ty + theme.line_height, right, theme.popup_detail);
 }
 
 // ------------------------------------------------------------ completion
@@ -692,8 +1061,8 @@ pub fn quickFix(self: *App) !void {
     const arena = self.lsp.frame.allocator();
     // The problems the server reported there.
     var here: std.ArrayList(Value) = .empty;
-    if (self.lsp.diagnostics.get(t.document.path.?)) |json| {
-        const all = std.json.parseFromSliceLeaky(Value, arena, json, .{}) catch Value.null;
+    if (self.lsp.diagnostics.get(t.document.path.?)) |reported| {
+        const all = std.json.parseFromSliceLeaky(Value, arena, reported.json, .{}) catch Value.null;
         if (all == .array) for (all.array.items) |d| {
             const r = lsp.edits.parseRange(Client.field(d, "range") orelse continue) orelse continue;
             if (r[1].line < from.line or r[0].line > to.line) continue;

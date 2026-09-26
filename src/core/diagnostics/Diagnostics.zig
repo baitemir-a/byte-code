@@ -45,6 +45,8 @@ pub const Item = struct {
     path: []const u8 = "",
     /// For `syntax`, in the parser's words.
     message: []const u8 = "",
+    /// Only a warning (from a language server): drawn in its own color.
+    warning: bool = false,
 };
 
 pub const Files = Completion.Files;
@@ -196,7 +198,7 @@ pub fn setSyntax(self: *Diagnostics, buf: *const Buffer, version: u64, found: []
 }
 
 /// A problem a language server found, as a byte range of the text.
-pub const Range = struct { start: usize, end: usize, message: []const u8 };
+pub const Range = struct { start: usize, end: usize, message: []const u8, warning: bool = false };
 
 /// Takes a language server's findings for version `version` of the
 /// buffer, in place of the parser's.
@@ -218,6 +220,7 @@ pub fn setRanges(self: *Diagnostics, buf: *const Buffer, version: u64, found: []
             .end = @max(@min(f.end, len), start + 1),
             .kind = .syntax,
             .message = try alloc.dupe(u8, f.message),
+            .warning = f.warning,
         });
     }
 }

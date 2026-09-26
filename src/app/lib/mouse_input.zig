@@ -4,6 +4,7 @@ const Sidebar = @import("../../ui/sidebar/Sidebar.zig");
 const Keymap = @import("../../input/Keymap.zig");
 const App = @import("../App.zig");
 const i18n = @import("../../i18n/i18n.zig");
+const palette = @import("palette.zig");
 
 /// Clicks go to whatever is on top: the suggestion popup, the find bar, the
 /// tab bar, the sidebar, then the welcome page or the text (which also takes
@@ -92,6 +93,7 @@ pub fn handleMouse(self: *App) !bool {
                 .branch => try self.openBranchPicker(.checkout),
                 .sync => if (!self.gitBusy()) self.startGitJob(.sync),
                 .indent => self.openIndentMenu(),
+                .problems => try palette.openProblems(self),
             };
         };
         return pressed;

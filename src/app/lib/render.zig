@@ -73,6 +73,7 @@ fn drawFrame(self: *const App) void {
         }
         self.sidebar.drawGitBadgeTooltip(self.view.font, &self.git);
     }
+    lsp.drawSignature(self);
     lsp.drawHover(self);
     self.quick_open.draw(&self.file_search, self.view.font, caret, self.project != null);
     var empty_buf: [256]u8 = undefined;

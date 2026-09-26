@@ -75,6 +75,30 @@ test "the TypeScript server answers" {
     try testing.expectEqualStrings(path, places[0].path);
     try testing.expectEqual(protocol.Position{ .line = 0, .character = 16 }, places[0].start);
 
+    // Where `add` is used, and declared.
+    const refs_id = try client.request("textDocument/references", .{ .textDocument = .{ .uri = uri }, .position = on_add, .context = .{ .includeDeclaration = true } });
+    const refs = try waitFor(client, arena, io, refs_id, isResponse);
+    try testing.expectEqual(@as(usize, 2), (try results.locations(arena, refs.response.result)).len);
+
+    // In `add(1, 2)` after the comma: the second parameter.
+    const in_call = protocol.toPosition(text, std.mem.indexOf(u8, text, "2);").?);
+    const sig_id = try client.request("textDocument/signatureHelp", .{ .textDocument = .{ .uri = uri }, .position = in_call });
+    const sig = try waitFor(client, arena, io, sig_id, isResponse);
+    const help = results.signature(sig.response.result).?;
+    try testing.expectEqualStrings("b: number", help.label[help.param_start..help.param_end]);
+
+    const doc_id = try client.request("textDocument/documentSymbol", .{ .textDocument = .{ .uri = uri } });
+    const doc = try waitFor(client, arena, io, doc_id, isResponse);
+    const outline = try results.documentSymbols(arena, doc.response.result);
+    try testing.expectEqualStrings("add", outline[0].name);
+    try testing.expectEqualStrings("fn", outline[0].kind);
+
+    const ws_id = try client.request("workspace/symbol", .{ .query = "add" });
+    const ws = try waitFor(client, arena, io, ws_id, isResponse);
+    const found_ws = try results.workspaceSymbols(arena, ws.response.result);
+    try testing.expect(found_ws.len >= 1);
+    try testing.expectEqualStrings(path, found_ws[0].path.?);
+
     const at_end = protocol.toPosition(text, std.mem.indexOf(u8, text, "add(1").? + 1);
     const completion_id = try client.request("textDocument/completion", .{ .textDocument = .{ .uri = uri }, .position = at_end });
     const completion = try waitFor(client, arena, io, completion_id, isResponse);

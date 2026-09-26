@@ -163,10 +163,11 @@ function publish(file) {
   const sf = sourceOf(p, file);
   const diagnostics = [];
   if (sf) for (const x of [...p.ls.getSyntacticDiagnostics(file), ...p.ls.getSemanticDiagnostics(file)]) {
-    if (x.start === undefined || skip.has(x.code) || x.category !== ts.DiagnosticCategory.Error) continue;
+    const warning = x.category === ts.DiagnosticCategory.Warning;
+    if (x.start === undefined || skip.has(x.code) || (x.category !== ts.DiagnosticCategory.Error && !warning)) continue;
     diagnostics.push({
       range: rangeOf(sf, x.start, x.length || 0),
-      severity: 1,
+      severity: warning ? 2 : 1,
       code: x.code,
       source: 'ts',
       message: ts.flattenDiagnosticMessageText(x.messageText, ' ').replace(/\s+/g, ' '),
@@ -199,6 +200,25 @@ function moduleOf(file, e) {
   if (!spec || !path.isAbsolute(spec)) return spec;
   let rel = norm(path.relative(path.dirname(file), spec)).replace(/(\.d)?\.[cm]?[jt]sx?$/, '').replace(/\/index$/, '');
   return rel.startsWith('.') ? rel : './' + rel;
+}
+
+// SymbolKind for TypeScript's ScriptElementKind.
+function symbolKindOf(k) {
+  const K = ts.ScriptElementKind;
+  switch (k) {
+    case K.moduleElement: return 2;
+    case K.classElement: case K.localClassElement: return 5;
+    case K.memberFunctionElement: return 6;
+    case K.memberVariableElement: case K.memberGetAccessorElement: case K.memberSetAccessorElement: return 7;
+    case K.constructorImplementationElement: return 9;
+    case K.enumElement: return 10;
+    case K.interfaceElement: return 11;
+    case K.functionElement: case K.localFunctionElement: return 12;
+    case K.constElement: return 14;
+    case K.enumMemberElement: return 22;
+    case K.typeElement: return 26;
+    default: return 13;
+  }
 }
 
 // CompletionItemKind for TypeScript's ScriptElementKind.
@@ -241,6 +261,10 @@ function handle(msg) {
           textDocumentSync: 1,
           hoverProvider: true,
           definitionProvider: true,
+          referencesProvider: true,
+          signatureHelpProvider: { triggerCharacters: ['(', ','], retriggerCharacters: [')'] },
+          documentSymbolProvider: true,
+          workspaceSymbolProvider: true,
           completionProvider: { triggerCharacters: ['.', '"', "'", '/', '@', '<'], resolveProvider: true },
           renameProvider: true,
           codeActionProvider: true,
@@ -287,6 +311,80 @@ function handle(msg) {
         if (sf) out.push({ uri: uriOf(f), range: rangeOf(sf, d.textSpan.start, d.textSpan.length) });
       }
       return out;
+    }
+    case 'textDocument/references': {
+      const file = fileOf(q.textDocument.uri);
+      const p = projectFor(file);
+      const refs = p.ls.getReferencesAtPosition(file, offsetAt(file, q.position)) || [];
+      const withDecl = !q.context || q.context.includeDeclaration !== false;
+      const out = [];
+      for (const r of refs) {
+        if (!withDecl && r.isDefinition) continue;
+        const f = norm(r.fileName);
+        const sf = sourceOf(p, f);
+        if (sf) out.push({ uri: uriOf(f), range: rangeOf(sf, r.textSpan.start, r.textSpan.length) });
+      }
+      return out;
+    }
+    case 'textDocument/signatureHelp': {
+      const file = fileOf(q.textDocument.uri);
+      const p = projectFor(file);
+      const help = p.ls.getSignatureHelpItems(file, offsetAt(file, q.position), {});
+      if (!help) return null;
+      const text = parts => ts.displayPartsToString(parts || []);
+      return {
+        activeSignature: help.selectedItemIndex,
+        activeParameter: help.argumentIndex,
+        signatures: help.items.map(item => {
+          const sep = text(item.separatorDisplayParts);
+          const params = [];
+          let label = text(item.prefixDisplayParts);
+          item.parameters.forEach((param, i) => {
+            if (i > 0) label += sep;
+            const start = label.length;
+            label += text(param.displayParts);
+            params.push({ label: [start, label.length], documentation: text(param.documentation) || undefined });
+          });
+          label += text(item.suffixDisplayParts);
+          return { label, documentation: text(item.documentation) || undefined, parameters: params };
+        }),
+      };
+    }
+    case 'textDocument/documentSymbol': {
+      const file = fileOf(q.textDocument.uri);
+      const p = projectFor(file);
+      const sf = sourceOf(p, file);
+      if (!sf) return [];
+      const tree = p.ls.getNavigationTree(file);
+      const convert = node => {
+        const span = node.nameSpan || node.spans[0];
+        return {
+          name: node.text,
+          kind: symbolKindOf(node.kind),
+          range: rangeOf(sf, node.spans[0].start, node.spans[0].length),
+          selectionRange: rangeOf(sf, span.start, span.length),
+          children: (node.childItems || []).filter(c => c.kind !== 'alias').map(convert),
+        };
+      };
+      return (tree.childItems || []).filter(c => c.kind !== 'alias').map(convert);
+    }
+    case 'workspace/symbol': {
+      // The open files' projects, or one for the folder when none is open.
+      const seen = new Set(), out = [];
+      const all = projects.size ? [...projects.values()] : [projectFor(norm(path.join(process.cwd(), 'x.ts')))];
+      for (const p of all) {
+        for (const item of p.ls.getNavigateToItems(q.query || '', 200, undefined, true)) {
+          const f = norm(item.fileName);
+          if (f.includes('/node_modules/')) continue;
+          const key = f + ':' + item.textSpan.start;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          const sf = sourceOf(p, f);
+          if (!sf) continue;
+          out.push({ name: item.name, kind: symbolKindOf(item.kind), containerName: item.containerName || undefined, location: { uri: uriOf(f), range: rangeOf(sf, item.textSpan.start, item.textSpan.length) } });
+        }
+      }
+      return out.slice(0, 200);
     }
     case 'textDocument/completion': {
       const file = fileOf(q.textDocument.uri);

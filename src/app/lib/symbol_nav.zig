@@ -80,6 +80,17 @@ pub fn lookUp(self: *App, word: core.Buffer.Range, point: rl.Vector2) !void {
 
 /// Opens the file a use is in (if it isn't the current one) and selects it.
 pub fn openRef(self: *App, ref: App.Ref) !void {
+    if (ref.at) |at| {
+        const here = self.tab().document.path;
+        if (here == null or !std.mem.eql(u8, here.?, at.path)) {
+            self.openFile(at.path) catch |err| return self.reportError(i18n.tr().errors.open_file, at.path, err);
+        }
+        const buf = self.buf();
+        buf.moveTo(core.lsp.protocol.toOffset(buf.items(), at.start), false);
+        buf.moveTo(core.lsp.protocol.toOffset(buf.items(), at.end), true);
+        self.reveal_cursor = true;
+        return;
+    }
     if (ref.file) |f| {
         const project = if (self.project) |*p| p else return;
         const files = self.search_panel.results.files.items;
@@ -95,10 +106,57 @@ pub fn openRef(self: *App, ref: App.Ref) !void {
     self.reveal_cursor = true;
 }
 
-/// The menu's last row: every use, in the sidebar's Search view.
-pub fn showRefsInSearch(self: *App) void {
+/// The menu's last row: every use, in the sidebar's Search view. Uses a
+/// language server named aren't in it yet: a search for the name is.
+pub fn showRefsInSearch(self: *App) !void {
+    const from_server = self.refs.items.len > 0 and self.refs.items[0].at != null;
+    if (from_server and self.project != null) {
+        try self.search_panel.query.setText(self.ref_name.items);
+        self.search_panel.options = symbol_options;
+        try self.runSearch(.top);
+    }
     self.showView(.search);
     self.side_focus = .none;
+}
+
+/// Shift+F12: where the name at the cursor is used, from the language
+/// server if there is one, in a menu under it.
+pub fn referencesAtCursor(self: *App) !void {
+    if (!self.isEditing()) return;
+    const buf = self.buf();
+    const word = core.motion.wordRange(buf.items(), buf.cursor);
+    if (!core.symbols.isName(buf.items()[word.start..word.end])) return;
+    buf.moveTo(word.start, false);
+    buf.moveTo(word.end, true);
+    const at = self.view.screenPos(buf, word.start);
+    const point: rl.Vector2 = .{ .x = at.x, .y = at.y + theme.line_height };
+    if (try lsp.requestReferences(self, word, point)) return;
+    try usesMenu(self, word, point);
+}
+
+/// The uses of the name in `word` found by searching for it, in a menu.
+pub fn usesMenu(self: *App, word: core.Buffer.Range, point: rl.Vector2) !void {
+    try findUses(self, self.buf().items()[word.start..word.end]);
+    openRefsMenu(self, point);
+}
+
+/// The uses a language server named, in the menu at `point`.
+pub fn serverUsesMenu(self: *App, name: []const u8, places: []const core.lsp.results.Location, point: rl.Vector2) !void {
+    self.refs.clearRetainingCapacity();
+    self.ref_name.clearRetainingCapacity();
+    try self.ref_name.appendSlice(self.gpa, name);
+    _ = self.ref_arena.reset(.retain_capacity);
+    const a = self.ref_arena.allocator();
+    for (places[0..@min(places.len, max_refs)]) |p| {
+        try self.refs.append(self.gpa, .{
+            .file = null,
+            .line = p.start.line,
+            .start = 0,
+            .end = 0,
+            .at = .{ .path = try a.dupe(u8, p.path), .start = p.start, .end = p.end },
+        });
+    }
+    openRefsMenu(self, point);
 }
 
 /// Searches the project for the name as a whole word and keeps the
@@ -194,6 +252,17 @@ fn openRefsMenu(self: *App, at: rl.Vector2) void {
 
 /// "src/app/App.zig:214", or "line 214" for a place in the current file.
 fn refLabel(self: *App, ref: App.Ref, out: []u8) []const u8 {
+    if (ref.at) |at| {
+        const here = self.tab().document.path;
+        if (here != null and std.mem.eql(u8, here.?, at.path)) return i18n.fill(out, i18n.tr().refs.line, .{ref.line + 1});
+        // Relative to the project, when it's in it.
+        var shown = at.path;
+        if (self.project) |*p| {
+            const root = p.root().path;
+            if (std.mem.startsWith(u8, shown, root) and shown.len > root.len + 1) shown = shown[root.len + 1 ..];
+        }
+        return std.fmt.bufPrint(out, "{s}:{d}", .{ shown, ref.line + 1 }) catch shown;
+    }
     const file = ref.file orelse return i18n.fill(out, i18n.tr().refs.line, .{ref.line + 1});
     const files = self.search_panel.results.files.items;
     if (file >= files.len) return "?";

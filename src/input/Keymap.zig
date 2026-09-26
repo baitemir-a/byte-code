@@ -149,6 +149,9 @@ pub const Action = enum {
     go_to_line,
     go_to_symbol,
     go_to_definition,
+    find_references,
+    go_to_workspace_symbol,
+    show_problems,
     // Tabs and views
     close_tab,
     next_tab,
@@ -310,6 +313,9 @@ pub const entries = [_]Entry{
     .{ .action = .go_to_line, .group = .files, .default = if (is_mac) with(.g, .{ .ctrl = true }) else with(.l, .{ .ctrl = true }) },
     .{ .action = .go_to_symbol, .group = .files, .default = primary(.r, .{}) },
     .{ .action = .go_to_definition, .group = .files, .default = plain(.f12) },
+    .{ .action = .find_references, .group = .files, .default = with(.f12, shift) },
+    .{ .action = .go_to_workspace_symbol, .group = .files, .default = primary(.r, shift) },
+    .{ .action = .show_problems, .group = .files, .default = primary(.m, shift) },
     // ----------------------------------------------------- tabs and views
     .{ .action = .close_tab, .group = .views, .default = primary(.w, .{}) },
     .{
@@ -516,6 +522,9 @@ pub fn command(action: Action) core.Command {
         .go_to_line => .go_to_line,
         .go_to_symbol => .go_to_symbol,
         .go_to_definition => .go_to_definition,
+        .find_references => .find_references,
+        .go_to_workspace_symbol => .go_to_workspace_symbol,
+        .show_problems => .show_problems,
         .nav_back => .nav_back,
         .nav_forward => .nav_forward,
         .select_next_occurrence => .select_next_occurrence,

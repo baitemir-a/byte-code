@@ -5,6 +5,7 @@ const QuickOpen = @import("../../ui/QuickOpen.zig");
 const App = @import("../App.zig");
 const clipboard = @import("clipboard.zig");
 const i18n = @import("../../i18n/i18n.zig");
+const palette = @import("palette.zig");
 
 /// Cmd+P: lists the project's files (read fresh each time) to pick from.
 pub fn openQuickOpen(self: *App) !void {
@@ -43,8 +44,9 @@ pub fn quickOpenKey(self: *App, cmd: core.Command) !void {
     try handOver(self);
 }
 
-/// A query starting with `>`, `:` or `@` is for another list: the
-/// commands, a line, a name in the file (the rest of it goes along).
+/// A query starting with `>`, `:`, `@` or `#` is for another list: the
+/// commands, a line, a name in the file, a name in the project (the rest
+/// of it goes along).
 fn handOver(self: *App) !void {
     const q = &self.quick_open;
     if (!q.is_open) return;
@@ -56,6 +58,7 @@ fn handOver(self: *App) !void {
         '>' => try self.openCommandPalette(rest),
         ':' => try self.openGoToLine(rest),
         '@' => try self.openSymbols(rest),
+        '#' => try palette.openWorkspaceSymbols(self, rest),
         else => {},
     }
 }

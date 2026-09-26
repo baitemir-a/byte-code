@@ -99,6 +99,16 @@ pub fn close(self: *Picker) void {
     self.is_open = false;
 }
 
+/// Drops the rows, keeping what's typed: for lists filled in again as
+/// the query changes (a language server's search).
+pub fn clearItems(self: *Picker) void {
+    self.items.clearRetainingCapacity();
+    self.shown.clearRetainingCapacity();
+    _ = self.arena.reset(.retain_capacity);
+    self.selected = 0;
+    self.first = 0;
+}
+
 /// Adds a row; its text is copied.
 pub fn add(self: *Picker, item: Item) !void {
     var copy = item;

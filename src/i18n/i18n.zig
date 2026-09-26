@@ -349,6 +349,14 @@ pub const Strings = struct {
     /// The lists at the top of the editor besides Go to File: the
     /// commands, a line to go to, the names the file declares.
     palette: struct {
+        /// Go to Symbol in Project, and the problems list, whose rows
+        /// say `error` or `warning`.
+        workspace_symbols: []const u8,
+        no_workspace_symbols: []const u8,
+        problems: []const u8,
+        no_problems: []const u8,
+        @"error": []const u8,
+        warning: []const u8,
         commands: []const u8,
         no_commands: []const u8,
         line: []const u8,

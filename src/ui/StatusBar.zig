@@ -48,8 +48,9 @@ pub const Branch = struct {
     busy: bool,
 };
 
-/// What the branch, its counters and the indentation answer to.
-pub const Hit = enum { branch, sync, indent };
+/// What the branch, its counters, the problem counters and the
+/// indentation answer to.
+pub const Hit = enum { branch, sync, problems, indent };
 
 rect: rl.Rectangle = std.mem.zeroes(rl.Rectangle),
 /// The branch's name and its counters ("2↓ 1↑"), made by `layout` and
@@ -65,11 +66,15 @@ sync_busy: bool = false,
 indent_buf: [32]u8 = undefined,
 indent_len: usize = 0,
 indent_rect: rl.Rectangle = std.mem.zeroes(rl.Rectangle),
+/// Errors and warnings known, after the branch; null hides them.
+problems: ?[2]u32 = null,
+problems_rect: rl.Rectangle = std.mem.zeroes(rl.Rectangle),
 
 /// The bar sits across the bottom; everything else is laid out above it.
 /// The branch takes the left end, so the blame starts after it; the
 /// indentation (`indent`, null outside a file) the right end.
-pub fn layout(self: *StatusBar, window: rl.Vector2, font: Font, git: ?Branch, indent: ?[]const u8) void {
+pub fn layout(self: *StatusBar, window: rl.Vector2, font: Font, git: ?Branch, indent: ?[]const u8, problems: ?[2]u32) void {
+    defer self.layoutProblems(font, problems);
     self.rect = .{ .x = 0, .y = window.y - height, .width = window.x, .height = height };
     const label = indent orelse "";
     self.indent_len = @min(label.len, self.indent_buf.len);
@@ -117,6 +122,24 @@ pub fn layout(self: *StatusBar, window: rl.Vector2, font: Font, git: ?Branch, in
     };
 }
 
+/// The problem counters go right after the branch (or at the left end).
+fn layoutProblems(self: *StatusBar, font: Font, problems: ?[2]u32) void {
+    self.problems = problems;
+    const known = problems orelse {
+        self.problems_rect = std.mem.zeroes(rl.Rectangle);
+        return;
+    };
+    const x = if (self.name_len > 0) self.sync_rect.x + self.sync_rect.width + 2 * gap else self.rect.x + pad;
+    var digits: [2][12]u8 = undefined;
+    var w: f32 = 0;
+    for (known, 0..) |n, i| {
+        const text = std.fmt.bufPrint(&digits[i], "{d}", .{n}) catch "";
+        w += Icons.Size.small.px() + icon_gap + font.textWidth(text);
+    }
+    w += 2 * gap;
+    self.problems_rect = .{ .x = x, .y = self.rect.y, .width = w, .height = height };
+}
+
 pub fn branch(self: *const StatusBar) []const u8 {
     return self.name_buf[0..self.name_len];
 }
@@ -136,6 +159,7 @@ pub fn contains(self: *const StatusBar, p: rl.Vector2) bool {
 /// The branch or its counters under a point, for the cursor and clicks.
 pub fn hit(self: *const StatusBar, p: rl.Vector2) ?Hit {
     if (self.indent_len > 0 and rl.checkCollisionPointRec(p, self.indent_rect)) return .indent;
+    if (self.problems != null and rl.checkCollisionPointRec(p, self.problems_rect)) return .problems;
     if (self.name_len == 0) return null;
     if (rl.checkCollisionPointRec(p, self.branch_rect)) return .branch;
     if (rl.checkCollisionPointRec(p, self.sync_rect)) return .sync;
@@ -159,7 +183,8 @@ pub fn draw(self: *const StatusBar, font: Font, blame: ?Blame, position: []const
     const right = if (self.indent_len > 0) self.indent_rect.x else r.x + r.width - pad;
     _ = font.drawFit(position, right - position_w, y, right, theme.popup_detail);
 
-    const text_left = drawBranch(self, font, y);
+    var text_left = drawBranch(self, font, y);
+    if (self.problems != null) text_left = drawProblems(self, font, y);
     const b = blame orelse return;
     const end = right - position_w - 2 * gap;
     var x = text_left;
@@ -212,6 +237,31 @@ fn drawBranch(self: *const StatusBar, font: Font, y: f32) f32 {
         _ = font.drawFit(self.counts(), self.sync_rect.x + 2 * half + icon_gap, y, self.sync_rect.x + self.sync_rect.width, sync_color);
     }
     return self.sync_rect.x + self.sync_rect.width + 2 * gap;
+}
+
+/// "⊗ 2  △ 5": errors and warnings, each in its color when there are
+/// any. Returns where the rest of the bar can start.
+fn drawProblems(self: *const StatusBar, font: Font, y: f32) f32 {
+    const known = self.problems.?;
+    const r = self.problems_rect;
+    const on = rl.checkCollisionPointRec(rl.getMousePosition(), r);
+    const t = anim.fade(anim.hash("status_problems", 0), on, anim.hover_speed);
+    const idle = theme.copy(anim.mix(theme.popup_detail, theme.foreground, t));
+    const half = Icons.Size.small.px() / 2;
+    const mid = self.rect.y + height / 2;
+    var x = r.x;
+    const icons = [2]Icons.Icon{ .circle_x, .triangle_alert };
+    const colors = [2]rl.Color{ theme.problem, theme.warning };
+    for (known, 0..) |n, i| {
+        if (i > 0) x += gap;
+        const color = if (n > 0) theme.copy(colors[i]) else idle;
+        font.drawIcon(icons[i], .{ .x = x + half, .y = mid }, .small, color);
+        x += 2 * half + icon_gap;
+        var digits: [12]u8 = undefined;
+        const text = std.fmt.bufPrint(&digits, "{d}", .{n}) catch "";
+        x = font.drawFit(text, x, y, r.x + r.width + 50, if (n > 0) theme.foreground else idle);
+    }
+    return r.x + r.width + 2 * gap;
 }
 
 fn separator(font: Font, x: f32, y: f32, end: f32) f32 {

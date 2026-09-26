@@ -133,6 +133,9 @@ pub const Ref = struct {
     line: u32,
     start: usize,
     end: usize,
+    /// A place a language server named instead: any file (path in
+    /// `ref_arena`), where on its line.
+    at: ?struct { path: []const u8, start: core.lsp.protocol.Position, end: core.lsp.protocol.Position } = null,
 };
 
 const App = @This();
@@ -157,6 +160,8 @@ menu_tab: ?usize = null,
 /// menu and left alone until the next lookup.
 refs: std.ArrayList(Ref) = .empty,
 ref_name: std.ArrayList(u8) = .empty,
+/// The paths of the places a language server named.
+ref_arena: std.heap.ArenaAllocator,
 /// A mouse press on a sidebar row. It becomes a drag (to move the entry)
 /// once the mouse moves a few pixels; otherwise it's a click on release.
 /// Holds the entry's path, not its index, so a tree refresh can't make it
@@ -537,6 +542,7 @@ pub fn init(gpa: std.mem.Allocator, io: std.Io) !App {
         .picker = .init(gpa),
         .git_refs = .init(gpa),
         .lsp = .init(gpa),
+        .ref_arena = .init(gpa),
     };
     // The second pane's view shares the font that was just loaded.
     app.other_view = View.init(gpa, app.view.font);
@@ -563,6 +569,7 @@ pub fn deinit(self: *App) void {
     self.git_refs.deinit();
     self.refs.deinit(self.gpa);
     self.ref_name.deinit(self.gpa);
+    self.ref_arena.deinit();
     self.view.deinit();
     self.other_view.deinit();
     self.quick_open.deinit();
@@ -760,7 +767,12 @@ pub fn windowSize() rl.Vector2 {
 pub fn layout(self: *App, full_window: rl.Vector2) !void {
     // The bar at the bottom takes its height off everything else.
     var indent_buf: [32]u8 = undefined;
-    self.status.layout(full_window, self.view.font, self.branchStatus(), editing.indentLabel(self, &indent_buf));
+    // The problem counters, whenever there are files to have problems.
+    const any_file = for (self.tabs.items) |t| {
+        if (t.kind == .file) break true;
+    } else false;
+    const problem_counts: ?[2]u32 = if (any_file or self.lsp.diagnostics.count() > 0) lsp_client.problemCounts(self) else null;
+    self.status.layout(full_window, self.view.font, self.branchStatus(), editing.indentLabel(self, &indent_buf), problem_counts);
     const window: rl.Vector2 = .{ .x = full_window.x, .y = @max(0, full_window.y - StatusBar.height) };
     self.sidebar.layout(if (self.project) |*p| p else null, window, self.view.font);
     self.sidebar.updateGitBadgeTooltip(self.view.font, &self.git);

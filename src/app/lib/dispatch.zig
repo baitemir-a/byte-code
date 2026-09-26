@@ -6,6 +6,7 @@ const clipboard = @import("clipboard.zig");
 const formatting = @import("formatting.zig");
 const lsp = @import("lsp.zig");
 const symbol_nav = @import("symbol_nav.zig");
+const palette = @import("palette.zig");
 const App = @import("../App.zig");
 const i18n = @import("../../i18n/i18n.zig");
 
@@ -37,6 +38,8 @@ pub fn execute(self: *App, cmd: core.Command) !void {
         .command_palette => return self.openCommandPalette(""),
         .go_to_line => return self.openGoToLine(""),
         .go_to_symbol => return self.openSymbols(""),
+        .go_to_workspace_symbol => return palette.openWorkspaceSymbols(self, ""),
+        .show_problems => return palette.openProblems(self),
         .nav_back => return self.nav.goBack(self),
         .nav_forward => return self.nav.goForward(self),
         .show_explorer => return self.showView(.explorer),
@@ -109,6 +112,7 @@ pub fn execute(self: *App, cmd: core.Command) !void {
         .rename_symbol => try lsp.rename(self),
         .quick_fix => try lsp.quickFix(self),
         .go_to_definition => try symbol_nav.definitionAtCursor(self),
+        .find_references => try symbol_nav.referencesAtCursor(self),
         .complete => {},
         .expand_selection => try self.expandSelection(b),
         .shrink_selection => self.shrinkSelection(b),

@@ -10,6 +10,7 @@ const core = @import("core");
 const Keymap = @import("../../input/Keymap.zig");
 const App = @import("../App.zig");
 const i18n = @import("../../i18n/i18n.zig");
+const lsp = @import("lsp.zig");
 
 /// Where the cursor was when a list that moves it opened.
 pub const Origin = struct {
@@ -50,20 +51,76 @@ pub fn openGoToLine(self: *App, query: []const u8) !void {
     try finishOpening(self, .go_to_line, query);
 }
 
+/// Cmd+R: the language server's list of what the file declares when
+/// there is one (it opens when the answer comes), else the editor's own
+/// guess from the shape of the lines.
 pub fn openSymbols(self: *App, query: []const u8) !void {
     if (!self.isEditing()) return;
+    if (try lsp.requestSymbols(self, query)) return;
+    try ownOutline(self);
+    try showSymbols(self, query);
+}
+
+/// The declarations found by the shape of their lines, into `symbols`.
+pub fn ownOutline(self: *App) !void {
     const t = self.tab();
     try t.highlighter.update(self.gpa, &t.buffer);
     try core.symbols.outline(self.gpa, t.buffer.items(), &t.highlighter, &self.symbols);
+}
+
+/// Opens the list of `symbols`; nested ones are indented under theirs.
+pub fn showSymbols(self: *App, query: []const u8) !void {
+    const t = self.tab();
     try self.picker.open(i18n.tr().palette.symbols, &.{}, &.{});
     self.picker.fuzzy = true;
     for (self.symbols.items) |s| {
         var buf: [32]u8 = undefined;
         const detail = std.fmt.bufPrint(&buf, "{s}  :{d}", .{ s.kind, s.line + 1 }) catch "";
-        try self.picker.add(.{ .label = t.buffer.items()[s.start..s.end], .detail = detail });
+        var label_buf: [160]u8 = undefined;
+        const name = t.buffer.items()[s.start..s.end];
+        const indent = @min(@as(usize, s.depth) * 2, 16);
+        @memset(label_buf[0..indent], ' ');
+        const n = @min(name.len, label_buf.len - indent);
+        @memcpy(label_buf[indent..][0..n], name[0..n]);
+        try self.picker.add(.{ .label = label_buf[0 .. indent + n], .detail = detail });
     }
     rememberOrigin(self);
     try finishOpening(self, .symbol, query);
+}
+
+/// Every declaration in the project the language server knows, searched
+/// as the query is typed (Cmd+Shift+R, or `#` in Go to File).
+pub fn openWorkspaceSymbols(self: *App, query: []const u8) !void {
+    try self.picker.open(i18n.tr().palette.workspace_symbols, &.{}, &.{});
+    self.picker.fuzzy = true;
+    self.lsp.workspace_query.clearRetainingCapacity();
+    try finishOpening(self, .workspace_symbol, query);
+}
+
+/// Every problem known: in the open files, and what language servers
+/// reported for the others (Cmd+Shift+M).
+pub fn openProblems(self: *App) !void {
+    try lsp.collectProblems(self);
+    try self.picker.open(i18n.tr().palette.problems, &.{}, &.{});
+    self.picker.fuzzy = true;
+    for (self.lsp.problem_list.items) |p| {
+        var buf: [300]u8 = undefined;
+        const t = i18n.tr().palette;
+        const detail = std.fmt.bufPrint(&buf, "{s} · {s}:{d}", .{ if (p.warning) t.warning else t.@"error", relative(self, p.path), p.start.line + 1 }) catch "";
+        // The first line of a long message.
+        const first = std.mem.sliceTo(p.message, '\n');
+        try self.picker.add(.{ .label = first, .detail = detail });
+    }
+    try finishOpening(self, .problems, "");
+}
+
+/// `path` inside the project, without the project's folder.
+pub fn relative(self: *const App, path: []const u8) []const u8 {
+    if (self.project) |*p| {
+        const root = p.root().path;
+        if (std.mem.startsWith(u8, path, root) and path.len > root.len + 1) return path[root.len + 1 ..];
+    }
+    return std.fs.path.basename(path);
 }
 
 fn finishOpening(self: *App, mode: @import("git_pickers.zig").Mode, query: []const u8) !void {
@@ -85,7 +142,7 @@ fn rememberOrigin(self: *App) void {
 /// Whether the picker is showing one of these lists.
 pub fn isOwn(self: *const App) bool {
     return switch (self.picker_mode) {
-        .command, .go_to_line, .symbol => true,
+        .command, .go_to_line, .symbol, .workspace_symbol, .problems => true,
         else => false,
     };
 }
@@ -96,6 +153,8 @@ pub fn emptyMessage(self: *const App, out: []u8) []const u8 {
     return switch (self.picker_mode) {
         .command => t.no_commands,
         .symbol => t.no_symbols,
+        .workspace_symbol => t.no_workspace_symbols,
+        .problems => t.no_problems,
         .go_to_line => i18n.fill(out, t.line_hint, .{self.activeTab().buffer.lineCount()}),
         else => i18n.tr().quick_open.no_matches,
     };
@@ -106,6 +165,7 @@ pub fn preview(self: *App) !void {
     switch (self.picker_mode) {
         .go_to_line => if (parseLine(self.picker.query.text())) |at| goToLine(self, at.line, at.col),
         .symbol => if (self.picker.selectedItem()) |i| selectSymbol(self, i),
+        .workspace_symbol => try lsp.requestWorkspaceSymbols(self, self.picker.query.text()),
         else => {},
     }
 }
@@ -128,6 +188,14 @@ pub fn choose(self: *App, item: ?u32) !void {
             if (origin) |o| self.nav.jumped(self, o.cursor);
             selectSymbol(self, i);
         },
+        .workspace_symbol => if (item) |i| if (i < self.lsp.workspace_symbols.len) {
+            const s = self.lsp.workspace_symbols[i];
+            try goTo(self, s.path orelse return, s.start, s.end);
+        },
+        .problems => if (item) |i| if (i < self.lsp.problem_list.items.len) {
+            const p = self.lsp.problem_list.items[i];
+            try goTo(self, p.path, p.start, p.end);
+        },
         else => {},
     }
 }
@@ -146,6 +214,20 @@ pub fn cancel(self: *App) void {
         b.anchor = @min(a, len);
     }
     self.view.scroll_to.y = o.scroll_y;
+}
+
+/// Opens `path` and selects a place in it, as a language server names it.
+fn goTo(self: *App, path: []const u8, start: core.lsp.protocol.Position, end: core.lsp.protocol.Position) !void {
+    const here = self.tab().document.path;
+    if (here == null or !std.mem.eql(u8, here.?, path)) {
+        self.openFile(path) catch |err| return self.reportError(i18n.tr().errors.open_file, path, err);
+    }
+    const b = self.buf();
+    const a = core.lsp.protocol.toOffset(b.items(), start);
+    const z = core.lsp.protocol.toOffset(b.items(), end);
+    b.moveTo(a, false);
+    if (z > a and std.mem.indexOfScalar(u8, b.items()[a..z], '\n') == null) b.moveTo(z, true);
+    center(self, b.lineIndex(a));
 }
 
 const LineCol = struct { line: usize, col: ?usize };

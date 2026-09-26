@@ -101,7 +101,14 @@ the system warns the first time you open them:
   whichever is installed, started the first time a file of the language
   opens. JavaScript and TypeScript need nothing extra: the editor runs its
   own small server on the project's TypeScript (with node). With one:
-  - **Go to declaration** asks it where a name is declared
+  - **Go to declaration** asks it where a name is declared, and the menu
+    of uses (Cmd+click on the declaration, or Shift+F12) is its list of
+    references, across files
+  - **Parameter hints** — typing `(` or `,` shows the function's signature
+    over the cursor, the parameter being typed picked out
+  - **Go to Symbol** (Cmd+R) lists what it says the file declares, nested;
+    **Go to Symbol in Project** (Cmd+Shift+R, or `#` in Go to File)
+    searches every declaration in the project
   - **Hover** a name for its type and documentation, and an underlined
     problem for its message
   - **Suggestions** from the server (members, types, imports) lead the
@@ -115,7 +122,12 @@ the system warns the first time you open them:
     tabs (unsaved, so it can be undone) and in the files on disk
   - **Quick Fix** (Cmd+.) lists what the server can do about the problem
     at the cursor: add a missing import, fix a typo, and the like
-  - The server's errors replace the one-off parser runs
+  - The server's errors replace the one-off parser runs, and its warnings
+    are underlined in yellow
+  - **Problems** (Cmd+Shift+M) lists every error and warning known — in
+    the open files and in the others the server looked at — and opens one. Their
+    counts sit in the bottom bar after the branch; a click there opens the
+    list too
 - **Find and replace** in a file and **across the project** — match case
   and whole word options; replace one match, one file or everything
 - **File and folder icons** in the tree, tabs and lists — folders open and
@@ -206,7 +218,9 @@ On macOS use Cmd; on Windows and Linux use Ctrl.
 | Cmd+Option+[ / ] | Fold / unfold the block (Ctrl+Alt on Windows and Linux) |
 | Cmd+Shift+P (F1) | Command palette |
 | Shift+Option+F | Format the file (Shift+Alt+F on Windows and Linux) |
-| F12 | Go to where the name at the cursor is declared |
+| F12 / Shift+F12 | Go to where the name at the cursor is declared / list where it's used |
+| Cmd+Shift+R | Go to a symbol anywhere in the project |
+| Cmd+Shift+M | All problems in a list |
 | F2 | Rename the name at the cursor everywhere (needs a language server) |
 | Cmd+. | Quick fixes for the problem at the cursor (needs a language server) |
 | Ctrl+G | Go to line (Ctrl+L on Windows and Linux) |

@@ -31,6 +31,8 @@ pub const Mode = enum {
     command,
     go_to_line,
     symbol,
+    workspace_symbol,
+    problems,
 };
 
 /// Lists the branches for `mode` (one of the branch ones). While
@@ -242,7 +244,7 @@ fn choose(self: *App, item: u32, action: ?Picker.Action) !void {
                 try openCommitPicker(self, root, self.picker_rev.items);
             }
         },
-        .stash, .cherry_commit, .compare_file, .delete_tag, .command, .go_to_line, .symbol => unreachable,
+        .stash, .cherry_commit, .compare_file, .delete_tag, .command, .go_to_line, .symbol, .workspace_symbol, .problems => unreachable,
     }
 }
 

@@ -68,6 +68,8 @@ pub const Symbol = struct {
     end: usize,
     line: u32,
     kind: []const u8,
+    /// How deep it's nested (a method in a class is 1), when known.
+    depth: u8 = 0,
 };
 
 /// Declarators whose names count only at the top of the file (not

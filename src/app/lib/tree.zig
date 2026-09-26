@@ -84,7 +84,7 @@ pub fn runMenuAction(self: *App, action: App.MenuAction) !void {
         },
         // Ctrl+click's list of where a name is used.
         .go_to_ref => |i| if (i < self.refs.items.len) try self.openRef(self.refs.items[i]),
-        .all_refs => self.showRefsInSearch(),
+        .all_refs => try self.showRefsInSearch(),
         .set_language => |l| try self.setLanguage(l),
         .set_icons => |i| try self.setIcons(i.of, i.mode),
         .set_indent => |n| self.setIndent(n),

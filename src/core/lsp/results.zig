@@ -128,6 +128,158 @@ fn location(alloc: Allocator, v: Value) !?Location {
     return .{ .path = path, .start = range[0], .end = range[1] };
 }
 
+/// The call the cursor is in, as `textDocument/signatureHelp` answers.
+pub const Signature = struct {
+    label: []const u8,
+    /// The parameter the cursor is at, as bytes of `label` (empty when
+    /// there's none).
+    param_start: usize = 0,
+    param_end: usize = 0,
+    /// Its documentation, the parameter's if it has its own.
+    doc: []const u8 = "",
+    /// "1/3" when the function has several signatures.
+    index: usize = 0,
+    count: usize = 1,
+};
+
+pub fn signature(result: Value) ?Signature {
+    const sigs = get(result, "signatures") orelse return null;
+    if (sigs != .array or sigs.array.items.len == 0) return null;
+    var active: usize = if (get(result, "activeSignature")) |a| (if (a == .integer and a.integer >= 0) @intCast(a.integer) else 0) else 0;
+    if (active >= sigs.array.items.len) active = 0;
+    const sig = sigs.array.items[active];
+    const label = str(get(sig, "label")) orelse return null;
+    var out: Signature = .{ .label = label, .doc = docText(get(sig, "documentation")), .index = active, .count = sigs.array.items.len };
+    const which = get(sig, "activeParameter") orelse get(result, "activeParameter") orelse return out;
+    if (which != .integer or which.integer < 0) return out;
+    const params = get(sig, "parameters") orelse return out;
+    if (params != .array or which.integer >= params.array.items.len) return out;
+    const param = params.array.items[@intCast(which.integer)];
+    const pl = get(param, "label") orelse return out;
+    switch (pl) {
+        // The parameter's own text: found in the signature's.
+        .string => |t| if (std.mem.indexOf(u8, label, t)) |i| {
+            out.param_start = i;
+            out.param_end = i + t.len;
+        },
+        // Where it is in the signature, in UTF-16 units.
+        .array => |a| if (a.items.len == 2 and a.items[0] == .integer and a.items[1] == .integer) {
+            out.param_start = protocol.toOffset(label, .{ .line = 0, .character = @intCast(@max(0, a.items[0].integer)) });
+            out.param_end = protocol.toOffset(label, .{ .line = 0, .character = @intCast(@max(0, a.items[1].integer)) });
+        },
+        else => {},
+    }
+    const pdoc = docText(get(param, "documentation"));
+    if (pdoc.len > 0) out.doc = pdoc;
+    return out;
+}
+
+fn docText(v: ?Value) []const u8 {
+    const d = v orelse return "";
+    return switch (d) {
+        .string => |t| t,
+        .object => str(get(d, "value")) orelse "",
+        else => "",
+    };
+}
+
+/// A name a file (or the project) declares, as the server lists it.
+pub const Symbol = struct {
+    name: []const u8,
+    /// What it is, in a word: "fn", "class"...
+    kind: []const u8,
+    /// Where its name is; `path` for a project-wide search (else null:
+    /// the file asked about).
+    path: ?[]const u8 = null,
+    start: protocol.Position,
+    end: protocol.Position,
+    /// How deep it's nested (a method in a class is 1).
+    depth: u8 = 0,
+    /// What it's in, for a project-wide search: a class, a module.
+    container: []const u8 = "",
+};
+
+/// LSP's SymbolKind, in a word.
+pub fn symbolKind(k: i64) []const u8 {
+    return switch (k) {
+        2 => "module",
+        3 => "namespace",
+        4 => "package",
+        5 => "class",
+        6 => "method",
+        7 => "property",
+        8 => "field",
+        9 => "constructor",
+        10 => "enum",
+        11 => "interface",
+        12 => "fn",
+        13 => "var",
+        14 => "const",
+        22 => "member",
+        23 => "struct",
+        24 => "event",
+        25 => "operator",
+        26 => "type",
+        else => "",
+    };
+}
+
+/// Kinds whose children are locals, left out of a file's outline.
+fn hasLocals(k: i64) bool {
+    return k == 6 or k == 9 or k == 12;
+}
+
+/// A `textDocument/documentSymbol` answer, flattened in document order:
+/// nested DocumentSymbols (with their depth), or SymbolInformation.
+pub fn documentSymbols(alloc: Allocator, result: Value) ![]Symbol {
+    var out: std.ArrayList(Symbol) = .empty;
+    if (result != .array) return out.items;
+    for (result.array.items) |v| try addSymbol(alloc, &out, v, 0);
+    std.mem.sort(Symbol, out.items, {}, struct {
+        fn f(_: void, a: Symbol, b: Symbol) bool {
+            return a.start.line < b.start.line or (a.start.line == b.start.line and a.start.character < b.start.character);
+        }
+    }.f);
+    return out.items;
+}
+
+fn addSymbol(alloc: Allocator, out: *std.ArrayList(Symbol), v: Value, depth: u8) !void {
+    const name = str(get(v, "name")) orelse return;
+    const kind: i64 = if (get(v, "kind")) |k| (if (k == .integer) k.integer else 0) else 0;
+    const range_value = get(v, "selectionRange") orelse get(v, "range") orelse
+        (if (get(v, "location")) |l| get(l, "range") else null) orelse return;
+    const range = edits.parseRange(range_value) orelse return;
+    try out.append(alloc, .{ .name = name, .kind = symbolKind(kind), .start = range[0], .end = range[1], .depth = depth });
+    if (hasLocals(kind)) return;
+    if (get(v, "children")) |children| if (children == .array) {
+        for (children.array.items) |c| try addSymbol(alloc, out, c, depth +| 1);
+    };
+}
+
+/// A `workspace/symbol` answer: SymbolInformation or WorkspaceSymbol (whose
+/// location may have no range: the start of the file then).
+pub fn workspaceSymbols(alloc: Allocator, result: Value) ![]Symbol {
+    var out: std.ArrayList(Symbol) = .empty;
+    if (result != .array) return out.items;
+    for (result.array.items) |v| {
+        const name = str(get(v, "name")) orelse continue;
+        const loc = get(v, "location") orelse continue;
+        const path = try protocol.pathFromUri(alloc, str(get(loc, "uri")) orelse continue) orelse continue;
+        const zero: protocol.Position = .{ .line = 0, .character = 0 };
+        const range = if (get(loc, "range")) |r| edits.parseRange(r) orelse [2]protocol.Position{ zero, zero } else [2]protocol.Position{ zero, zero };
+        const kind: i64 = if (get(v, "kind")) |k| (if (k == .integer) k.integer else 0) else 0;
+        try out.append(alloc, .{
+            .name = name,
+            .kind = symbolKind(kind),
+            .path = path,
+            .start = range[0],
+            .end = range[1],
+            .container = str(get(v, "containerName")) orelse "",
+        });
+    }
+    return out.items;
+}
+
 /// A quick fix (or other action) offered for a place in the text.
 pub const Action = struct {
     title: []const u8,
