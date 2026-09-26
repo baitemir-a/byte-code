@@ -14,6 +14,8 @@ pub fn draw(view: View, buf: *const core.Buffer, problems: *const core.Diagnosti
     if (!problems.isCurrent(buf)) return;
     var last_line: ?usize = null;
     for (problems.items.items) |it| {
+        // Folded away.
+        if (view.hides(buf, it.start)) continue;
         underline(view, buf, it.start, @max(it.end, it.start + 1));
         const line = buf.lineStart(it.start);
         if (last_line == line) continue;

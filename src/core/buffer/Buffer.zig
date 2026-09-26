@@ -46,6 +46,13 @@ extra: std.ArrayList(Cursor) = .empty,
 /// While `eachCursor` runs: the `extra` slot being edited (every cursor
 /// sits in `extra` then). `moveTo` keeps the other cursors meanwhile.
 active: ?usize = null,
+/// Folded blocks, by where their first (still shown) line starts; sorted.
+/// Changes shift them along with the text, like the cursors. What each
+/// one hides is worked out from the text (see editing/lib/fold.zig).
+folds: std.ArrayList(usize) = .empty,
+/// Changes whenever `folds` does (unique like `version`), so the view
+/// knows to lay its rows out again.
+folds_version: u64 = 0,
 
 /// Shared by all buffers; see `version`.
 var version_counter: u64 = 0;
@@ -56,6 +63,8 @@ pub const toggleCursor = cursors.toggleCursor;
 pub const selectColumns = cursors.selectColumns;
 pub const allCursors = cursors.allCursors;
 pub const eachCursor = cursors.eachCursor;
+pub const selectNextOccurrence = cursors.selectNextOccurrence;
+pub const Occurrence = cursors.Occurrence;
 
 fn nextVersion() u64 {
     version_counter += 1;
@@ -70,6 +79,7 @@ pub fn deinit(self: *Buffer) void {
     self.bytes.deinit(self.gpa);
     self.history.deinit(self.gpa);
     self.extra.deinit(self.gpa);
+    self.folds.deinit(self.gpa);
 }
 
 pub fn items(self: *const Buffer) []const u8 {
@@ -93,6 +103,7 @@ pub fn replace(self: *Buffer, start: usize, end: usize, new: []const u8, cursor_
     });
     try self.bytes.replaceRange(self.gpa, start, end - start, new);
     self.shiftCursors(start, end, new.len);
+    self.shiftFolds(start, end, new);
     self.version = nextVersion();
     self.cursor = new_cursor;
     self.anchor = null;
@@ -153,6 +164,7 @@ pub fn load(self: *Buffer, content: []const u8) !void {
     self.anchor = null;
     self.goal_col = null;
     self.extra.clearRetainingCapacity();
+    self.unfoldAll();
 }
 
 /// Replaces the selection (or inserts at the cursor) with `new`.
@@ -171,6 +183,7 @@ pub fn undo(self: *Buffer) !void {
     var e = try self.history.popUndo(self.gpa) orelse return;
     while (true) {
         try self.bytes.replaceRange(self.gpa, e.pos, e.inserted.len, e.removed);
+        self.shiftFolds(e.pos, e.pos + e.inserted.len, e.removed);
         if (!e.joined) break;
         e = try self.history.popUndo(self.gpa) orelse break;
     }
@@ -185,6 +198,7 @@ pub fn redo(self: *Buffer) !void {
     var e = try self.history.popRedo(self.gpa) orelse return;
     while (true) {
         try self.bytes.replaceRange(self.gpa, e.pos, e.removed.len, e.inserted);
+        self.shiftFolds(e.pos, e.pos + e.removed.len, e.inserted);
         if (!self.history.redoContinues()) break;
         e = try self.history.popRedo(self.gpa) orelse break;
     }
@@ -257,6 +271,55 @@ fn shiftCursors(self: *Buffer, start: usize, end: usize, new_len: usize) void {
         c.cursor = shift(c.cursor, start, end, new_len);
         if (c.anchor) |a| c.anchor = shift(a, start, end, new_len);
     }
+}
+
+// ---------------------------------------------------------------- folds
+
+/// Folds the block whose first line starts at `line_start`.
+pub fn fold(self: *Buffer, line_start: usize) !void {
+    var i: usize = 0;
+    while (i < self.folds.items.len and self.folds.items[i] < line_start) i += 1;
+    if (i < self.folds.items.len and self.folds.items[i] == line_start) return;
+    try self.folds.insert(self.gpa, i, line_start);
+    self.folds_version = nextVersion();
+}
+
+/// Unfolds the block starting on that line; false if it wasn't folded.
+pub fn unfold(self: *Buffer, line_start: usize) bool {
+    const i = std.mem.indexOfScalar(usize, self.folds.items, line_start) orelse return false;
+    _ = self.folds.orderedRemove(i);
+    self.folds_version = nextVersion();
+    return true;
+}
+
+pub fn isFolded(self: *const Buffer, line_start: usize) bool {
+    return std.mem.indexOfScalar(usize, self.folds.items, line_start) != null;
+}
+
+pub fn unfoldAll(self: *Buffer) void {
+    if (self.folds.items.len == 0) return;
+    self.folds.clearRetainingCapacity();
+    self.folds_version = nextVersion();
+}
+
+/// Keeps the folds on their lines after [start, end) was replaced by
+/// `new`. A fold whose first line started in the replaced text is gone
+/// with it; lines inserted right before its first line push it down.
+fn shiftFolds(self: *Buffer, start: usize, end: usize, new: []const u8) void {
+    if (self.folds.items.len == 0) return;
+    var n: usize = 0;
+    for (self.folds.items) |p| {
+        if (p >= start and p < end) continue;
+        const q = if (p == start)
+            p + if (std.mem.lastIndexOfScalar(u8, new, '\n')) |i| i + 1 else 0
+        else
+            shift(p, start, end, new.len);
+        if (n > 0 and self.folds.items[n - 1] == q) continue;
+        self.folds.items[n] = q;
+        n += 1;
+    }
+    self.folds.shrinkRetainingCapacity(n);
+    self.folds_version = nextVersion();
 }
 
 fn shift(p: usize, start: usize, end: usize, new_len: usize) usize {

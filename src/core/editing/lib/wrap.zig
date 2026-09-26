@@ -8,14 +8,25 @@ const text = @import("text.zig");
 /// One screen row: where it starts in the text, and the line it's part of.
 pub const Row = struct { start: usize, line: u32 };
 
+/// A stretch of text, in bytes.
+pub const Range = @import("../../buffer/Buffer.zig").Range;
+
 /// Replaces `rows` with the rows of `bytes`. `cols` 0 means no wrapping:
-/// one row per line.
-pub fn buildRows(gpa: std.mem.Allocator, rows: *std.ArrayList(Row), bytes: []const u8, cols: usize) !void {
+/// one row per line. Lines starting inside `hidden` (sorted ranges, the
+/// folded lines) get no rows.
+pub fn buildRows(gpa: std.mem.Allocator, rows: *std.ArrayList(Row), bytes: []const u8, cols: usize, hidden: []const Range) !void {
     rows.clearRetainingCapacity();
     var start: usize = 0;
     var line: u32 = 0;
+    var h: usize = 0;
     while (true) : (line += 1) {
         const end = std.mem.indexOfScalarPos(u8, bytes, start, '\n') orelse bytes.len;
+        while (h < hidden.len and hidden[h].end < start) h += 1;
+        if (h < hidden.len and hidden[h].start <= start) {
+            if (end == bytes.len) break;
+            start = end + 1;
+            continue;
+        }
         try rows.append(gpa, .{ .start = start, .line = line });
         if (cols > 0) try wrapLine(gpa, rows, bytes[start..end], start, line, cols);
         if (end == bytes.len) break;

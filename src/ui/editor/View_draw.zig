@@ -67,7 +67,76 @@ pub fn draw(self: View, buf: *const Buffer, hl: *const Highlighter, marks: ?View
 
     // Last, so it covers text scrolled horizontally under it.
     drawGutter(self, buf, first, last, changes);
+    // The diff tab's gutter has its buttons where the fold marks go.
+    const combined = if (changes) |ch| ch.combined else false;
+    if (!combined) drawFolds(self, buf, hl, first, last);
     if (changes) |ch| View_diff.drawOverlay(self, ch);
+}
+
+// ------------------------------------------------------------------ folds
+
+/// Size of a fold's mark, in the gap between the line numbers and the text.
+const mark_size: f32 = 14;
+
+fn markCenterX(self: View) f32 {
+    return self.gutterRight() - theme.gutter_gap / 2;
+}
+
+/// Whether a point is on the column of fold marks.
+pub fn foldMarkContains(self: View, p: rl.Vector2) bool {
+    const x = markCenterX(self);
+    return p.x >= x - theme.gutter_gap / 2 and p.x <= self.gutterRight() and p.y >= self.area.y and p.y <= self.bottom();
+}
+
+/// The "…" drawn after a folded line (`start` begins it, on `row`).
+pub fn foldDotsRect(self: View, buf: *const Buffer, start: usize, row: usize) rl.Rectangle {
+    const line = buf.items()[start..buf.lineEnd(start)];
+    const col: f32 = @floatFromInt(text.visualColumn(line));
+    const w = self.font.cell_width;
+    return .{
+        .x = self.textLeft() - self.scroll.x + (col + 1) * w,
+        .y = self.rowTop(row) + 3,
+        .width = 3 * w,
+        .height = theme.line_height - 6,
+    };
+}
+
+/// A fold's mark beside the first line of each folded block (pointing
+/// right), and — while the pointer is over the gutter — beside each line
+/// that could be folded (pointing down). A folded line ends with "…".
+fn drawFolds(self: View, buf: *const Buffer, hl: *const Highlighter, first: usize, last: usize) void {
+    const rs = self.rows.items;
+    const mouse = rl.getMousePosition();
+    const hover = mouse.x >= self.area.x and mouse.x <= self.gutterRight() and mouse.y >= self.area.y and mouse.y <= self.bottom();
+    const x = markCenterX(self);
+    for (first..last + 1) |row| {
+        if (row > 0 and rs[row - 1].line == rs[row].line) continue;
+        const start = rs[row].start;
+        const center: rl.Vector2 = .{ .x = x, .y = self.rowTop(row) + theme.line_height / 2 };
+        if (buf.isFolded(start)) {
+            self.font.drawIcon(.chevron_right, center, .small, theme.line_number_current);
+            const r = foldDotsRect(self, buf, start, row);
+            if (r.x + r.width < self.gutterRight()) continue;
+            rl.drawRectangleRounded(r, 0.4, 6, theme.accentDim(0.25));
+            const dot_y = r.y + r.height / 2;
+            for (0..3) |i| {
+                const dx = r.x + r.width / 2 + (@as(f32, @floatFromInt(i)) - 1) * self.font.cell_width * 0.7;
+                if (dx > self.gutterRight()) rl.drawCircleV(.{ .x = dx, .y = dot_y }, 1.6, theme.line_number_current);
+            }
+        } else if (hover and core.fold.foldable(buf, hl, start, rs[row].line)) {
+            self.font.drawIcon(.chevron_down, center, .small, theme.line_number);
+        }
+    }
+}
+
+/// Outlines the bracket at `pos` (one of a matching pair).
+pub fn drawBracket(self: View, buf: *const Buffer, pos: usize) void {
+    if (self.hides(buf, pos)) return;
+    const p = self.screenPos(buf, pos);
+    if (p.x < self.gutterRight() or p.x > self.right() or p.y + theme.line_height < self.area.y or p.y > self.bottom()) return;
+    const r: rl.Rectangle = .{ .x = p.x, .y = p.y + 1, .width = self.font.cell_width, .height = theme.line_height - 2 };
+    rl.drawRectangleRec(r, theme.accentDim(0.15));
+    rl.drawRectangleLinesEx(r, 1, theme.line_number);
 }
 
 pub fn drawLineBand(self: View, buf: *const Buffer, pos: usize) void {

@@ -29,6 +29,11 @@ conflicts_version: ?u64 = null,
 /// Mistakes found in the file (unpaired brackets, missing imports),
 /// checked again once typing pauses.
 problems: core.Diagnostics,
+/// The lines the buffer's folds hide, and the buffer and folds versions
+/// they were worked out for (see lib/folding.zig).
+hidden: std.ArrayList(core.Buffer.Range) = .empty,
+hidden_version: u64 = 0,
+hidden_folds: u64 = 0,
 /// The name a diff tab shows, e.g. "App.zig (changes)". Owned.
 label: ?[]u8 = null,
 /// The view's scroll position, kept while another tab is showing.
@@ -76,6 +81,7 @@ pub fn initHelp(gpa: std.mem.Allocator) Tab {
 
 pub fn deinit(self: *Tab, gpa: std.mem.Allocator) void {
     if (self.label) |l| gpa.free(l);
+    self.hidden.deinit(gpa);
     self.conflicts.deinit(gpa);
     self.blame.deinit();
     self.problems.deinit();

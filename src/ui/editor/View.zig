@@ -48,6 +48,8 @@ rows: std.ArrayList(Row) = .empty,
 rows_version: ?u64 = null,
 /// Wrap width the rows were made for, in columns; 0 without wrapping.
 rows_cols: usize = 0,
+/// `Buffer.folds_version` the rows were made for: folded lines get none.
+rows_folds: u64 = 0,
 
 /// Extra ranges to mark, e.g. search matches.
 pub const Highlights = struct {
@@ -74,14 +76,15 @@ pub fn deinit(self: *View) void {
 
 /// Call once per frame after the buffer changed and before hit-testing or
 /// drawing: sizes the gutter to fit the largest line number, and lays out
-/// the rows.
-pub fn layout(self: *View, buf: *const Buffer, area: rl.Rectangle) !void {
+/// the rows. `hidden`: the folded lines (see core/editing/lib/fold.zig),
+/// worked out for the buffer's current folds.
+pub fn layout(self: *View, buf: *const Buffer, area: rl.Rectangle, hidden: []const Buffer.Range) !void {
     self.area = area;
     self.line_count = buf.lineCount();
     const digits: f32 = @floatFromInt(@max(theme.gutter_min_digits, std.math.log10_int(self.line_count) + 1));
     self.gutter_width = theme.padding + digits * self.font.cell_width + theme.gutter_gap;
     const cols = if (self.wrap) self.wrapCols() else 0;
-    if (self.rows_version != buf.version or self.rows_cols != cols) try self.buildRows(buf, cols);
+    if (self.rows_version != buf.version or self.rows_cols != cols or self.rows_folds != buf.folds_version) try self.buildRows(buf, cols, hidden);
 }
 
 /// Columns that fit across the view: the wrap width.
@@ -90,10 +93,11 @@ fn wrapCols(self: View) usize {
     return @max(8, @as(usize, @intFromFloat(@max(0, w / self.font.cell_width))));
 }
 
-fn buildRows(self: *View, buf: *const Buffer, cols: usize) !void {
-    try core.wrap.buildRows(self.gpa, &self.rows, buf.items(), cols);
+fn buildRows(self: *View, buf: *const Buffer, cols: usize, hidden: []const Buffer.Range) !void {
+    try core.wrap.buildRows(self.gpa, &self.rows, buf.items(), cols, hidden);
     self.rows_version = buf.version;
     self.rows_cols = cols;
+    self.rows_folds = buf.folds_version;
 }
 
 /// Window x where column 0 of the text is drawn when not scrolled.
@@ -134,7 +138,13 @@ pub fn rowCount(self: View) usize {
 /// Whether the rows match the buffer (they're rebuilt in `layout`, so an
 /// edit earlier in the same frame leaves them stale).
 pub fn rowsCurrent(self: View, buf: *const Buffer) bool {
-    return self.rows_version == buf.version;
+    return self.rows_version == buf.version and self.rows_folds == buf.folds_version;
+}
+
+/// Whether `pos` is on a folded line, which has no row of its own.
+pub fn hides(self: View, buf: *const Buffer, pos: usize) bool {
+    if (self.rows.items.len == 0) return false;
+    return pos > self.rowEnd(buf, self.rowOf(pos));
 }
 
 pub fn rowStart(self: View, buf: *const Buffer, row: usize) usize {

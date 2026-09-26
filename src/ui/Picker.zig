@@ -4,6 +4,7 @@
 //! selection offers buttons of its own (merge, rename, delete...).
 const std = @import("std");
 const rl = @import("raylib");
+const core = @import("core");
 const theme = @import("theme/lib/theme.zig");
 const Font = @import("Font.zig");
 const Icons = @import("Icons.zig");
@@ -58,6 +59,9 @@ placeholder: []const u8 = "",
 actions: []const Action = &.{},
 action_labels: []const []const u8 = &.{},
 query: TextField,
+/// Rank the rows by a fuzzy match of the query (commands, symbols)
+/// instead of keeping those that contain it in their order.
+fuzzy: bool = false,
 items: std.ArrayList(Item) = .empty,
 /// The rows matching the query, as indexes into `items`.
 shown: std.ArrayList(u32) = .empty,
@@ -81,6 +85,7 @@ pub fn deinit(self: *Picker) void {
 pub fn open(self: *Picker, placeholder: []const u8, actions: []const Action, action_labels: []const []const u8) !void {
     std.debug.assert(actions.len == action_labels.len);
     self.is_open = true;
+    self.fuzzy = false;
     self.placeholder = placeholder;
     self.actions = actions;
     self.action_labels = action_labels;
@@ -106,12 +111,37 @@ pub fn add(self: *Picker, item: Item) !void {
 /// selects the first.
 pub fn filter(self: *Picker) !void {
     self.shown.clearRetainingCapacity();
-    const q = self.query.text();
+    self.selected = 0;
+    self.first = 0;
+    const q = std.mem.trim(u8, self.query.text(), " ");
+    if (self.fuzzy and q.len > 0) return self.filterFuzzy(q);
     for (self.items.items, 0..) |item, i| {
         if (q.len == 0 or containsIgnoreCase(item.label, q)) try self.shown.append(self.gpa, @intCast(i));
     }
-    self.selected = 0;
-    self.first = 0;
+}
+
+fn filterFuzzy(self: *Picker, q: []const u8) !void {
+    var scores: std.ArrayList(i32) = .empty;
+    defer scores.deinit(self.gpa);
+    for (self.items.items, 0..) |item, i| {
+        const m = core.fuzzy.match(item.label, q) orelse continue;
+        try self.shown.append(self.gpa, @intCast(i));
+        try scores.append(self.gpa, m.score);
+    }
+    // Best first; equals keep their order.
+    const Ctx = struct {
+        scores: []i32,
+        shown: []u32,
+        pub fn lessThan(c: @This(), a: usize, b: usize) bool {
+            if (c.scores[a] != c.scores[b]) return c.scores[a] > c.scores[b];
+            return c.shown[a] < c.shown[b];
+        }
+        pub fn swap(c: @This(), a: usize, b: usize) void {
+            std.mem.swap(i32, &c.scores[a], &c.scores[b]);
+            std.mem.swap(u32, &c.shown[a], &c.shown[b]);
+        }
+    };
+    std.sort.pdqContext(0, self.shown.items.len, Ctx{ .scores = scores.items, .shown = self.shown.items });
 }
 
 fn containsIgnoreCase(haystack: []const u8, needle: []const u8) bool {

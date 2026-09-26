@@ -40,6 +40,24 @@ pub fn quickOpenKey(self: *App, cmd: core.Command) !void {
         },
         else => if (try q.query.handle(cmd)) try q.refresh(&self.file_search),
     }
+    try handOver(self);
+}
+
+/// A query starting with `>`, `:` or `@` is for another list: the
+/// commands, a line, a name in the file (the rest of it goes along).
+fn handOver(self: *App) !void {
+    const q = &self.quick_open;
+    if (!q.is_open) return;
+    const text = q.query.text();
+    if (text.len == 0) return;
+    const rest = try self.gpa.dupe(u8, text[1..]);
+    defer self.gpa.free(rest);
+    switch (text[0]) {
+        '>' => try self.openCommandPalette(rest),
+        ':' => try self.openGoToLine(rest),
+        '@' => try self.openSymbols(rest),
+        else => {},
+    }
 }
 
 pub fn openQuickOpenSelection(self: *App) !void {

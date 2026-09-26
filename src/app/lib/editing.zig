@@ -1,5 +1,6 @@
 //! Editor commands beyond plain editing: moving by screen rows,
-//! select scope, and the completion popup.
+//! select scope, comments, Cmd+D, matching brackets and the completion
+//! popup.
 const std = @import("std");
 const core = @import("core");
 const Tab = @import("../Tab.zig");
@@ -9,10 +10,12 @@ const App = @import("../App.zig");
 const problems = @import("problems.zig");
 
 /// With word wrap, Up / Down / Page Up / Page Down go by screen rows (a
-/// long line has several). Returns false for other moves, or when the rows
-/// aren't up to date with an edit this frame.
+/// long line has several); with folds too, stepping over the folded
+/// lines. Returns false for other moves, or when the rows aren't up to
+/// date with an edit this frame.
 pub fn moveByRows(self: *App, b: *core.Buffer, m: core.command.Move) bool {
-    if (!self.view.wrap or !self.view.rowsCurrent(b)) return false;
+    const folded = self.tab().hidden.items.len > 0;
+    if (!(self.view.wrap or folded) or !self.view.rowsCurrent(b)) return false;
     const page: isize = @intCast(self.view.pageLines());
     const delta: isize = switch (m.motion) {
         .line_up => -1,
@@ -31,6 +34,60 @@ pub fn moveByRows(self: *App, b: *core.Buffer, m: core.command.Move) bool {
     };
     b.eachCursor(Rows{ .view = &self.view, .delta = delta, .extend = m.extend }, false) catch {};
     return true;
+}
+
+/// Cmd+/: comments the lines of every cursor out, or back in.
+pub fn toggleComment(self: *App, b: *core.Buffer) !void {
+    const style = core.comment.styleFor(self.tab().highlighter.language);
+    const Op = struct {
+        style: core.comment.Style,
+        done: *?core.Buffer.Range,
+        pub fn apply(op: @This(), target: *core.Buffer) !void {
+            op.done.* = try core.comment.toggle(target, op.style, op.done.*);
+        }
+    };
+    var done: ?core.Buffer.Range = null;
+    try b.eachCursor(Op{ .style = style, .done = &done }, false);
+}
+
+/// Cmd+D: the word at the cursor, then each time the next place with
+/// the same text as well. Starting from a word, only whole words count.
+pub fn selectNextOccurrence(self: *App, b: *core.Buffer) !void {
+    const sel = b.selectionOrCursor();
+    const continuing = b.version == self.occurrence_version and
+        sel.start == self.occurrence_sel.start and sel.end == self.occurrence_sel.end;
+    const whole = continuing and self.occurrence_whole;
+    switch (try b.selectNextOccurrence(whole)) {
+        .word => self.occurrence_whole = true,
+        .added => self.occurrence_whole = whole,
+        .none => return,
+    }
+    self.occurrence_version = b.version;
+    self.occurrence_sel = b.selectionOrCursor();
+    self.reveal_cursor = true;
+}
+
+/// To the bracket that pairs with the one at the cursor.
+pub fn jumpToBracket(self: *App, b: *core.Buffer) !void {
+    const t = self.tab();
+    try t.highlighter.update(self.gpa, b);
+    const pair = core.brackets.matchAt(b, &t.highlighter, b.cursor) orelse return;
+    b.moveTo(if (b.cursor <= pair.open + 1) pair.close else pair.open, false);
+    self.reveal_cursor = true;
+}
+
+/// Finds the bracket at the cursor and its partner again when the text,
+/// the cursor or the tab changed. Only for a single cursor with nothing
+/// selected.
+pub fn updateBracketPair(self: *App) void {
+    const t = self.tab();
+    const b = &t.buffer;
+    const key: [3]u64 = .{ b.version, b.cursor, self.active };
+    if (std.mem.eql(u64, &key, &self.bracket_key)) return;
+    self.bracket_key = key;
+    self.bracket_pair = null;
+    if (b.selection() != null or b.hasExtraCursors()) return;
+    self.bracket_pair = core.brackets.matchAt(b, &t.highlighter, b.cursor);
 }
 
 /// Grows the selection to the enclosing scope (see core/scope.zig).

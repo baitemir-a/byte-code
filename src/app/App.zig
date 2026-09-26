@@ -56,6 +56,9 @@ const clipboard = @import("lib/clipboard.zig");
 const dispatch = @import("lib/dispatch.zig");
 const split_panes = @import("lib/split.zig");
 const shortcuts = @import("lib/shortcuts.zig");
+const palette = @import("lib/palette.zig");
+const folding = @import("lib/folding.zig");
+const Navigation = @import("lib/navigation.zig");
 
 pub const app_name = "byte code";
 
@@ -260,6 +263,27 @@ scope_steps: std.ArrayList(core.Buffer.Range) = .empty,
 scope_version: u64 = 0,
 scope_current: core.Buffer.Range = .{ .start = 0, .end = 0 },
 minimap: Minimap = .{},
+/// The command palette's rows, as actions; the names the file declares,
+/// for Go to Symbol; and where the cursor was when a list that moves it
+/// while choosing opened (Esc goes back there).
+palette_actions: std.ArrayList(Keymap.Action) = .empty,
+symbols: std.ArrayList(core.symbols.Symbol) = .empty,
+jump_origin: ?palette.Origin = null,
+/// Go Back / Go Forward.
+nav: Navigation = .{},
+/// Cmd+D: whether the occurrences it adds must be whole words (it
+/// started from a word), valid while the text and the main selection
+/// are as it left them.
+occurrence_whole: bool = false,
+occurrence_version: u64 = 0,
+occurrence_sel: core.Buffer.Range = .{ .start = 0, .end = 0 },
+/// The bracket at the cursor and its partner, outlined; and the text,
+/// cursor and tab they were found for.
+bracket_pair: ?core.brackets.Pair = null,
+bracket_key: [3]u64 = .{ 0, 0, 0 },
+/// A command picked in the command palette, run after this frame's
+/// input.
+pending_command: ?core.Command = null,
 /// Commands gathered this frame; kept to reuse its memory.
 commands: std.ArrayList(core.Command) = .empty,
 /// Time of the last cursor activity, for caret blinking.
@@ -436,6 +460,18 @@ pub const symbolClick = symbol_nav.symbolClick;
 pub const openRef = symbol_nav.openRef;
 pub const showRefsInSearch = symbol_nav.showRefsInSearch;
 
+// palette.zig
+pub const openCommandPalette = palette.openCommandPalette;
+pub const openGoToLine = palette.openGoToLine;
+pub const openSymbols = palette.openSymbols;
+
+// folding.zig
+pub const foldAtCursor = folding.foldAtCursor;
+pub const unfoldAtCursor = folding.unfoldAtCursor;
+pub const foldAll = folding.foldAll;
+pub const unfoldAll = folding.unfoldAll;
+pub const foldClick = folding.foldClick;
+
 // editing.zig
 pub const moveByRows = editing.moveByRows;
 pub const expandSelection = editing.expandSelection;
@@ -445,6 +481,9 @@ pub const scopeStepsValid = editing.scopeStepsValid;
 pub const handleCompletionKey = editing.handleCompletionKey;
 pub const acceptCompletion = editing.acceptCompletion;
 pub const updateCompletion = editing.updateCompletion;
+pub const toggleComment = editing.toggleComment;
+pub const selectNextOccurrence = editing.selectNextOccurrence;
+pub const jumpToBracket = editing.jumpToBracket;
 
 // Running commands, in dispatch.zig.
 pub const execute = dispatch.execute;
@@ -498,6 +537,9 @@ pub fn deinit(self: *App) void {
     self.gpa.free(self.projects_path);
     self.projects.deinit();
     self.scope_steps.deinit(self.gpa);
+    self.palette_actions.deinit(self.gpa);
+    self.symbols.deinit(self.gpa);
+    self.nav.deinit(self.gpa);
     self.picker.deinit();
     self.picker_rev.deinit(self.gpa);
     self.git_refs.deinit();
@@ -597,6 +639,10 @@ pub fn update(self: *App) !void {
 
     self.wanted_cursor = .default;
     const clicked = try self.handleMouse();
+    if (self.pending_command) |cmd| {
+        self.pending_command = null;
+        try self.execute(cmd);
+    }
     if (self.wanted_cursor != self.cursor_shape) {
         rl.setMouseCursor(self.wanted_cursor);
         self.cursor_shape = self.wanted_cursor;
@@ -605,13 +651,17 @@ pub fn update(self: *App) !void {
     // no click (a sidebar file opens on release), and drawing needs a layout
     // that matches the tabs.
     try self.layout(window);
+    // A cursor that got into a folded block opens it.
+    if (try folding.unfoldCursors(self)) try self.layout(window);
     if (typed or clicked or typed_in_terminal) self.last_activity = rl.getTime();
+    try self.nav.track(self);
 
     if (self.isEditing()) {
         if (typed or self.reveal_cursor) self.view.revealCursor(self.buf());
         self.reveal_cursor = false;
         self.view.clampScroll(self.buf());
         try self.tab().highlighter.update(self.gpa, self.buf());
+        editing.updateBracketPair(self);
         try self.find.update(self.buf());
         self.popup.layout(&self.completion, &self.view, self.buf());
         self.find.layout(&self.view);
@@ -740,7 +790,8 @@ fn layoutPane(self: *App, pane: u1, view: *View, bar: *TabBar, map: *Minimap, ac
         text_area.width -= Minimap.width;
     }
     view.wrap = self.settings.word_wrap;
-    try view.layout(&t.buffer, text_area);
+    if (t.kind == .file) try folding.updateHidden(self.gpa, t) else t.hidden.clearRetainingCapacity();
+    try view.layout(&t.buffer, text_area, t.hidden.items);
     switch (t.kind) {
         .welcome => self.welcome.layout(editor, view.font, self.projects.entries.items),
         .settings => self.settings_page.layout(editor, view.font),

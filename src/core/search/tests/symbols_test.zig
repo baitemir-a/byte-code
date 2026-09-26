@@ -46,3 +46,61 @@ test "names worth looking up" {
     try testing.expect(!symbols.isName("42"));
     try testing.expect(!symbols.isName("a.b"));
 }
+
+const Buffer = @import("../../buffer/Buffer.zig");
+const Highlighter = @import("../../syntax/Highlighter.zig");
+
+/// The names `outline` finds in `src`, as "kind name".
+fn expectOutline(src: []const u8, language: Highlighter.Language, want: []const []const u8) !void {
+    const gpa = testing.allocator;
+    var b = Buffer.init(gpa);
+    defer b.deinit();
+    try b.load(src);
+    var hl: Highlighter = .init(language);
+    defer hl.deinit(gpa);
+    try hl.update(gpa, &b);
+    var out: std.ArrayList(symbols.Symbol) = .empty;
+    defer out.deinit(gpa);
+    try symbols.outline(gpa, src, &hl, &out);
+    var got: std.ArrayList([]const u8) = .empty;
+    defer {
+        for (got.items) |s| gpa.free(s);
+        got.deinit(gpa);
+    }
+    for (out.items) |s| try got.append(gpa, try std.fmt.allocPrint(gpa, "{s} {s}", .{ s.kind, src[s.start..s.end] }));
+    try testing.expectEqual(want.len, got.items.len);
+    for (want, got.items) |w, g| try testing.expectEqualStrings(w, g);
+}
+
+test "outline of a Zig file" {
+    try expectOutline(
+        \\const std = @import("std");
+        \\pub const Point = struct {
+        \\    x: i32,
+        \\    pub fn len(self: Point) i32 {
+        \\        const n = 1; // fn not_this
+        \\        return n;
+        \\    }
+        \\};
+    , .zig, &.{ "const std", "const Point", "fn len" });
+}
+
+test "outline of a TypeScript class" {
+    try expectOutline(
+        \\export class Editor {
+        \\  constructor(private x: number) {
+        \\    if (x) {
+        \\    }
+        \\  }
+        \\  async open(path: string) {
+        \\  }
+        \\}
+        \\let s = "function nope() {";
+    , .typescript, &.{ "class Editor", "() constructor", "() open", "let s" });
+}
+
+test "outline of Go, Python and Markdown" {
+    try expectOutline("func (r *T) Name() {\n}\nfunc main() {\n}", .go, &.{ "func Name", "func main" });
+    try expectOutline("class A:\n    def f(self):\n        pass", .python, &.{ "class A", "def f" });
+    try expectOutline("# Title\n\ntext\n## Part two ##", .markdown, &.{ "# Title", "# Part two" });
+}

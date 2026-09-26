@@ -14,6 +14,8 @@ const View_problems = @import("../../ui/editor/View_problems.zig");
 const problems = @import("problems.zig");
 const git_diff = @import("git_diff.zig");
 const split_panes = @import("split.zig");
+const palette = @import("palette.zig");
+const View_draw = @import("../../ui/editor/View_draw.zig");
 const i18n = @import("../../i18n/i18n.zig");
 
 pub fn draw(self: *const App) void {
@@ -71,7 +73,8 @@ fn drawFrame(self: *const App) void {
         self.sidebar.drawGitBadgeTooltip(self.view.font, &self.git);
     }
     self.quick_open.draw(&self.file_search, self.view.font, caret, self.project != null);
-    self.picker.draw(self.view.font, caret, i18n.tr().quick_open.no_matches);
+    var empty_buf: [256]u8 = undefined;
+    self.picker.draw(self.view.font, caret, palette.emptyMessage(self, &empty_buf));
     self.menu.draw(self.view.font);
     self.sidebar.drawDragLabel(self.view.font);
     drawTabDrag(self);
@@ -100,6 +103,11 @@ fn drawPane(self: *const App, focused: bool, caret: bool) void {
             const conflicts = if (focused) self.conflicts() else &.{};
             View_conflicts.drawBands(view.*, conflicts);
             view.draw(&t.buffer, &t.highlighter, if (focused) self.find.highlights(&t.buffer) else null, editor_caret, diff);
+            // The bracket at the cursor and its partner.
+            if (focused) if (self.bracket_pair) |pair| {
+                View_draw.drawBracket(view.*, &t.buffer, pair.open);
+                View_draw.drawBracket(view.*, &t.buffer, pair.close);
+            };
             View_conflicts.drawButtons(view.*, &t.buffer, conflicts);
             // A mistake on the cursor's line takes the blame's place there.
             View_problems.draw(view.*, &t.buffer, &t.problems, problems.message);

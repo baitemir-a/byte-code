@@ -47,7 +47,21 @@ the system warns the first time you open them:
 - **Multiple cursors** — Option+click (Alt+click) to add cursors,
   Option+Shift+click for a column of them; typing, deleting, moving and
   copy/paste work at all of them
-- **Move lines** up and down with Option+Up / Down
+- **Move lines** up and down with Option+Up / Down; **duplicate** them
+  (Cmd+Shift+D) or **delete** them (Cmd+Shift+K)
+- **Comment lines** out and back in (Cmd+/), with `//`, `#`, `--`… or
+  `<!-- -->` / `/* */` where a language has only block comments
+- **Indent and unindent** lines: Tab on a selection of several lines,
+  Shift+Tab, Cmd+] / Cmd+[
+- **Select next occurrence** (Cmd+D): the word at the cursor, then each
+  press adds a cursor on the next place with the same text
+- **Matching brackets** — the bracket at the cursor and its partner are
+  outlined (brackets in strings and comments don't count);
+  Cmd+Shift+\ jumps between them
+- **Folding** — hover the gutter for the arrows beside each block that can
+  fold; click one, or Cmd+Option+[ / ] (Ctrl+Alt+[ / ]). Folded lines end
+  in "…", and a cursor that lands inside a fold opens it. Fold All and
+  Unfold All are in the command palette
 - **Select scope** — grow the selection word → line → inside brackets or
   quotes → the brackets themselves → …, and back
 - **Completion** — suggestions as you type from the file's own words and
@@ -83,7 +97,17 @@ the system warns the first time you open them:
 - **Recent and favorite folders** — the welcome tab lists the folders you
   opened before; the star on a row keeps one at the top as a favorite, and
   favorites never fall off the end of the history
-- **Go to file** (Cmd+P) by fuzzy name
+- **Go to file** (Cmd+P) by fuzzy name; start the query with `:` for a
+  line, `@` for a symbol, `>` for a command
+- **Command palette** (Cmd+Shift+P or F1) — every command, fuzzy matched,
+  with its shortcut
+- **Go to line** (Ctrl+G; Ctrl+L on Windows and Linux) — `42` or `42:7`,
+  shown as you type, Esc goes back
+- **Go to symbol in the file** (Cmd+R) — functions, classes, methods,
+  top-level constants, Markdown headings, CSS selectors
+- **Go back / forward** (Ctrl+- / Ctrl+Shift+- on macOS, Alt+Left /
+  Alt+Right elsewhere, or the mouse's side buttons) — through the places
+  the cursor jumped from: another file, a declaration, a search result
 - **Go to declaration** — Ctrl+click (Cmd+click) a name to jump to where it
   is declared; click the declaration itself to list where it is used. It
   reads the shape of the code, not a language server, so it is a good guess
@@ -142,6 +166,16 @@ On macOS use Cmd; on Windows and Linux use Ctrl.
 | Option+Shift+click | A cursor on every line from the cursor to the click, in that column (drag sideways for a box selection) |
 | Option+Z | Word wrap on / off (Alt+Z on Windows and Linux) |
 | Option+Up / Down | Move the line (or selected lines) up / down |
+| Cmd+Shift+D / Cmd+Shift+K | Duplicate / delete the line (or selected lines) |
+| Cmd+/ | Comment the lines out / back in |
+| Shift+Tab, Cmd+[ / Cmd+] | Unindent / indent the lines |
+| Cmd+D | Select the word, then add the next occurrence |
+| Cmd+Shift+\ | Go to the matching bracket |
+| Cmd+Option+[ / ] | Fold / unfold the block (Ctrl+Alt on Windows and Linux) |
+| Cmd+Shift+P (F1) | Command palette |
+| Ctrl+G | Go to line (Ctrl+L on Windows and Linux) |
+| Cmd+R | Go to symbol in the file |
+| Ctrl+- / Ctrl+Shift+- | Go back / forward (Alt+Left / Alt+Right on Windows and Linux) |
 | Option+Shift+Up / Down | Select the enclosing scope / go back a step (Alt+Shift on Windows and Linux) |
 | Cmd+F | Find and replace in the file |
 | Down / Up (in the find bar) | Next / previous match (also Enter / Shift+Enter, or F3 / Shift+F3 anywhere) |

@@ -8,7 +8,7 @@ fn expectRows(src: []const u8, cols: usize, want: []const []const u8) !void {
     const gpa = std.testing.allocator;
     var rows: std.ArrayList(Row) = .empty;
     defer rows.deinit(gpa);
-    try buildRows(gpa, &rows, src, cols);
+    try buildRows(gpa, &rows, src, cols, &.{});
     try std.testing.expectEqual(want.len, rows.items.len);
     for (rows.items, want, 0..) |r, w, i| {
         const end = if (i + 1 < rows.items.len)

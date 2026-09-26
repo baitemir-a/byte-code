@@ -14,6 +14,16 @@ pub fn handleMouse(self: *App) !bool {
     const right_pressed = rl.isMouseButtonPressed(.right);
     const editing = self.isEditing();
 
+    // The mouse's back and forward buttons.
+    if (rl.isMouseButtonPressed(.side)) {
+        try self.nav.goBack(self);
+        return true;
+    }
+    if (rl.isMouseButtonPressed(.extra)) {
+        try self.nav.goForward(self);
+        return true;
+    }
+
     // "Go to file" is on top: a click picks a file, a click elsewhere closes it.
     if (self.quick_open.is_open) {
         if (!pressed) return false;
@@ -218,6 +228,9 @@ pub fn handleMouse(self: *App) !bool {
     if (pressed and !captured and mods.primary() and !mods.alt) {
         if (try self.symbolClick(point)) return true;
     }
+
+    // The fold marks in the gutter, and the "…" after a folded line.
+    if (pressed and !captured and try self.foldClick(point)) return true;
 
     // The minimap: click or drag to scroll.
     if (self.settings.minimap and !captured and self.minimap.handleMouse(&self.view, self.buf(), point, pressed)) return true;

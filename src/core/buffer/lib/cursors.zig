@@ -2,6 +2,8 @@
 //! each, and keeping them apart.
 const std = @import("std");
 const text = @import("../../editing/lib/text.zig");
+const motion = @import("../../editing/lib/motion.zig");
+const find = @import("../../search/lib/find.zig");
 const Buffer = @import("../Buffer.zig");
 
 const Allocator = std.mem.Allocator;
@@ -66,6 +68,66 @@ pub fn selectColumns(self: *Buffer, from_line: usize, from_col: usize, to_line: 
     self.anchor = main.anchor;
     self.goal_col = main.goal_col;
     self.history.seal();
+}
+
+pub const Occurrence = enum {
+    /// Nothing was selected: the word at the cursor was.
+    word,
+    /// Another place with the selected text got a cursor of its own.
+    added,
+    /// There was nothing (more) to select.
+    none,
+};
+
+/// Cmd+D. With nothing selected, selects the word at the cursor. With a
+/// selection, the next place with the same text (after the main cursor,
+/// going round to the top) gets a cursor that selects it and becomes the
+/// main one. `whole_word`: only where it isn't part of a longer word, as
+/// when the selection started from a word.
+pub fn selectNextOccurrence(self: *Buffer, whole_word: bool) !Occurrence {
+    const b = self.bytes.items;
+    const sel = self.selection() orelse {
+        const r = motion.wordRange(b, self.cursor);
+        if (r.start == r.end or !text.isWordChar(b[r.start])) return .none;
+        self.extra.clearRetainingCapacity();
+        self.cursor = r.end;
+        self.anchor = r.start;
+        self.goal_col = null;
+        self.history.seal();
+        return .word;
+    };
+    const needle = try self.gpa.dupe(u8, b[sel.start..sel.end]);
+    defer self.gpa.free(needle);
+    const all = try allCursors(self, self.gpa);
+    defer self.gpa.free(all);
+    const opts: find.Options = .{ .match_case = true, .whole_word = whole_word };
+    var from = sel.end;
+    var wrapped = false;
+    while (true) {
+        const at = find.next(b, from, needle, opts) orelse {
+            if (wrapped) return .none;
+            wrapped = true;
+            from = 0;
+            continue;
+        };
+        if (wrapped and at >= sel.start) return .none;
+        const taken = for (all) |c| {
+            const r = c.range();
+            if (at < r.end and at + needle.len > r.start) break true;
+        } else false;
+        if (!taken) {
+            var old = mainCursor(self);
+            old.primary = false;
+            try self.extra.append(self.gpa, old);
+            self.cursor = at + needle.len;
+            self.anchor = at;
+            self.goal_col = null;
+            self.history.seal();
+            try normalizeCursors(self);
+            return .added;
+        }
+        from = at + 1;
+    }
 }
 
 /// Every cursor, the main one included, in document order (caller frees).

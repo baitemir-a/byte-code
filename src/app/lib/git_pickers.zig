@@ -12,6 +12,7 @@ const Picker = @import("../../ui/Picker.zig");
 const i18n = @import("../../i18n/i18n.zig");
 const clipboard = @import("clipboard.zig");
 const git_commands = @import("git_commands.zig");
+const palette = @import("palette.zig");
 
 pub const Mode = enum {
     checkout,
@@ -26,6 +27,10 @@ pub const Mode = enum {
     compare_file,
     stash,
     delete_tag,
+    /// Not git's: the lists in palette.zig.
+    command,
+    go_to_line,
+    symbol,
 };
 
 /// Lists the branches for `mode` (one of the branch ones). While
@@ -139,9 +144,10 @@ fn finishOpening(self: *App, mode: Mode) !void {
 /// Enter to pick, Esc to close.
 pub fn pickerKey(self: *App, cmd: core.Command) !void {
     const p = &self.picker;
+    const own = palette.isOwn(self);
     switch (cmd) {
-        .newline => if (p.selectedItem()) |i| try choose(self, i, null),
-        .clear_selection => p.close(),
+        .newline => if (own) try palette.choose(self, p.selectedItem()) else if (p.selectedItem()) |i| try choose(self, i, null),
+        .clear_selection => if (own) palette.cancel(self) else p.close(),
         .move => |m| switch (m.motion) {
             .line_up => p.moveSelection(-1),
             .line_down => p.moveSelection(1),
@@ -156,6 +162,7 @@ pub fn pickerKey(self: *App, cmd: core.Command) !void {
         },
         else => if (try p.query.handle(cmd)) try p.filter(),
     }
+    if (own and p.is_open) try palette.preview(self);
 }
 
 /// The mouse while a list is open: a row or one of its buttons is picked,
@@ -164,11 +171,14 @@ pub fn pickerMouse(self: *App, point: rl.Vector2, pressed: bool) !bool {
     const hit = self.picker.hitTest(point);
     if (hit != null) self.wanted_cursor = .pointing_hand;
     if (!pressed) return self.picker.contains(point);
+    const own = palette.isOwn(self);
     if (hit) |h| {
-        try choose(self, h.item, h.action);
+        if (own) try palette.choose(self, h.item) else try choose(self, h.item, h.action);
         return true;
     }
-    if (!self.picker.contains(point)) self.picker.close();
+    if (!self.picker.contains(point)) {
+        if (own) palette.cancel(self) else self.picker.close();
+    }
     return true;
 }
 
@@ -232,7 +242,7 @@ fn choose(self: *App, item: u32, action: ?Picker.Action) !void {
                 try openCommitPicker(self, root, self.picker_rev.items);
             }
         },
-        .stash, .cherry_commit, .compare_file, .delete_tag => unreachable,
+        .stash, .cherry_commit, .compare_file, .delete_tag, .command, .go_to_line, .symbol => unreachable,
     }
 }
 

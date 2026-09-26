@@ -333,6 +333,17 @@ pub const Strings = struct {
         open_folder_first: []const u8,
         no_matches: []const u8,
     },
+    /// The lists at the top of the editor besides Go to File: the
+    /// commands, a line to go to, the names the file declares.
+    palette: struct {
+        commands: []const u8,
+        no_commands: []const u8,
+        line: []const u8,
+        /// {1}: how many lines the file has.
+        line_hint: []const u8,
+        symbols: []const u8,
+        no_symbols: []const u8,
+    },
     /// The terminal panel's header. (What the terminal itself prints stays
     /// in English: its screen can't lay out wide characters yet.)
     terminal: struct {
