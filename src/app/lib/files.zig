@@ -8,6 +8,8 @@ const Tab = @import("../Tab.zig");
 const paths = @import("../../platform/lib/paths.zig");
 const App = @import("../App.zig");
 const i18n = @import("../../i18n/i18n.zig");
+const disk = @import("disk.zig");
+const session = @import("session.zig");
 
 /// Opens a file (in a tab) or a folder (as the project), reporting failures
 /// in a dialog.
@@ -61,10 +63,14 @@ pub fn openFolder(self: *App, path: []const u8) !void {
     const tree = core.FileTree.open(self.gpa, self.io, path) catch |err| {
         return self.reportError(i18n.tr().errors.open_folder, path, err);
     };
+    // The folder being left keeps what it had open.
+    session.save(self);
     if (self.project) |*p| p.deinit();
     self.project = tree;
     self.rememberProject(self.project.?.root().path);
     self.sidebar.reset();
+    // And this one gets back what it had.
+    try session.restore(self);
     if (self.tabs.items.len > 0) try self.revealCurrentFile();
 }
 
@@ -149,6 +155,7 @@ pub fn openDroppedFiles(self: *App) !void {
 /// Cmd+K: closes the project folder and its sidebar. Open tabs stay open.
 pub fn closeFolder(self: *App) void {
     if (self.project == null) return;
+    session.save(self);
     self.endTreePress();
     self.menu.close();
     self.sidebar.reset();
@@ -161,10 +168,13 @@ pub fn closeFolder(self: *App) void {
 pub fn refreshProjectOnFocus(self: *App) !void {
     const focused = rl.isWindowFocused();
     defer self.was_focused = focused;
-    if (focused and !self.was_focused) {
+    const regained = focused and !self.was_focused;
+    if (regained) {
         try self.refreshProject();
         self.gitChanged(); // things may have changed elsewhere
     }
+    // Open files changed elsewhere are read again (or asked about).
+    try disk.update(self, regained);
 }
 
 /// Re-reads the project folder. Tree positions change, so whatever the menu

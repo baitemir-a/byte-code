@@ -134,3 +134,55 @@ test "select next occurrence" {
     try @import("../../editing/lib/command.zig").runAtCursors(&b, .{ .type_char = 'x' }, 10);
     try std.testing.expectEqualStrings("x bar x foobar x", b.items());
 }
+
+/// Line starts counted the slow way.
+fn expectLineStarts(b: *const Buffer) !void {
+    var want: std.ArrayList(usize) = .empty;
+    defer want.deinit(std.testing.allocator);
+    try want.append(std.testing.allocator, 0);
+    for (b.items(), 0..) |c, i| if (c == '\n') try want.append(std.testing.allocator, i + 1);
+    try std.testing.expectEqualSlices(usize, want.items, b.line_starts.items);
+}
+
+test "line starts follow every change, undo and redo" {
+    var b = Buffer.init(std.testing.allocator);
+    defer b.deinit();
+    var prng = std.Random.DefaultPrng.init(42);
+    const r = prng.random();
+    const pieces = [_][]const u8{ "", "a", "\n", "ab\ncd", "\n\n", "xyz", "é\n" };
+    try b.load("one\ntwo\nthree\n");
+    try expectLineStarts(&b);
+    for (0..500) |_| {
+        const len = b.items().len;
+        const s = r.uintAtMost(usize, len);
+        const e = @min(len, s + r.uintAtMost(usize, 6));
+        switch (r.uintLessThan(u8, 10)) {
+            0 => try b.undo(),
+            1 => try b.redo(),
+            else => try b.replace(s, e, pieces[r.uintLessThan(usize, pieces.len)], 0, .other),
+        }
+        try expectLineStarts(&b);
+        for (0..b.items().len + 1) |p| {
+            try std.testing.expectEqual(std.mem.count(u8, b.items()[0..p], "\n"), b.lineIndex(p));
+        }
+    }
+}
+
+test "what changed since a version" {
+    var b = Buffer.init(std.testing.allocator);
+    defer b.deinit();
+    try b.load("0123456789");
+    const v0 = b.version;
+    try std.testing.expect(b.changedSince(v0 - 1) == null); // before the load
+    try b.replace(2, 4, "abcdef", 0, .other); // 01abcdef456789
+    const v1 = b.version;
+    try b.replace(0, 1, "", 0, .other); // 1abcdef456789
+    const r = b.changedSince(v0).?;
+    try std.testing.expectEqual(@as(usize, 0), r.start);
+    try std.testing.expectEqual(@as(usize, 7), r.end);
+    const r1 = b.changedSince(v1).?;
+    try std.testing.expectEqual(@as(usize, 0), r1.start);
+    try std.testing.expectEqual(@as(usize, 0), r1.end);
+    const now = b.changedSince(b.version).?;
+    try std.testing.expectEqual(now.start, now.end);
+}

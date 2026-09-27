@@ -21,6 +21,13 @@ pub const Word = struct {
 arena: std.heap.ArenaAllocator,
 words: std.StringArrayHashMapUnmanaged(Word) = .empty,
 version: ?u64 = null,
+/// Edits since the words were gathered, in a big file (see `update`).
+stale_edits: u32 = 0,
+
+/// In a file this big, gathering the words again takes long enough to
+/// feel while typing: it's done every so many edits instead of each.
+const big_file = 512 * 1024;
+const edits_per_update = 50;
 
 pub fn init(gpa: std.mem.Allocator) Index {
     return .{ .arena = .init(gpa) };
@@ -32,6 +39,11 @@ pub fn deinit(self: *Index) void {
 
 pub fn update(self: *Index, gpa: std.mem.Allocator, buf: *const Buffer, hl: *Highlighter) !void {
     if (self.version == buf.version) return;
+    if (self.version != null and buf.items().len > big_file and self.stale_edits < edits_per_update) {
+        self.stale_edits += 1;
+        return;
+    }
+    self.stale_edits = 0;
     try hl.update(gpa, buf);
 
     _ = self.arena.reset(.retain_capacity);

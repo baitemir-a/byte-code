@@ -1,6 +1,7 @@
 //! The sidebar's Search and Git views: showing them, their text boxes
 //! and clicks, and git actions.
 const std = @import("std");
+const disk = @import("disk.zig");
 const rl = @import("raylib");
 const core = @import("core");
 const dialogs = @import("../../platform/lib/dialogs.zig");
@@ -379,19 +380,11 @@ fn askDiscard(self: *App, question: []const u8, detail: []const u8, ok_label: []
 /// they are on disk as git has them: the tabs showing them are read
 /// again. One with unsaved changes is left alone — it would lose them.
 pub fn reloadUnchangedTabs(self: *App) !void {
-    for (self.tabs.items) |*t| {
+    for (self.tabs.items, 0..) |*t, i| {
         if (t.kind != .file or t.isDirty()) continue;
-        const path = t.document.path orelse continue;
-        // A file that was deleted keeps showing what the editor has.
-        std.Io.Dir.cwd().access(self.io, path, .{}) catch continue;
-        const copy = try self.gpa.dupe(u8, path);
-        defer self.gpa.free(copy);
-        const in_other = self.split != null and t == self.otherTab();
-        const scroll = if (t == self.tab()) self.view.scroll else if (in_other) self.other_view.scroll else t.scroll;
-        t.load(self.gpa, self.io, copy) catch continue; // deleted, or unreadable
-        t.scroll = scroll;
-        if (t == self.tab()) self.view.setScroll(scroll);
-        if (in_other) self.other_view.setScroll(scroll);
+        // Only the ones git changed: the rest keep their undo history.
+        if (t.document.onDisk(self.io, std.Io.Dir.cwd()) != .changed) continue;
+        try disk.reloadTab(self, i);
     }
 }
 

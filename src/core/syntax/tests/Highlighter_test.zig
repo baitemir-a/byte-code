@@ -62,3 +62,29 @@ test "unknown .lock files are recognized by content" {
     try std.testing.expectEqual(Highlighter.Language.yaml, Highlighter.Language.detect("x.lock", "PODS:\n  - A (1.0)"));
     try std.testing.expectEqual(Highlighter.Language.plain, Highlighter.Language.detect("notes.txt", "{"));
 }
+
+test "after edits, only what changed is lexed again, with the same result" {
+    const gpa = std.testing.allocator;
+    var b = Buffer.init(gpa);
+    defer b.deinit();
+    try b.load("const a = 1;\n/* open\nstill */ let b = `x ${\ny}`;\nfunction f() {}\n");
+    var hl: Highlighter = .init(.typescript);
+    defer hl.deinit(gpa);
+    try hl.update(gpa, &b);
+    var prng = std.Random.DefaultPrng.init(7);
+    const r = prng.random();
+    const pieces = [_][]const u8{ "/*", "*/", "`", "\n", "x", "${", "}", "// c\n", "" };
+    for (0..300) |_| {
+        const len = b.items().len;
+        const s = r.uintAtMost(usize, len);
+        const e = @min(len, s + r.uintAtMost(usize, 4));
+        if (r.uintLessThan(u8, 8) == 0) try b.undo() else try b.replace(s, e, pieces[r.uintLessThan(usize, pieces.len)], 0, .other);
+        try hl.update(gpa, &b);
+        // The same states a fresh highlighter finds.
+        var fresh: Highlighter = .init(.typescript);
+        defer fresh.deinit(gpa);
+        try fresh.update(gpa, &b);
+        try std.testing.expectEqual(fresh.line_states.items.len, hl.line_states.items.len);
+        for (fresh.line_states.items, hl.line_states.items) |x, y| try std.testing.expect(std.meta.eql(x, y));
+    }
+}

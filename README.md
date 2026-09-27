@@ -136,6 +136,16 @@ the system warns the first time you open them:
   for all of them, or no icon at all
 - **Projects** — open a folder to get a file tree: create, rename, delete
   (to the Trash) and drag-and-drop to move files and folders
+- **Sessions** — opening a folder again brings back its tabs, with the
+  cursor, the scroll and the folded blocks of each, and the tab that was
+  showing (kept when the folder is closed or swapped, and on quit)
+- **Files changed elsewhere** — a `git checkout` in the terminal, a
+  formatter, another editor: an open file with no unsaved changes is read
+  again on its own, keeping its cursor and folds on the same lines; one
+  with changes asks whether to reload or keep yours
+- **Big files** — typing stays quick in files of several megabytes: lines
+  are found by an index kept up to date, and highlighting redoes only the
+  lines an edit touched
 - **Recent and favorite folders** — the welcome tab lists the folders you
   opened before; the star on a row keeps one at the top as a favorite, and
   favorites never fall off the end of the history

@@ -60,6 +60,7 @@ const palette = @import("lib/palette.zig");
 const folding = @import("lib/folding.zig");
 const Navigation = @import("lib/navigation.zig");
 const formatting = @import("lib/formatting.zig");
+const session = @import("lib/session.zig");
 const lsp_client = @import("lib/lsp.zig");
 
 pub const app_name = "byte code";
@@ -190,6 +191,8 @@ tab_press: ?split_panes.TabPress = null,
 welcome: WelcomePage = .{},
 /// Window focus last frame: regaining it re-reads the project folder.
 was_focused: bool = true,
+/// When the open files were last compared with the disk (see disk.zig).
+disk_checked_at: f64 = 0,
 view: View,
 completion: core.Completion,
 popup: CompletionPopup = .{},
@@ -220,6 +223,9 @@ help_page: HelpPage = .{},
 /// welcome page (projects.json next to settings.json).
 projects: core.Projects,
 projects_path: []u8,
+/// What each project folder had open, to open it again (sessions.json).
+sessions: core.Sessions,
+sessions_path: []u8,
 /// Cmd+P, and the project's files it searches.
 quick_open: QuickOpen,
 file_search: core.FileSearch,
@@ -518,6 +524,8 @@ pub fn init(gpa: std.mem.Allocator, io: std.Io) !App {
     errdefer gpa.free(keys_path);
     const projects_path = try paths.projectsFile(gpa);
     errdefer gpa.free(projects_path);
+    const sessions_path = try paths.sessionsFile(gpa);
+    errdefer gpa.free(sessions_path);
     settings_actions.applyToTheme(settings);
     var app: App = .{
         .gpa = gpa,
@@ -534,6 +542,8 @@ pub fn init(gpa: std.mem.Allocator, io: std.Io) !App {
         .keys_path = keys_path,
         .projects = .load(gpa, io, std.Io.Dir.cwd(), projects_path),
         .projects_path = projects_path,
+        .sessions = .load(gpa, io, std.Io.Dir.cwd(), sessions_path),
+        .sessions_path = sessions_path,
         .quick_open = .init(gpa),
         .file_search = .init(gpa),
         .search_panel = .init(gpa),
@@ -551,6 +561,8 @@ pub fn init(gpa: std.mem.Allocator, io: std.Io) !App {
 }
 
 pub fn deinit(self: *App) void {
+    // What was open, for next time.
+    session.save(self);
     git_jobs.finishGitJob(self);
     problems.finishJob(self);
     formatting.finish(self);
@@ -560,6 +572,8 @@ pub fn deinit(self: *App) void {
     self.gpa.free(self.keys_path);
     self.gpa.free(self.projects_path);
     self.projects.deinit();
+    self.sessions.deinit();
+    self.gpa.free(self.sessions_path);
     self.scope_steps.deinit(self.gpa);
     self.palette_actions.deinit(self.gpa);
     self.symbols.deinit(self.gpa);

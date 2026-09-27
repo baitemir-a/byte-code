@@ -377,6 +377,13 @@ pub const Strings = struct {
         no_server_detail: []const u8,
         no_server_any: []const u8,
     },
+    /// A file changed on disk while its tab has unsaved changes.
+    disk: struct {
+        /// {1}: the file's name.
+        changed_title: []const u8,
+        changed_detail: []const u8,
+        reload: []const u8,
+    },
     /// The terminal panel's header. (What the terminal itself prints stays
     /// in English: its screen can't lay out wide characters yet.)
     terminal: struct {

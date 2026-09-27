@@ -391,6 +391,11 @@ pub const strings: Strings = .{
         .no_server_detail = "이름 바꾸기와 빠른 수정을 사용하려면 {1}을(를) 설치하세요",
         .no_server_any = "편집기가 이 언어의 언어 서버를 알지 못합니다",
     },
+    .disk = .{
+        .changed_title = "{1}이(가) 디스크에서 변경되었습니다",
+        .changed_detail = "저장하지 않은 변경 사항이 있는 동안 파일이 외부에서 변경되었습니다. 다시 불러와 내 변경을 버리거나, 내 변경을 유지하세요(저장하면 파일을 덮어씁니다).",
+        .reload = "다시 불러오기",
+    },
     .terminal = .{
         .title = "터미널",
     },

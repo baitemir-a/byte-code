@@ -53,6 +53,18 @@ folds: std.ArrayList(usize) = .empty,
 /// Changes whenever `folds` does (unique like `version`), so the view
 /// knows to lay its rows out again.
 folds_version: u64 = 0,
+/// Where each line starts, kept up to date with every change: finding a
+/// line is a binary search, not a count of every newline before it.
+line_starts: std.ArrayList(usize) = .empty,
+/// The last changes, so whatever caches something about the text (the
+/// highlighter) can redo only what they touched (see `changedSince`).
+log: [log_len]LogEntry = undefined,
+log_count: usize = 0,
+
+const log_len = 64;
+
+/// One change: the version before and after it, and where it was.
+const LogEntry = struct { before: u64, after: u64, start: usize, old_end: usize, new_end: usize };
 
 /// Shared by all buffers; see `version`.
 var version_counter: u64 = 0;
@@ -72,7 +84,10 @@ fn nextVersion() u64 {
 }
 
 pub fn init(gpa: Allocator) Buffer {
-    return .{ .gpa = gpa, .version = nextVersion() };
+    var b: Buffer = .{ .gpa = gpa, .version = nextVersion() };
+    // An empty text is one line; nothing to allocate for it until a change.
+    b.line_starts.append(gpa, 0) catch {};
+    return b;
 }
 
 pub fn deinit(self: *Buffer) void {
@@ -80,6 +95,7 @@ pub fn deinit(self: *Buffer) void {
     self.history.deinit(self.gpa);
     self.extra.deinit(self.gpa);
     self.folds.deinit(self.gpa);
+    self.line_starts.deinit(self.gpa);
 }
 
 pub fn items(self: *const Buffer) []const u8 {
@@ -101,10 +117,9 @@ pub fn replace(self: *Buffer, start: usize, end: usize, new: []const u8, cursor_
         .anchor_before = self.anchor,
         .cursor_after = new_cursor,
     });
-    try self.bytes.replaceRange(self.gpa, start, end - start, new);
+    try self.setBytes(start, end, new);
     self.shiftCursors(start, end, new.len);
     self.shiftFolds(start, end, new);
-    self.version = nextVersion();
     self.cursor = new_cursor;
     self.anchor = null;
     self.goal_col = null;
@@ -157,6 +172,8 @@ pub fn swapRanges(self: *Buffer, s: usize, m1: usize, m2: usize, e: usize) !void
 /// history starts fresh.
 pub fn load(self: *Buffer, content: []const u8) !void {
     try self.bytes.replaceRange(self.gpa, 0, self.bytes.items.len, content);
+    try self.rebuildLineStarts();
+    self.log_count = 0;
     self.history.deinit(self.gpa);
     self.history = .{};
     self.version = nextVersion();
@@ -182,12 +199,11 @@ pub fn deleteRange(self: *Buffer, r: Range) !void {
 pub fn undo(self: *Buffer) !void {
     var e = try self.history.popUndo(self.gpa) orelse return;
     while (true) {
-        try self.bytes.replaceRange(self.gpa, e.pos, e.inserted.len, e.removed);
+        try self.setBytes(e.pos, e.pos + e.inserted.len, e.removed);
         self.shiftFolds(e.pos, e.pos + e.inserted.len, e.removed);
         if (!e.joined) break;
         e = try self.history.popUndo(self.gpa) orelse break;
     }
-    self.version = nextVersion();
     self.extra.clearRetainingCapacity();
     self.cursor = e.cursor_before;
     self.anchor = e.anchor_before;
@@ -197,12 +213,11 @@ pub fn undo(self: *Buffer) !void {
 pub fn redo(self: *Buffer) !void {
     var e = try self.history.popRedo(self.gpa) orelse return;
     while (true) {
-        try self.bytes.replaceRange(self.gpa, e.pos, e.removed.len, e.inserted);
+        try self.setBytes(e.pos, e.pos + e.removed.len, e.inserted);
         self.shiftFolds(e.pos, e.pos + e.removed.len, e.inserted);
         if (!self.history.redoContinues()) break;
         e = try self.history.popRedo(self.gpa) orelse break;
     }
-    self.version = nextVersion();
     self.extra.clearRetainingCapacity();
     self.cursor = e.cursor_after;
     self.anchor = null;
@@ -271,6 +286,83 @@ fn shiftCursors(self: *Buffer, start: usize, end: usize, new_len: usize) void {
         c.cursor = shift(c.cursor, start, end, new_len);
         if (c.anchor) |a| c.anchor = shift(a, start, end, new_len);
     }
+}
+
+// ------------------------------------------------------------ line starts
+
+/// Replaces bytes [start, end) with `new`: the text, the line starts, a
+/// new version and its entry in the log. Every change goes through here.
+fn setBytes(self: *Buffer, start: usize, end: usize, new: []const u8) !void {
+    try self.bytes.replaceRange(self.gpa, start, end - start, new);
+    try self.updateLineStarts(start, end, new);
+    const before = self.version;
+    self.version = nextVersion();
+    const entry: LogEntry = .{ .before = before, .after = self.version, .start = start, .old_end = end, .new_end = start + new.len };
+    if (self.log_count == log_len) {
+        std.mem.copyForwards(LogEntry, self.log[0 .. log_len - 1], self.log[1..]);
+        self.log_count -= 1;
+    }
+    self.log[self.log_count] = entry;
+    self.log_count += 1;
+}
+
+/// The starts of lines after [start, end) move by the change in length;
+/// those of lines inside it go, and each newline in `new` adds one.
+fn updateLineStarts(self: *Buffer, start: usize, end: usize, new: []const u8) !void {
+    const starts = self.line_starts.items;
+    // Line starts in (start, end] had their newline removed.
+    const first = std.sort.upperBound(usize, starts, start, orderUsize);
+    const last = std.sort.upperBound(usize, starts, end, orderUsize);
+    const grow = @as(isize, @intCast(new.len)) - @as(isize, @intCast(end - start));
+    for (starts[last..]) |*s| s.* = @intCast(@as(isize, @intCast(s.*)) + grow);
+    var added: std.ArrayList(usize) = .empty;
+    defer added.deinit(self.gpa);
+    var i: usize = 0;
+    while (std.mem.indexOfScalarPos(u8, new, i, '\n')) |nl| : (i = nl + 1) {
+        try added.append(self.gpa, start + nl + 1);
+    }
+    try self.line_starts.replaceRange(self.gpa, first, last - first, added.items);
+}
+
+fn orderUsize(a: usize, b: usize) std.math.Order {
+    return std.math.order(a, b);
+}
+
+fn rebuildLineStarts(self: *Buffer) !void {
+    self.line_starts.clearRetainingCapacity();
+    try self.line_starts.append(self.gpa, 0);
+    const b = self.bytes.items;
+    var i: usize = 0;
+    while (std.mem.indexOfScalarPos(u8, b, i, '\n')) |nl| : (i = nl + 1) {
+        try self.line_starts.append(self.gpa, nl + 1);
+    }
+}
+
+/// Where line `line` (zero-based) starts; past the last, the end.
+pub fn lineStartOf(self: *const Buffer, line: usize) usize {
+    const s = self.line_starts.items;
+    return if (line < s.len) s[line] else self.bytes.items.len;
+}
+
+/// What changed since version `v` of the text: one range covering every
+/// change since, in the current text. Null when `v` is too old to know
+/// (or the text was loaded anew): then everything counts as changed.
+pub fn changedSince(self: *const Buffer, v: u64) ?Range {
+    if (v == self.version) return .{ .start = 0, .end = 0 };
+    const log = self.log[0..self.log_count];
+    const from = for (log, 0..) |e, i| {
+        if (e.before == v) break i;
+    } else return null;
+    var r: ?Range = null;
+    for (log[from..]) |e| {
+        if (r) |*x| {
+            // Carry the range so far through this change.
+            const end = if (x.end >= e.old_end) x.end - e.old_end + e.new_end else if (x.end > e.start) e.new_end else x.end;
+            const s = if (x.start > e.start and x.start < e.old_end) e.start else if (x.start >= e.old_end) x.start - e.old_end + e.new_end else x.start;
+            x.* = .{ .start = @min(s, e.start), .end = @max(end, e.new_end) };
+        } else r = .{ .start = e.start, .end = e.new_end };
+    }
+    return r;
 }
 
 // ---------------------------------------------------------------- folds
@@ -358,11 +450,12 @@ pub fn lineEnd(self: *const Buffer, pos: usize) usize {
 
 /// Zero-based line number containing `pos`.
 pub fn lineIndex(self: *const Buffer, pos: usize) usize {
-    return std.mem.count(u8, self.bytes.items[0..pos], "\n");
+    // The last line start at or before `pos`.
+    return std.sort.upperBound(usize, self.line_starts.items, pos, orderUsize) - 1;
 }
 
 pub fn lineCount(self: *const Buffer) usize {
-    return std.mem.count(u8, self.bytes.items, "\n") + 1;
+    return self.line_starts.items.len;
 }
 
 /// Zero-based on-screen column of `pos` within its line (tabs expanded).
@@ -373,10 +466,8 @@ pub fn column(self: *const Buffer, pos: usize) usize {
 /// Byte offset of on-screen (line, col), clamped to the buffer / line end.
 pub fn posAt(self: *const Buffer, line: usize, col: usize) usize {
     const b = self.bytes.items;
-    var start: usize = 0;
-    for (0..line) |_| {
-        start = (std.mem.indexOfScalarPos(u8, b, start, '\n') orelse return b.len) + 1;
-    }
+    if (line >= self.line_starts.items.len) return b.len;
+    const start = self.line_starts.items[line];
     return start + text.offsetAtColumn(b[start..self.lineEnd(start)], col);
 }
 

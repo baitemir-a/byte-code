@@ -391,6 +391,11 @@ pub const strings: Strings = .{
         .no_server_detail = "Yeniden adlandırma ve hızlı düzeltmeler için {1} kurun",
         .no_server_any = "Düzenleyici bu dil için bir dil sunucusu bilmiyor",
     },
+    .disk = .{
+        .changed_title = "{1} diskte değişti",
+        .changed_detail = "Dosyada kaydedilmemiş değişiklikleriniz varken başka bir şey dosyayı değiştirdi. Yeniden yükleyip kendi değişikliklerinizi kaybedin ya da kendinizinkini tutun (kaydetmek dosyanın üzerine yazar).",
+        .reload = "Yeniden yükle",
+    },
     .terminal = .{
         .title = "TERMİNAL",
     },

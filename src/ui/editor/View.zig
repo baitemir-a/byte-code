@@ -94,7 +94,7 @@ fn wrapCols(self: View) usize {
 }
 
 fn buildRows(self: *View, buf: *const Buffer, cols: usize, hidden: []const Buffer.Range) !void {
-    try core.wrap.buildRows(self.gpa, &self.rows, buf.items(), cols, hidden);
+    try core.wrap.buildRows(self.gpa, &self.rows, buf.items(), buf.line_starts.items, cols, hidden);
     self.rows_version = buf.version;
     self.rows_cols = cols;
     self.rows_folds = buf.folds_version;
@@ -337,11 +337,23 @@ pub fn clampScroll(self: *View, buf: *const Buffer) void {
 
 fn longestLine(self: *View, buf: *const Buffer) usize {
     if (self.max_cols_version == buf.version) return self.max_cols;
+    defer self.max_cols_version = buf.version;
+    const b = buf.items();
+    // After an edit only its lines are measured. A line that got shorter
+    // may leave the limit a little generous until the next full measure.
+    if (self.max_cols_version) |v| if (buf.changedSince(v)) |r| {
+        const first = buf.lineIndex(r.start);
+        const last = buf.lineIndex(r.end);
+        for (first..last + 1) |i| {
+            const start = buf.lineStartOf(i);
+            self.max_cols = @max(self.max_cols, text.visualColumn(b[start..buf.lineEnd(start)]));
+        }
+        return self.max_cols;
+    };
     var longest: usize = 0;
-    var lines = std.mem.splitScalar(u8, buf.items(), '\n');
+    var lines = std.mem.splitScalar(u8, b, '\n');
     while (lines.next()) |line| longest = @max(longest, text.visualColumn(line));
     self.max_cols = longest;
-    self.max_cols_version = buf.version;
     return longest;
 }
 

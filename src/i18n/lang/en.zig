@@ -391,6 +391,11 @@ pub const strings: Strings = .{
         .no_server_detail = "Install {1} for rename and quick fixes",
         .no_server_any = "The editor knows no language server for this language",
     },
+    .disk = .{
+        .changed_title = "{1} changed on disk",
+        .changed_detail = "Something else changed the file while you have unsaved changes in it. Reload it and lose yours, or keep yours (saving will overwrite the file).",
+        .reload = "Reload",
+    },
     .terminal = .{
         .title = "TERMINAL",
     },

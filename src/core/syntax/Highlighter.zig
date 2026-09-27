@@ -285,8 +285,17 @@ pub fn deinit(self: *Highlighter, gpa: std.mem.Allocator) void {
     self.line_states.deinit(gpa);
 }
 
-pub fn update(self: *Highlighter, gpa: std.mem.Allocator, buf: *const Buffer) !void {
+pub fn update(self: *Highlighter, gpa: std.mem.Allocator, buf: *const Buffer) std.mem.Allocator.Error!void {
     if (self.version == buf.version and self.built_for == self.language) return;
+    // After an edit, only the lines from the change on are lexed again,
+    // and only until they start in the same state as before.
+    if (self.version) |v| if (self.built_for == self.language and self.line_states.items.len > 0) {
+        if (buf.changedSince(v)) |changed| {
+            try self.patch(gpa, buf, changed);
+            self.version = buf.version;
+            return;
+        }
+    };
     self.line_states.clearRetainingCapacity();
     var state = State.initial(self.language);
     var lines = std.mem.splitScalar(u8, buf.items(), '\n');
@@ -298,6 +307,48 @@ pub fn update(self: *Highlighter, gpa: std.mem.Allocator, buf: *const Buffer) !v
     }
     self.version = buf.version;
     self.built_for = self.language;
+}
+
+/// Lexes the lines from the one where `changed` (in the current text)
+/// starts, until a line past it starts in the state it had before the
+/// change: from there on nothing is different, only moved.
+fn patch(self: *Highlighter, gpa: std.mem.Allocator, buf: *const Buffer, changed: Buffer.Range) std.mem.Allocator.Error!void {
+    const old = self.line_states.items;
+    const new_count = buf.lineCount();
+    const first = buf.lineIndex(changed.start);
+    const last = buf.lineIndex(changed.end);
+    if (first >= old.len) return self.rebuild(gpa, buf);
+    const moved = @as(isize, @intCast(new_count)) - @as(isize, @intCast(old.len));
+    const b = buf.items();
+
+    var redone: std.ArrayList(State) = .empty;
+    defer redone.deinit(gpa);
+    var state = old[first];
+    var line = first;
+    // The old states from here on are kept (shifted) when they match.
+    var resume_at: ?usize = null;
+    while (line < new_count) : (line += 1) {
+        if (line > last) {
+            const old_line = @as(isize, @intCast(line)) - moved;
+            if (old_line > 0 and old_line < @as(isize, @intCast(old.len)) and std.meta.eql(state, old[@intCast(old_line)])) {
+                resume_at = @intCast(old_line);
+                break;
+            }
+        }
+        try redone.append(gpa, state);
+        const start = buf.lineStartOf(line);
+        const end = if (line + 1 < new_count) buf.lineStartOf(line + 1) - 1 else b.len;
+        var t = Tokens.init(self.language, b[start..end], state);
+        while (t.next()) |_| {}
+        state = t.endState();
+    }
+    const keep_from = resume_at orelse old.len;
+    try self.line_states.replaceRange(gpa, first, keep_from - first, redone.items);
+}
+
+fn rebuild(self: *Highlighter, gpa: std.mem.Allocator, buf: *const Buffer) std.mem.Allocator.Error!void {
+    self.version = null;
+    try self.update(gpa, buf);
 }
 
 /// Tokens of line number `index`, whose text is `line`.

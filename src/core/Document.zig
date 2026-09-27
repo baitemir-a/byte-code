@@ -21,6 +21,36 @@ path: ?[]u8 = null,
 saved_version: u64 = 0,
 /// The file used "\r\n"; the buffer always holds "\n" and saving converts back.
 crlf: bool = false,
+/// The file as it was on disk when last loaded or saved, to notice when
+/// something else changes it. Null for a file not on disk (yet).
+stamp: ?Stamp = null,
+
+/// When a file was last changed, and how big it is: if either differs,
+/// someone wrote to it.
+pub const Stamp = struct {
+    mtime: i96,
+    size: u64,
+
+    pub fn eql(a: Stamp, b: Stamp) bool {
+        return a.mtime == b.mtime and a.size == b.size;
+    }
+};
+
+/// The file's stamp now; null if it can't be looked at (gone, say).
+pub fn stampOf(io: Io, dir: Io.Dir, path: []const u8) ?Stamp {
+    const st = dir.statFile(io, path, .{}) catch return null;
+    return .{ .mtime = st.mtime.nanoseconds, .size = st.size };
+}
+
+pub const DiskState = enum { same, changed, gone };
+
+/// Whether the file on disk is still what was loaded or saved.
+pub fn onDisk(self: *const Document, io: Io, dir: Io.Dir) DiskState {
+    const path = self.path orelse return .same;
+    const known = self.stamp orelse return .same;
+    const now = stampOf(io, dir, path) orelse return .gone;
+    return if (known.eql(now)) .same else .changed;
+}
 
 pub fn deinit(self: *Document, gpa: Allocator) void {
     if (self.path) |p| gpa.free(p);
@@ -66,6 +96,7 @@ pub fn open(self: *Document, gpa: Allocator, io: Io, dir: Io.Dir, path: []const 
     buf.indent = text_util.detectIndent(text);
     self.crlf = crlf;
     self.saved_version = buf.version;
+    self.stamp = stampOf(io, dir, path);
 }
 
 /// Writes `buf` to the document's path. The file is replaced atomically, so
@@ -81,6 +112,7 @@ pub fn save(self: *Document, gpa: Allocator, io: Io, dir: Io.Dir, buf: *const Bu
     try file.file.writeStreamingAll(io, data);
     try file.replace(io);
     self.saved_version = buf.version;
+    self.stamp = stampOf(io, dir, path);
 }
 
 /// Turns "\r\n" into "\n" in place and returns the shortened slice.

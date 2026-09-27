@@ -17,11 +17,13 @@ pub const State = struct {
     mode: Mode = .code,
     /// Brace depth inside each open `${ ... }` or JSX `{ ... }`,
     /// innermost last.
-    braces: [max_nesting]u8 = undefined,
+    /// (Zeroed rather than left undefined, so two states compare equal
+    /// when they are: see `Highlighter.update`.)
+    braces: [max_nesting]u8 = @splat(0),
     /// What each of them goes back to when its brace closes, and the JSX
     /// elements that were open around it.
-    returns: [max_nesting]Mode = undefined,
-    depths: [max_nesting]u8 = undefined,
+    returns: [max_nesting]Mode = @splat(.code),
+    depths: [max_nesting]u8 = @splat(0),
     nesting: u8 = 0,
     /// JSX elements open at this point, in the innermost expression.
     jsx_depth: u8 = 0,

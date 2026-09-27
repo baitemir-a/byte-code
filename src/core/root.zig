@@ -10,6 +10,7 @@ pub const scope = @import("editing/lib/scope.zig");
 pub const wrap = @import("editing/lib/wrap.zig");
 pub const FileTree = @import("project/FileTree.zig");
 pub const Projects = @import("project/Projects.zig");
+pub const Sessions = @import("project/Sessions.zig");
 pub const TerminalScreen = @import("terminal/Screen.zig");
 pub const Settings = @import("Settings.zig");
 pub const FileSearch = @import("search/FileSearch.zig");

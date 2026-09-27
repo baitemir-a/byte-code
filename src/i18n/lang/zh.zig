@@ -391,6 +391,11 @@ pub const strings: Strings = .{
         .no_server_detail = "安装 {1} 以使用重命名和快速修复",
         .no_server_any = "编辑器不知道此语言的语言服务器",
     },
+    .disk = .{
+        .changed_title = "{1} 已在磁盘上更改",
+        .changed_detail = "在你有未保存的更改时，文件被外部修改。重新加载并丢失你的更改，或保留你的更改（保存会覆盖该文件）。",
+        .reload = "重新加载",
+    },
     .terminal = .{
         .title = "终端",
     },

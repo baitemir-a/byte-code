@@ -61,7 +61,7 @@ test "folded lines get no rows, and folds follow edits" {
 
     var rows: std.ArrayList(wrap.Row) = .empty;
     defer rows.deinit(testing.allocator);
-    try wrap.buildRows(testing.allocator, &rows, b.items(), 0, hidden.items);
+    try wrap.buildRows(testing.allocator, &rows, b.items(), b.line_starts.items, 0, hidden.items);
     try testing.expectEqual(@as(usize, 3), rows.items.len);
     try testing.expectEqual(@as(u32, 3), rows.items[1].line);
 

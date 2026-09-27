@@ -391,6 +391,11 @@ pub const strings: Strings = .{
         .no_server_detail = "Installa {1} per rinominare e correggere rapidamente",
         .no_server_any = "L'editor non conosce un server di linguaggio per questo linguaggio",
     },
+    .disk = .{
+        .changed_title = "{1} è cambiato sul disco",
+        .changed_detail = "Il file è stato modificato altrove mentre hai modifiche non salvate. Ricaricalo e perdi le tue, o tieni le tue (salvare sovrascriverà il file).",
+        .reload = "Ricarica",
+    },
     .terminal = .{
         .title = "TERMINALE",
     },

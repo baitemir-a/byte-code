@@ -29,6 +29,10 @@ pub fn projectsFile(gpa: std.mem.Allocator) ![]u8 {
     return besideSettings(gpa, "projects.json");
 }
 
+pub fn sessionsFile(gpa: std.mem.Allocator) ![]u8 {
+    return besideSettings(gpa, "sessions.json");
+}
+
 /// A file in the same folder as settings.json. Caller frees.
 fn besideSettings(gpa: std.mem.Allocator, name: []const u8) ![]u8 {
     const settings = try settingsFile(gpa);

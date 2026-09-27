@@ -391,6 +391,11 @@ pub const strings: Strings = .{
         .no_server_detail = "Installez {1} pour renommer et corriger rapidement",
         .no_server_any = "L'éditeur ne connaît aucun serveur de langage pour ce langage",
     },
+    .disk = .{
+        .changed_title = "{1} a changé sur le disque",
+        .changed_detail = "Le fichier a été modifié ailleurs alors que vous avez des modifications non enregistrées. Rechargez-le et perdez les vôtres, ou gardez les vôtres (l'enregistrement écrasera le fichier).",
+        .reload = "Recharger",
+    },
     .terminal = .{
         .title = "TERMINAL",
     },

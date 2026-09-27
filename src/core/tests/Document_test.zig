@@ -48,3 +48,28 @@ test "missing file opens empty, invalid UTF-8 is refused" {
     try testing.expectError(error.NotUtf8, doc.open(gpa, testing.io, tmp.dir, "bin", &buf));
     try testing.expectEqualStrings("new.js", doc.name()); // unchanged by the failed open
 }
+
+test "a file changed by something else is noticed" {
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.writeFile(io, .{ .sub_path = "a.txt", .data = "one\n" });
+    var buf = Buffer.init(gpa);
+    defer buf.deinit();
+    var doc: Document = .{};
+    defer doc.deinit(gpa);
+    try doc.open(gpa, io, tmp.dir, "a.txt", &buf);
+    try std.testing.expectEqual(Document.DiskState.same, doc.onDisk(io, tmp.dir));
+
+    // Another size is enough, whatever the clock says.
+    try tmp.dir.writeFile(io, .{ .sub_path = "a.txt", .data = "one two\n" });
+    try std.testing.expectEqual(Document.DiskState.changed, doc.onDisk(io, tmp.dir));
+
+    // Saving makes the file ours again.
+    try doc.save(gpa, io, tmp.dir, &buf);
+    try std.testing.expectEqual(Document.DiskState.same, doc.onDisk(io, tmp.dir));
+
+    try tmp.dir.deleteFile(io, "a.txt");
+    try std.testing.expectEqual(Document.DiskState.gone, doc.onDisk(io, tmp.dir));
+}
